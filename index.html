@@ -1,0 +1,1669 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Mafia Travel – Jelajahi Dunia Tanpa Ribet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <style>
+    :root {
+      --orange: #F97316;
+      --orange-dark: #EA6B0A;
+      --orange-light: #FFF7ED;
+      --blue: #5BB8D4;
+      --blue-dark: #3A9AB8;
+      --blue-light: #EFF9FC;
+      --dark: #111827;
+      --dark-2: #1F2937;
+      --gray: #6B7280;
+      --gray-light: #F3F4F6;
+      --white: #FFFFFF;
+      --border: #E5E7EB;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
+      --shadow-md: 0 4px 20px rgba(0,0,0,.10);
+      --shadow-lg: 0 10px 40px rgba(0,0,0,.14);
+      --shadow-xl: 0 20px 60px rgba(0,0,0,.18);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --radius-lg: 24px;
+      --transition: .3s cubic-bezier(.4,0,.2,1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', sans-serif;
+      color: var(--dark);
+      background: var(--white);
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+    img { display: block; width: 100%; object-fit: cover; }
+    a { text-decoration: none; color: inherit; }
+    ul { list-style: none; }
+    button { cursor: pointer; border: none; outline: none; font-family: inherit; }
+    section { padding: 80px 0; }
+
+    h1,h2,h3,h4,h5 { font-family: 'Poppins', sans-serif; line-height: 1.15; }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .flex { display: flex; }
+    .flex-center { display: flex; align-items: center; justify-content: center; }
+    .flex-between { display: flex; align-items: center; justify-content: space-between; }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 14px 28px; border-radius: 50px;
+      font-family: 'Poppins', sans-serif; font-weight: 600; font-size: 15px;
+      transition: var(--transition); white-space: nowrap;
+    }
+    .btn-primary { background: var(--orange); color: var(--white); box-shadow: 0 4px 20px rgba(249,115,22,.35); }
+    .btn-primary:hover { background: var(--orange-dark); transform: translateY(-2px); box-shadow: 0 8px 28px rgba(249,115,22,.45); }
+    .btn-outline { background: transparent; color: var(--orange); border: 2px solid var(--orange); }
+    .btn-outline:hover { background: var(--orange); color: var(--white); transform: translateY(-2px); }
+    .btn-disabled {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 8px 18px; font-size: 13px; color: rgba(17,24,39,.6);
+      background: rgba(243,244,246,.9); border: 2px solid rgba(229,231,235,.9);
+      border-radius: 50px; opacity: .7; cursor: not-allowed;
+    }
+    .btn-white { background: var(--white); color: var(--orange); box-shadow: var(--shadow-md); }
+    .btn-white:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+    .btn-wa { background: #25D366; color: var(--white); box-shadow: 0 4px 20px rgba(37,211,102,.35); }
+    .btn-wa:hover { background: #20BA5A; transform: translateY(-2px); }
+
+    /* BADGES */
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 14px; border-radius: 50px;
+      font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .badge-orange { background: var(--orange-light); color: var(--orange); }
+    .badge-blue { background: var(--blue-light); color: var(--blue-dark); }
+    .badge-green { background: #DCFCE7; color: #16A34A; }
+    .badge-red { background: #FEE2E2; color: #DC2626; }
+
+    /* SECTION HEADER */
+    .section-header { text-align: center; max-width: 580px; margin: 0 auto 56px; }
+    .section-header .eyebrow {
+      font-family: 'Poppins', sans-serif; font-weight: 700; font-size: 12px;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: var(--orange); margin-bottom: 12px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .section-header .eyebrow::before,
+    .section-header .eyebrow::after { content: ''; display: block; width: 28px; height: 2px; background: var(--orange); }
+    .section-header h2 { font-size: clamp(26px,4vw,42px); font-weight: 800; margin-bottom: 16px; }
+    .section-header p { color: var(--gray); font-size: 16px; }
+
+    /* ANIMATIONS */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(32px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+    .fade-up { opacity: 0; transform: translateY(32px); transition: opacity .7s ease, transform .7s ease; }
+    .fade-up.visible { opacity: 1; transform: translateY(0); }
+
+    /* NAVBAR */
+    #navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      padding: 0; transition: var(--transition);
+    }
+    #navbar .nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 24px; transition: var(--transition);
+    }
+    #navbar.scrolled {
+      background: rgba(255,255,255,.97);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+    #navbar.scrolled .nav-inner { padding: 12px 24px; }
+    .nav-logo { display: flex; align-items: center; gap: 10px; }
+    .nav-logo img { width: 46px; height: 46px; border-radius: 12px; object-fit: cover; }
+    .nav-logo-text { font-family: 'Poppins', sans-serif; font-weight: 800; font-size: 18px; line-height: 1.1; }
+    .nav-logo-text span { color: var(--orange); }
+    #navbar:not(.scrolled) .nav-logo-text { color: var(--white); }
+    .nav-menu { display: flex; align-items: center; gap: 4px; }
+    .nav-menu a {
+      padding: 8px 14px; border-radius: 8px;
+      font-weight: 500; font-size: 14px; color: var(--dark);
+      transition: var(--transition);
+    }
+    #navbar:not(.scrolled) .nav-menu a { color: rgba(255,255,255,.9); }
+    #navbar:not(.scrolled) .nav-menu a:hover { color: var(--white); background: rgba(255,255,255,.15); }
+    .nav-menu a:hover { background: var(--gray-light); }
+    .nav-actions { display: flex; align-items: center; gap: 12px; }
+    .hamburger { display: none; flex-direction: column; gap: 5px; background: none; padding: 6px; }
+    .hamburger span { display: block; width: 24px; height: 2px; background: var(--dark); transition: var(--transition); border-radius: 2px; }
+    #navbar:not(.scrolled) .hamburger span { background: var(--white); }
+
+    /* MOBILE MENU */
+    .mobile-menu {
+      position: fixed; top: 0; right: -100%; width: 300px; height: 100vh;
+      background: var(--white); z-index: 1100; padding: 80px 28px 32px;
+      box-shadow: -4px 0 40px rgba(0,0,0,.15); transition: var(--transition);
+      display: flex; flex-direction: column; gap: 6px; overflow-y: auto;
+    }
+    .mobile-menu.open { right: 0; }
+    .mobile-menu a {
+      display: block; padding: 13px 16px; border-radius: var(--radius-sm);
+      font-weight: 600; font-size: 16px; color: var(--dark);
+      transition: var(--transition);
+    }
+    .mobile-menu a:hover { background: var(--orange-light); color: var(--orange); }
+    .mobile-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.5);
+      z-index: 1050; opacity: 0; pointer-events: none; transition: var(--transition);
+    }
+    .mobile-overlay.open { opacity: 1; pointer-events: all; }
+    .mobile-close {
+      position: absolute; top: 24px; right: 24px; background: var(--gray-light);
+      font-size: 18px; color: var(--gray); width: 36px; height: 36px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    }
+
+    /* HERO */
+    #hero {
+      position: relative; min-height: 100vh;
+      display: flex; align-items: center; overflow: hidden;
+      padding-top: 80px;
+    }
+    .hero-bg {
+      position: absolute; inset: 0; z-index: 0;
+      background: url('https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?w=1600&q=80') center/cover no-repeat;
+    }
+    .hero-bg::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(17,24,39,.80) 0%, rgba(17,24,39,.50) 50%, rgba(249,115,22,.20) 100%);
+    }
+    .hero-content {
+      position: relative; z-index: 1;
+      width: 100%; max-width: 1000px;
+      animation: fadeUp .9s ease forwards;
+      padding: 60px 0 160px;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(255,255,255,.15); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,.25); border-radius: 50px;
+      padding: 8px 18px; margin-bottom: 24px;
+      color: var(--white); font-size: 13px; font-weight: 600;
+    }
+    .hero-badge i { color: var(--orange); }
+    #hero h1 {
+      font-size: clamp(36px, 6vw, 76px); font-weight: 800;
+      color: var(--white); margin-bottom: 20px;
+      line-height: 1.1;
+    }
+    #hero h1 .highlight { color: var(--orange); }
+    #hero p {
+      font-size: clamp(15px, 2vw, 19px); color: rgba(255,255,255,.85);
+      margin-bottom: 36px; max-width: 600px; line-height: 1.7;
+    }
+    .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
+    .hero-stats {
+      position: absolute; bottom: 48px; left: 0; right: 0;
+      pointer-events: none;
+    }
+    .hero-stats .container { display: flex; gap: 0; }
+    .stat-card {
+      background: rgba(255,255,255,.12); backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,.2);
+      padding: 20px 28px; flex: 1; text-align: center;
+      transition: var(--transition);
+    }
+    .stat-card:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+    .stat-card:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+    .stat-card:hover { background: rgba(255,255,255,.2); }
+    .stat-card .num { font-family: 'Poppins', sans-serif; font-size: 30px; font-weight: 800; color: var(--white); }
+    .stat-card .num span { color: var(--orange); }
+    .stat-card .label { font-size: 12px; color: rgba(255,255,255,.7); margin-top: 4px; }
+    .hero-scroll {
+      position: absolute; bottom: 130px; right: 40px; z-index: 1;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    .hero-scroll span { font-size: 11px; color: rgba(255,255,255,.6); letter-spacing: 2px; text-transform: uppercase; writing-mode: vertical-rl; }
+    .hero-scroll-line { width: 1px; height: 60px; background: linear-gradient(to bottom, rgba(255,255,255,.6), transparent); animation: pulse 2s ease infinite; }
+
+    /* SEARCH CARD */
+    #search-bar { background: var(--white); padding: 0; }
+    .search-card {
+      background: var(--white); border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-xl); padding: 32px 36px;
+      margin-top: -70px; position: relative; z-index: 5;
+    }
+    .search-card-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 16px; align-items: end;
+    }
+    .search-field label {
+      display: block; font-weight: 600; font-size: 12px;
+      text-transform: uppercase; letter-spacing: 1px;
+      color: var(--gray); margin-bottom: 8px;
+    }
+    .search-field .input-wrap {
+      display: flex; align-items: center; gap: 10px;
+      border: 2px solid var(--border); border-radius: var(--radius-sm);
+      padding: 12px 16px; transition: var(--transition); background: var(--white);
+    }
+    .search-field .input-wrap:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(249,115,22,.12); }
+    .search-field .input-wrap i { color: var(--orange); font-size: 15px; flex-shrink: 0; }
+    .search-field select, .search-field input {
+      border: none; outline: none; font-family: inherit;
+      font-size: 15px; color: var(--dark); background: transparent;
+      width: 100%; font-weight: 500; cursor: pointer;
+    }
+    .search-result {
+      grid-column: 1 / -1; margin-top: 4px; padding: 14px 20px; border-radius: var(--radius-sm);
+      background: var(--blue-light); color: var(--dark-2);
+      border: 1px solid rgba(91,184,212,.35);
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 600; font-size: 14px;
+      display: none;
+    }
+    .search-result.show { display: flex; animation: fadeUp .3s ease forwards; }
+    .search-result i { color: var(--blue-dark); flex-shrink: 0; }
+    .search-result .result-count { color: var(--orange); }
+
+    /* PAKET WISATA */
+    #paket { background: var(--gray-light); }
+    .filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-bottom: 48px; }
+    .filter-tab {
+      padding: 10px 22px; border-radius: 50px; font-weight: 600; font-size: 14px;
+      background: var(--white); color: var(--gray);
+      border: 2px solid var(--border); transition: var(--transition);
+    }
+    .filter-tab.active, .filter-tab:hover { background: var(--orange); color: var(--white); border-color: var(--orange); }
+    .package-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+    .package-card {
+      background: var(--white); border-radius: var(--radius-lg);
+      overflow: hidden; box-shadow: var(--shadow-sm);
+      transition: var(--transition); cursor: pointer;
+    }
+    .package-card:hover { transform: translateY(-8px); box-shadow: var(--shadow-xl); }
+    .package-card.hidden { display: none; }
+    .card-img { position: relative; height: 220px; overflow: hidden; }
+    .card-img img { height: 100%; transition: transform .5s ease; }
+    .package-card:hover .card-img img { transform: scale(1.08); }
+    .card-img .img-badges { position: absolute; top: 14px; left: 14px; right: 50px; }
+    .card-wishlist {
+      position: absolute; top: 14px; right: 14px;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255,255,255,.9); backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--gray); transition: var(--transition); z-index: 1;
+    }
+    .card-wishlist:hover, .card-wishlist.active { color: #EF4444; }
+    .card-body { padding: 22px 24px; }
+    .card-meta { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .card-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; line-height: 1.3; color: var(--dark); }
+    .card-desc { font-size: 14px; color: var(--gray); margin-bottom: 16px; line-height: 1.6; }
+    .card-highlights { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; background: var(--gray-light); border-radius: 50px;
+      font-size: 12px; color: var(--dark-2); font-weight: 500;
+    }
+    .chip i { color: var(--orange); font-size: 11px; }
+    .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: 16px; border-top: 1px solid var(--border);
+    }
+    .price-old { font-size: 12px; color: var(--gray); text-decoration: line-through; }
+    .price-new { font-family: 'Poppins', sans-serif; font-size: 22px; font-weight: 800; color: var(--orange); }
+    .price-per { font-size: 11px; color: var(--gray); }
+    .card-rating { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+    .card-rating i { color: #FBBF24; }
+    .card-rating span { font-weight: 600; }
+    .card-rating small { color: var(--gray); }
+    .no-results {
+      grid-column: 1 / -1; text-align: center; padding: 60px 20px;
+      color: var(--gray); font-size: 16px;
+    }
+    .no-results i { font-size: 40px; margin-bottom: 16px; display: block; color: var(--border); }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 2000;
+      opacity: 0; pointer-events: none; transition: var(--transition);
+      display: flex; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal-box {
+      background: var(--white); border-radius: var(--radius-lg);
+      max-width: 860px; width: 100%; max-height: 90vh; overflow-y: auto;
+      transform: scale(.95) translateY(20px); transition: var(--transition);
+    }
+    .modal-overlay.open .modal-box { transform: scale(1) translateY(0); }
+    .modal-header { position: relative; height: 300px; overflow: hidden; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+    .modal-header img { height: 100%; }
+    .modal-header .overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.7) 0%, transparent 50%); }
+    .modal-header-content { position: absolute; bottom: 24px; left: 28px; right: 28px; color: var(--white); }
+    .modal-header-content h2 { font-size: clamp(20px, 3vw, 28px); font-weight: 800; }
+    .modal-header-content .meta { display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+    .modal-close {
+      position: absolute; top: 16px; right: 16px; z-index: 1;
+      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(255,255,255,.2); backdrop-filter: blur(8px);
+      color: var(--white); font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-close:hover { background: rgba(255,255,255,.35); }
+    .modal-body { padding: 32px 36px; }
+    .modal-cols { display: grid; grid-template-columns: 1fr 300px; gap: 32px; }
+    .itinerary-day { margin-bottom: 20px; padding: 18px 20px; background: var(--gray-light); border-radius: var(--radius-sm); }
+    .itinerary-day h4 {
+      font-weight: 700; font-size: 13px; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--orange); margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .itinerary-day h4::before { content: ''; width: 20px; height: 2px; background: var(--orange); }
+    .itinerary-item { display: flex; gap: 10px; margin-bottom: 8px; }
+    .itinerary-item i { color: var(--orange); margin-top: 3px; font-size: 13px; flex-shrink: 0; }
+    .itinerary-item span { font-size: 14px; color: var(--dark-2); }
+    .include-list li { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; font-size: 14px; border-bottom: 1px solid var(--border); }
+    .include-list li:last-child { border-bottom: none; }
+    .include-list li i.fa-check { color: #16A34A; font-size: 12px; margin-top: 3px; }
+    .include-list li i.fa-xmark { color: #DC2626; font-size: 12px; margin-top: 3px; }
+    .sticky-book { background: var(--white); border: 2px solid var(--border); border-radius: var(--radius); padding: 24px; position: sticky; top: 16px; }
+    .sticky-book .price-big { font-family: 'Poppins', sans-serif; font-size: 30px; font-weight: 800; color: var(--orange); }
+    .sticky-book .price-label { font-size: 13px; color: var(--gray); margin-bottom: 20px; }
+    .booking-info li { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .booking-info li span:first-child { color: var(--gray); }
+    .booking-info li span:last-child { font-weight: 600; }
+
+    /* JADWAL */
+    #jadwal { background: var(--white); }
+    .schedule-list { display: grid; gap: 16px; }
+    .schedule-item {
+      display: flex; align-items: center; gap: 20px;
+      background: var(--white); border: 2px solid var(--border);
+      border-radius: var(--radius); padding: 20px 24px;
+      transition: var(--transition);
+    }
+    .schedule-item:hover { border-color: var(--orange); box-shadow: 0 0 0 4px var(--orange-light); }
+    .schedule-date { min-width: 68px; text-align: center; background: var(--orange-light); border-radius: var(--radius-sm); padding: 12px; }
+    .schedule-date .day { font-family: 'Poppins', sans-serif; font-size: 28px; font-weight: 800; color: var(--orange); line-height: 1; }
+    .schedule-date .month { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--orange-dark); margin-top: 4px; }
+    .schedule-info { flex: 1; min-width: 0; }
+    .schedule-info h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .schedule-info .meta { display: flex; gap: 14px; flex-wrap: wrap; }
+    .schedule-info .meta span { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--gray); }
+    .schedule-info .meta i { color: var(--orange); }
+    .schedule-action { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+    .quota-bar { width: 90px; }
+    .quota-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .quota-fill { height: 100%; background: var(--orange); border-radius: 3px; }
+    .quota-text { font-size: 11px; color: var(--gray); margin-top: 4px; text-align: right; }
+
+    /* DESTINASI */
+    #destinasi { background: var(--gray-light); }
+    .dest-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: 220px 220px; gap: 16px; }
+    .dest-card { position: relative; border-radius: var(--radius); overflow: hidden; cursor: pointer; }
+    .dest-card .img-wrap { position: relative; height: 100%; }
+    .dest-card:first-child { grid-row: 1/3; }
+    .dest-card .img-wrap img { height: 100%; transition: transform .5s ease; }
+    .dest-card:hover .img-wrap img { transform: scale(1.08); }
+    .dest-card .overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.65) 0%, transparent 50%); transition: var(--transition); }
+    .dest-card:hover .overlay { background: linear-gradient(to top, rgba(249,115,22,.65) 0%, transparent 50%); }
+    .dest-card .info { position: absolute; bottom: 16px; left: 16px; color: var(--white); }
+    .dest-card .info h3 { font-size: 18px; font-weight: 700; }
+    .dest-card:first-child .info h3 { font-size: 24px; }
+    .dest-card .info span { font-size: 12px; opacity: .85; }
+
+    /* TESTIMONI */
+    #testimoni { background: var(--dark); overflow: hidden; position: relative; }
+    #testimoni::before {
+      content: '"'; position: absolute; top: -40px; left: -20px;
+      font-family: 'Poppins', sans-serif; font-size: 300px; font-weight: 800;
+      color: rgba(255,255,255,.03); line-height: 1; pointer-events: none;
+    }
+    #testimoni .section-header h2 { color: var(--white); }
+    #testimoni .section-header p { color: rgba(255,255,255,.5); }
+    #testimoni .section-header .eyebrow { color: var(--orange); }
+    #testimoni .section-header .eyebrow::before,
+    #testimoni .section-header .eyebrow::after { background: var(--orange); }
+    .testi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .testi-card {
+      background: rgba(255,255,255,.06); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,.1); border-radius: var(--radius);
+      padding: 28px; transition: var(--transition);
+    }
+    .testi-card:hover { background: rgba(255,255,255,.1); transform: translateY(-6px); }
+    .testi-stars { display: flex; gap: 4px; margin-bottom: 16px; }
+    .testi-stars i { color: #FBBF24; font-size: 14px; }
+    .testi-text { font-size: 14px; color: rgba(255,255,255,.8); line-height: 1.7; margin-bottom: 20px; font-style: italic; }
+    .testi-author { display: flex; align-items: center; gap: 14px; }
+    .testi-author img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid var(--orange); }
+    .testi-author-info strong { display: block; color: var(--white); font-size: 15px; font-family: 'Poppins', sans-serif; font-weight: 700; }
+    .testi-author-info span { font-size: 12px; color: rgba(255,255,255,.5); }
+    .testi-destination { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--orange); }
+
+    /* GALERI */
+    #galeri { background: var(--white); }
+    .gallery-grid { display: grid; grid-template-columns: repeat(4,1fr); grid-template-rows: 220px 220px; gap: 16px; }
+    .gallery-item { position: relative; border-radius: var(--radius-sm); overflow: hidden; cursor: pointer; }
+    .gallery-item:nth-child(1) { grid-column: span 2; }
+    .gallery-item:nth-child(4) { grid-column: span 2; }
+    .gallery-item img { height: 100%; transition: transform .5s ease; }
+    .gallery-item:hover img { transform: scale(1.08); }
+    .gallery-overlay {
+      position: absolute; inset: 0; background: rgba(249,115,22,.0); transition: var(--transition);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .gallery-overlay i { color: var(--white); font-size: 28px; opacity: 0; transform: scale(.7); transition: var(--transition); }
+    .gallery-item:hover .gallery-overlay { background: rgba(249,115,22,.5); }
+    .gallery-item:hover .gallery-overlay i { opacity: 1; transform: scale(1); }
+
+    /* TENTANG */
+    #tentang { background: var(--orange-light); }
+    .about-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+    .about-img-wrap { position: relative; }
+    .about-img { border-radius: var(--radius-lg); height: 520px; box-shadow: var(--shadow-xl); }
+    .about-float-card {
+      position: absolute; bottom: -24px; right: -24px;
+      background: var(--white); border-radius: var(--radius);
+      padding: 20px 24px; box-shadow: var(--shadow-lg);
+      display: flex; align-items: center; gap: 14px;
+    }
+    .about-float-icon { width: 52px; height: 52px; background: var(--orange); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: var(--white); font-size: 22px; }
+    .about-float-card h4 { font-size: 13px; color: var(--gray); }
+    .about-float-card p { font-family: 'Poppins', sans-serif; font-size: 20px; font-weight: 800; color: var(--dark); }
+    .about-content .eyebrow { font-family: 'Poppins', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--orange); margin-bottom: 12px; }
+    .about-content h2 { font-size: clamp(28px,3vw,40px); font-weight: 800; margin-bottom: 20px; }
+    .about-content p { color: var(--gray); margin-bottom: 16px; line-height: 1.8; }
+    .about-values { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 32px; }
+    .about-value { background: var(--white); padding: 18px; border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
+    .about-value i { color: var(--orange); font-size: 22px; margin-bottom: 8px; display: block; }
+    .about-value h4 { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+    .about-value p { font-size: 13px; color: var(--gray); margin: 0; }
+
+    /* KONTAK */
+    #kontak { background: var(--white); }
+    .kontak-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+    .kontak-info h2 { font-size: clamp(26px,3vw,36px); font-weight: 800; margin-bottom: 16px; }
+    .kontak-info p { color: var(--gray); margin-bottom: 32px; line-height: 1.8; }
+    .kontak-items { display: flex; flex-direction: column; gap: 18px; }
+    .kontak-item { display: flex; align-items: center; gap: 16px; }
+    .kontak-icon { width: 52px; height: 52px; background: var(--orange-light); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: var(--orange); font-size: 20px; flex-shrink: 0; }
+    .kontak-item-text strong { display: block; font-weight: 700; margin-bottom: 2px; }
+    .kontak-item-text span { font-size: 14px; color: var(--gray); }
+    .contact-form { background: var(--white); border: 2px solid var(--border); border-radius: var(--radius-lg); padding: 32px; }
+    .form-group { margin-bottom: 18px; }
+    .form-group label { display: block; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dark-2); margin-bottom: 8px; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%; padding: 13px 16px;
+      border: 2px solid var(--border); border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 15px; color: var(--dark);
+      transition: var(--transition); outline: none; background: var(--gray-light);
+    }
+    .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--orange); background: var(--white); }
+    .form-group textarea { resize: vertical; min-height: 120px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* FOOTER */
+    footer { background: var(--dark-2); color: var(--white); padding: 64px 0 0; }
+    .footer-grid { display: flex; align-items: flex-start; gap: 40px; padding-bottom: 48px; border-bottom: 1px solid rgba(255,255,255,.1); flex-wrap: wrap; }
+    .footer-brand { flex: 2 1 280px; }
+    .footer-col { flex: 1 1 180px; }
+    .footer-brand p { font-size: 14px; color: rgba(255,255,255,.5); line-height: 1.8; margin: 16px 0 20px; }
+    .footer-socials { display: flex; gap: 10px; }
+    .social-btn { width: 40px; height: 40px; border-radius: 10px; background: rgba(255,255,255,.1); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.7); font-size: 16px; transition: var(--transition); }
+    .social-btn:hover { background: var(--orange); color: var(--white); }
+    .footer-col h4 { font-family: 'Poppins', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 20px; }
+    .footer-col ul { display: flex; flex-direction: column; gap: 10px; }
+    .footer-col ul a { font-size: 14px; color: rgba(255,255,255,.5); transition: var(--transition); }
+    .footer-col ul a:hover { color: var(--orange); }
+    .footer-bottom { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; font-size: 13px; color: rgba(255,255,255,.4); }
+    .footer-bottom a { color: var(--orange); }
+
+    /* FLOATING WA */
+    .float-wa {
+      position: fixed; bottom: 28px; right: 28px; z-index: 999;
+      width: 56px; height: 56px; border-radius: 50%;
+      background: #25D366; color: var(--white);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px; box-shadow: 0 4px 20px rgba(37,211,102,.5);
+      animation: float 3s ease infinite; transition: var(--transition);
+    }
+    .float-wa:hover { background: #20BA5A; transform: scale(1.1) !important; }
+    .float-wa-tooltip {
+      position: absolute; right: 68px; background: var(--dark);
+      color: var(--white); padding: 6px 14px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; white-space: nowrap;
+      opacity: 0; pointer-events: none; transition: var(--transition);
+    }
+    .float-wa-tooltip::after {
+      content: ''; position: absolute; right: -6px; top: 50%; transform: translateY(-50%);
+      border: 6px solid transparent; border-right: none; border-left-color: var(--dark);
+    }
+    .float-wa:hover .float-wa-tooltip { opacity: 1; }
+
+    /* ====== RESPONSIVE ====== */
+
+    /* Tablet */
+    @media (max-width: 1024px) {
+      .package-grid { grid-template-columns: repeat(2, 1fr); }
+      .testi-grid { grid-template-columns: repeat(2, 1fr); }
+      .footer-grid { display: flex; flex-wrap: wrap; gap: 32px; }
+      .dest-grid { grid-template-columns: repeat(2, 1fr); grid-template-rows: auto; }
+      .dest-card:first-child { grid-row: auto; }
+      .dest-card .img-wrap { height: 200px; }
+      .modal-cols { grid-template-columns: 1fr; }
+      .search-card-grid { grid-template-columns: 1fr 1fr; }
+      .search-card-grid .btn { grid-column: 1 / -1; justify-content: center; }
+    }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      section { padding: 56px 0; }
+      .container { padding: 0 16px; }
+
+      /* Navbar */
+      .nav-menu, .nav-actions .btn-primary { display: none; }
+      .hamburger { display: flex; }
+      #navbar .nav-inner { padding: 14px 16px; }
+      #navbar.scrolled .nav-inner { padding: 10px 16px; }
+
+      /* Hero */
+      #hero { padding-top: 70px; min-height: 100svh; }
+      .hero-content { padding: 40px 0 210px; }
+      #hero h1 { font-size: clamp(30px, 8vw, 48px); }
+      #hero p { font-size: 15px; max-width: 100%; }
+      .hero-actions { flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 22px; }
+      .hero-actions .btn { width: 100%; justify-content: center; }
+      .hero-scroll { display: none; }
+
+      /* Hero stats */
+      .hero-content { padding: 40px 0 210px; }
+      .hero-stats .container { flex-wrap: wrap; gap: 2px; }
+      .stat-card { flex: 1 0 calc(50% - 1px); border-radius: 0 !important; }
+      .stat-card:nth-child(1) { border-radius: var(--radius-sm) 0 0 0 !important; }
+      .stat-card:nth-child(2) { border-radius: 0 var(--radius-sm) 0 0 !important; }
+      .stat-card:nth-child(3) { border-radius: 0 0 0 var(--radius-sm) !important; }
+      .stat-card:nth-child(4) { border-radius: 0 0 var(--radius-sm) 0 !important; }
+      .stat-card .num { font-size: 24px; }
+
+      /* Search */
+      .search-card { padding: 20px; margin-top: -30px; border-radius: var(--radius); }
+      .search-card-grid { grid-template-columns: 1fr; gap: 12px; }
+      .search-card-grid .btn { grid-column: 1; width: 100%; justify-content: center; }
+
+      /* Packages */
+      .package-grid { grid-template-columns: 1fr; }
+      .filter-tabs { gap: 6px; }
+      .filter-tab { padding: 8px 16px; font-size: 13px; }
+
+      /* Schedule */
+      .schedule-item { flex-wrap: wrap; gap: 14px; padding: 16px; }
+      .schedule-info { width: 100%; }
+      .schedule-info h4 { white-space: normal; font-size: 14px; }
+      .schedule-action { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+      /* Destinations */
+      .dest-grid { grid-template-columns: 1fr 1fr; }
+
+      /* Testimonials */
+      .testi-grid { grid-template-columns: 1fr; }
+
+      /* Gallery */
+      .gallery-grid { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+      .gallery-item { height: 160px; }
+      .gallery-item:nth-child(1) { grid-column: span 2; height: 200px; }
+      .gallery-item:nth-child(4) { grid-column: span 1; }
+
+      /* About */
+      .about-wrap { grid-template-columns: 1fr; gap: 48px; }
+      .about-img { height: 300px; }
+      .about-float-card { right: 0; bottom: -16px; }
+      .about-values { grid-template-columns: 1fr 1fr; }
+
+      /* Contact */
+      .kontak-wrap { grid-template-columns: 1fr; gap: 40px; }
+      .contact-form { padding: 20px; }
+      .form-row { grid-template-columns: 1fr; }
+
+      /* Footer */
+      .footer-grid { grid-template-columns: 1fr; gap: 32px; }
+      .footer-bottom { flex-direction: column; gap: 8px; text-align: center; }
+
+      /* Modal */
+      .modal-body { padding: 20px; }
+      .modal-overlay { padding: 10px; }
+      .sticky-book { position: static; }
+    }
+
+    @media (max-width: 480px) {
+      .hero-content { padding-bottom: 200px; }
+      .dest-grid { grid-template-columns: 1fr; }
+      .about-values { grid-template-columns: 1fr; }
+      .gallery-grid { grid-template-columns: 1fr; }
+      .gallery-item { height: 180px; }
+      .gallery-item:nth-child(1),
+      .gallery-item:nth-child(4) { grid-column: span 1; }
+      .stat-card { flex: 1 0 calc(50% - 1px); }
+      .testi-grid { grid-template-columns: 1fr; }
+      .float-wa { bottom: 16px; right: 16px; width: 50px; height: 50px; font-size: 22px; }
+      .search-card { margin-top: -40px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav id="navbar">
+  <div class="container">
+    <div class="nav-inner">
+      <a href="#hero" class="nav-logo">
+        <img src="images/logo.jpeg" alt="The Mafia Travel Logo" onerror="this.style.display='none'" />
+        <div class="nav-logo-text">The <span>Mafia</span><br>Travel</div>
+      </a>
+      <div class="nav-menu">
+        <a href="#hero">Home</a>
+        <a href="#paket">Paket Wisata</a>
+        <a href="#destinasi">Destinasi</a>
+        <a href="#jadwal">Jadwal</a>
+        <a href="#testimoni">Testimoni</a>
+        <a href="#galeri">Galeri</a>
+        <a href="#kontak">Kontak</a>
+      </div>
+      <div class="nav-actions">
+        <a href="#kontak" class="btn btn-primary" style="padding:11px 22px;font-size:13px;">
+          <i class="fa-brands fa-whatsapp"></i> Pesan Sekarang
+        </a>
+        <button class="hamburger" id="hamburger" aria-label="Menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="mobile-overlay" id="mobileOverlay"></div>
+<div class="mobile-menu" id="mobileMenu">
+  <button class="mobile-close" id="mobileClose"><i class="fa-solid fa-xmark"></i></button>
+  <a href="#hero" class="mobile-link">Home</a>
+  <a href="#paket" class="mobile-link">Paket Wisata</a>
+  <a href="#destinasi" class="mobile-link">Destinasi</a>
+  <a href="#jadwal" class="mobile-link">Jadwal</a>
+  <a href="#testimoni" class="mobile-link">Testimoni</a>
+  <a href="#galeri" class="mobile-link">Galeri</a>
+  <a href="#kontak" class="mobile-link">Kontak</a>
+  <a href="https://wa.me/6281234567890" class="btn btn-wa" style="margin-top:16px;justify-content:center;">
+    <i class="fa-brands fa-whatsapp"></i> Chat WhatsApp
+  </a>
+</div>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-bg"></div>
+  <div class="container" style="width:100%;">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <i class="fa-solid fa-star"></i>
+        Trusted Travel Organizer sejak 2019
+      </div>
+      <h1>Jelajahi Dunia<br><span class="highlight">Tanpa Ribet</span> 🌍</h1>
+      <p>Kami hadirkan pengalaman perjalanan yang tak terlupakan, dari destinasi lokal memesona hingga mancanegara yang eksotis — semuanya diurus dengan sepenuh hati.</p>
+      <div class="hero-actions">
+        <a href="#paket" class="btn btn-primary">
+          <i class="fa-solid fa-map-location-dot"></i> Lihat Paket Wisata
+        </a>
+        <a href="#tentang" class="btn btn-white">
+          <i class="fa-solid fa-play"></i> Kenali Kami
+        </a>
+      </div>
+    </div>
+  </div>
+  <div class="hero-scroll">
+    <div class="hero-scroll-line"></div>
+    <span>Scroll</span>
+  </div>
+  <div class="hero-stats">
+    <div class="container">
+      <div class="stat-card">
+        <div class="num">500<span>+</span></div>
+        <div class="label">Happy Traveler</div>
+      </div>
+      <div class="stat-card">
+        <div class="num">30<span>+</span></div>
+        <div class="label">Destinasi</div>
+      </div>
+      <div class="stat-card">
+        <div class="num">5<span>★</span></div>
+        <div class="label">Rating Google</div>
+      </div>
+      <div class="stat-card">
+        <div class="num">6<span>th</span></div>
+        <div class="label">Tahun Berpengalaman</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SEARCH BAR -->
+<section id="search-bar" style="padding: 0 0 40px;">
+  <div class="container">
+    <div class="search-card fade-up">
+      <div class="search-card-grid">
+        <div class="search-field">
+          <label><i class="fa-solid fa-map-pin"></i> Destinasi</label>
+          <div class="input-wrap">
+            <i class="fa-solid fa-location-dot"></i>
+            <select id="searchDest">
+              <option value="all">Semua Destinasi</option>
+              <option value="lombok">Lombok, NTB</option>
+              <option value="labuan">Labuan Bajo, NTT</option>
+              <option value="raja">Raja Ampat</option>
+              <option value="bali">Bali</option>
+              <option value="jepang">Jepang</option>
+              <option value="korea">Korea Selatan</option>
+              <option value="turkey">Turkey</option>
+            </select>
+          </div>
+        </div>
+        <div class="search-field">
+          <label><i class="fa-solid fa-calendar"></i> Bulan Keberangkatan</label>
+          <div class="input-wrap">
+            <i class="fa-regular fa-calendar"></i>
+            <select id="searchMonth">
+              <option value="all">Pilih Bulan</option>
+              <option value="mei">Mei 2026</option>
+              <option value="juni">Juni 2026</option>
+              <option value="juli">Juli 2026</option>
+              <option value="agustus">Agustus 2026</option>
+              <option value="september">September 2026</option>
+            </select>
+          </div>
+        </div>
+        <div class="search-field">
+          <label><i class="fa-solid fa-suitcase"></i> Tipe Paket</label>
+          <div class="input-wrap">
+            <i class="fa-solid fa-compass"></i>
+            <select id="searchType">
+              <option value="all">Semua Tipe</option>
+              <option value="open">Open Trip</option>
+              <option value="private">Private Trip</option>
+              <option value="honeymoon">Honeymoon</option>
+              <option value="study">Study Tour</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" style="height:52px;align-self:flex-end;" onclick="doSearch()">
+          <i class="fa-solid fa-magnifying-glass"></i> Cari Paket
+        </button>
+        <div class="search-result" id="searchResultText">
+          <i class="fa-solid fa-filter"></i>
+          <span id="searchResultMsg">Menampilkan semua paket wisata.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PAKET WISATA -->
+<section id="paket">
+  <div class="container">
+    <div class="section-header fade-up">
+      <div class="eyebrow">Paket Wisata</div>
+      <h2>Pilihan Paket Terbaik untuk Kamu</h2>
+      <p>Dari petualangan alam hingga city tour mancanegara, semua sudah kami siapkan dengan harga terbaik dan pelayanan maksimal.</p>
+    </div>
+    <div class="filter-tabs fade-up">
+      <button class="filter-tab active" data-filter="all">Semua</button>
+      <button class="filter-tab" data-filter="domestik">🇮🇩 Domestik</button>
+      <button class="filter-tab" data-filter="mancanegara">✈️ Mancanegara</button>
+      <button class="filter-tab" data-filter="honeymoon">💑 Honeymoon</button>
+      <button class="filter-tab" data-filter="adventure">🏔️ Adventure</button>
+    </div>
+    <div class="package-grid" id="packageGrid">
+
+      <div class="package-card fade-up" data-cat="domestik adventure" data-dest="lombok" data-type="open" onclick="openModal(0)">
+        <div class="card-img">
+          <img src="https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?w=600&q=80" alt="Lombok" />
+          <div class="img-badges"><span class="badge badge-orange">Bestseller</span></div>
+          <button class="card-wishlist" onclick="toggleWish(event, this)"><i class="fa-regular fa-heart"></i></button>
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            <span class="badge badge-blue"><i class="fa-solid fa-clock"></i> 4D3N</span>
+            <span class="badge badge-green">Open Trip</span>
+          </div>
+          <h3 class="card-title">Lombok & Gili Islands Paradise</h3>
+          <p class="card-desc">Snorkeling di air jernih Gili Air, pendakian Rinjani, dan sunset Bukit Merese yang memukau.</p>
+          <div class="card-highlights">
+            <span class="chip"><i class="fa-solid fa-check"></i> Hotel Bintang 3</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> All Transport</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Tour Guide</span>
+          </div>
+          <div class="card-footer">
+            <div>
+              <div class="price-old">Rp 2.200.000</div>
+              <div class="price-new">Rp 1.850.000 <span class="price-per">/ pax</span></div>
+            </div>
+            <div>
+              <div class="card-rating"><i class="fa-solid fa-star"></i><span>4.9</span><small>(124)</small></div>
+              <div style="text-align:right;margin-top:6px;"><span class="btn btn-primary" style="padding:8px 16px;font-size:12px;">Lihat Detail</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="package-card fade-up" data-cat="domestik adventure" data-dest="labuan" data-type="open" onclick="openModal(1)">
+        <div class="card-img">
+          <img src="https://images.unsplash.com/photo-1596402184320-417e7178b2cd?w=600&q=80" alt="Labuan Bajo" />
+          <div class="img-badges"><span class="badge badge-orange">Hot Deal</span></div>
+          <button class="card-wishlist" onclick="toggleWish(event, this)"><i class="fa-regular fa-heart"></i></button>
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            <span class="badge badge-blue"><i class="fa-solid fa-clock"></i> 5D4N</span>
+            <span class="badge badge-green">Open Trip</span>
+          </div>
+          <h3 class="card-title">Labuan Bajo – Komodo Expedition</h3>
+          <p class="card-desc">Bertemu Komodo di habitat aslinya, snorkeling di Pink Beach, dan menikmati matahari terbenam di Padar Island.</p>
+          <div class="card-highlights">
+            <span class="chip"><i class="fa-solid fa-check"></i> Kapal Phinisi</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Makan 3x</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Snorkeling Gear</span>
+          </div>
+          <div class="card-footer">
+            <div>
+              <div class="price-old">Rp 3.500.000</div>
+              <div class="price-new">Rp 2.950.000 <span class="price-per">/ pax</span></div>
+            </div>
+            <div>
+              <div class="card-rating"><i class="fa-solid fa-star"></i><span>4.8</span><small>(89)</small></div>
+              <div style="text-align:right;margin-top:6px;"><span class="btn btn-primary" style="padding:8px 16px;font-size:12px;">Lihat Detail</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="package-card fade-up" data-cat="mancanegara" data-dest="jepang" data-type="open" onclick="openModal(2)">
+        <div class="card-img">
+          <img src="https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=600&q=80" alt="Jepang" />
+          <div class="img-badges"><span class="badge badge-orange">Promo Musim Gugur</span></div>
+          <button class="card-wishlist" onclick="toggleWish(event, this)"><i class="fa-regular fa-heart"></i></button>
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            <span class="badge badge-blue"><i class="fa-solid fa-clock"></i> 9D8N</span>
+            <span class="badge badge-green">Open Trip</span>
+          </div>
+          <h3 class="card-title">Japan Cultural Discovery Tour</h3>
+          <p class="card-desc">Tokyo, Kyoto, Osaka, Nara — merasakan sakura, kuil bersejarah, dan kuliner autentik Jepang.</p>
+          <div class="card-highlights">
+            <span class="chip"><i class="fa-solid fa-check"></i> Hotel Bintang 4</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Visa Assist</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> JR Pass</span>
+          </div>
+          <div class="card-footer">
+            <div>
+              <div class="price-old">Rp 22.000.000</div>
+              <div class="price-new">Rp 18.500.000 <span class="price-per">/ pax</span></div>
+            </div>
+            <div>
+              <div class="card-rating"><i class="fa-solid fa-star"></i><span>5.0</span><small>(62)</small></div>
+              <div style="text-align:right;margin-top:6px;"><span class="btn btn-primary" style="padding:8px 16px;font-size:12px;">Lihat Detail</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="package-card fade-up" data-cat="honeymoon" data-dest="bali" data-type="private" onclick="openModal(3)">
+        <div class="card-img">
+          <img src="https://images.unsplash.com/photo-1552733407-5d5c46c3bb3b?w=600&q=80" alt="Bali" />
+          <div class="img-badges"><span class="badge badge-orange">Couple Favorite</span></div>
+          <button class="card-wishlist" onclick="toggleWish(event, this)"><i class="fa-regular fa-heart"></i></button>
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            <span class="badge badge-blue"><i class="fa-solid fa-clock"></i> 5D4N</span>
+            <span class="badge badge-orange">Private Trip</span>
+          </div>
+          <h3 class="card-title">Bali Romantic Honeymoon</h3>
+          <p class="card-desc">Dinner candlelight di tebing Uluwatu, spa tradisional, dan villa private dengan kolam renang eksklusif.</p>
+          <div class="card-highlights">
+            <span class="chip"><i class="fa-solid fa-check"></i> Private Villa</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Spa Treatment</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Candlelight Dinner</span>
+          </div>
+          <div class="card-footer">
+            <div>
+              <div class="price-old">Rp 7.500.000</div>
+              <div class="price-new">Rp 6.200.000 <span class="price-per">/ pax</span></div>
+            </div>
+            <div>
+              <div class="card-rating"><i class="fa-solid fa-star"></i><span>4.9</span><small>(48)</small></div>
+              <div style="text-align:right;margin-top:6px;"><span class="btn btn-primary" style="padding:8px 16px;font-size:12px;">Lihat Detail</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="package-card fade-up" data-cat="mancanegara" data-dest="turkey" data-type="open" onclick="openModal(4)">
+        <div class="card-img">
+          <img src="https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?w=600&q=80" alt="Turkey" />
+          <button class="card-wishlist" onclick="toggleWish(event, this)"><i class="fa-regular fa-heart"></i></button>
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            <span class="badge badge-blue"><i class="fa-solid fa-clock"></i> 10D9N</span>
+            <span class="badge badge-green">Open Trip</span>
+          </div>
+          <h3 class="card-title">Turkey – Where East Meets West</h3>
+          <p class="card-desc">Cappadocia balloon ride, Hagia Sophia, Grand Bazaar Istanbul, dan Pamukkale Cotton Castle yang memukau.</p>
+          <div class="card-highlights">
+            <span class="chip"><i class="fa-solid fa-check"></i> Balloon Ride</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Full Board</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Visa on Arrival</span>
+          </div>
+          <div class="card-footer">
+            <div>
+              <div class="price-old">Rp 25.000.000</div>
+              <div class="price-new">Rp 21.500.000 <span class="price-per">/ pax</span></div>
+            </div>
+            <div>
+              <div class="card-rating"><i class="fa-solid fa-star"></i><span>4.8</span><small>(37)</small></div>
+              <div style="text-align:right;margin-top:6px;"><span class="btn btn-primary" style="padding:8px 16px;font-size:12px;">Lihat Detail</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="package-card fade-up" data-cat="domestik adventure" data-dest="raja" data-type="private" onclick="openModal(5)">
+        <div class="card-img">
+          <img src="https://images.unsplash.com/photo-1559628233-100c798642c8?w=600&q=80" alt="Raja Ampat" />
+          <div class="img-badges"><span class="badge badge-orange">New!</span></div>
+          <button class="card-wishlist" onclick="toggleWish(event, this)"><i class="fa-regular fa-heart"></i></button>
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            <span class="badge badge-blue"><i class="fa-solid fa-clock"></i> 6D5N</span>
+            <span class="badge badge-orange">Private Trip</span>
+          </div>
+          <h3 class="card-title">Raja Ampat Diving Paradise</h3>
+          <p class="card-desc">Menyelami keindahan bawah laut terbaik di dunia — karang warna-warni, hiu pari, dan mangrove eksotis.</p>
+          <div class="card-highlights">
+            <span class="chip"><i class="fa-solid fa-check"></i> Live-aboard</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Diving 3x/hari</span>
+            <span class="chip"><i class="fa-solid fa-check"></i> Makan Lengkap</span>
+          </div>
+          <div class="card-footer">
+            <div>
+              <div class="price-old">Rp 9.000.000</div>
+              <div class="price-new">Rp 7.800.000 <span class="price-per">/ pax</span></div>
+            </div>
+            <div>
+              <div class="card-rating"><i class="fa-solid fa-star"></i><span>5.0</span><small>(21)</small></div>
+              <div style="text-align:right;margin-top:6px;"><span class="btn btn-primary" style="padding:8px 16px;font-size:12px;">Lihat Detail</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<!-- JADWAL -->
+<section id="jadwal">
+  <div class="container">
+    <div class="section-header fade-up">
+      <div class="eyebrow">Jadwal Trip</div>
+      <h2>Open Trip Schedule 2026</h2>
+      <p>Cek jadwal keberangkatan kami dan segera booking sebelum slot habis. Update jadwal setiap bulan!</p>
+    </div>
+    <div class="schedule-list fade-up" id="scheduleList"></div>
+  </div>
+</section>
+
+<!-- DESTINASI -->
+<section id="destinasi">
+  <div class="container">
+    <div class="section-header fade-up">
+      <div class="eyebrow">Destinasi Unggulan</div>
+      <h2>Destinasi yang Paling Banyak Dipilih</h2>
+      <p>Jelajahi keindahan dari Sabang sampai Merauke, hingga penjuru dunia yang mengagumkan.</p>
+    </div>
+    <div class="dest-grid fade-up">
+      <div class="dest-card">
+        <div class="img-wrap"><img src="https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?w=800&q=80" alt="Lombok" /></div>
+        <div class="overlay"></div>
+        <div class="info"><h3>Lombok</h3><span>📍 Nusa Tenggara Barat</span></div>
+      </div>
+      <div class="dest-card">
+        <div class="img-wrap"><img src="https://images.unsplash.com/photo-1552733407-5d5c46c3bb3b?w=600&q=80" alt="Bali" /></div>
+        <div class="overlay"></div>
+        <div class="info"><h3>Bali</h3><span>📍 Pulau Dewata</span></div>
+      </div>
+      <div class="dest-card">
+        <div class="img-wrap"><img src="https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=600&q=80" alt="Jepang" /></div>
+        <div class="overlay"></div>
+        <div class="info"><h3>Jepang</h3><span>📍 Asia Timur</span></div>
+      </div>
+      <div class="dest-card">
+        <div class="img-wrap"><img src="https://images.unsplash.com/photo-1596402184320-417e7178b2cd?w=600&q=80" alt="Labuan Bajo" /></div>
+        <div class="overlay"></div>
+        <div class="info"><h3>Labuan Bajo</h3><span>📍 Nusa Tenggara Timur</span></div>
+      </div>
+      <div class="dest-card">
+        <div class="img-wrap"><img src="https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?w=600&q=80" alt="Turkey" /></div>
+        <div class="overlay"></div>
+        <div class="info"><h3>Turkey</h3><span>📍 Eropa – Asia</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONI -->
+<section id="testimoni">
+  <div class="container">
+    <div class="section-header fade-up">
+      <div class="eyebrow">Testimoni</div>
+      <h2>Apa Kata Mereka?</h2>
+      <p>Ratusan traveler sudah mempercayakan petualangan mereka kepada kami. Ini cerita mereka.</p>
+    </div>
+    <div class="testi-grid fade-up">
+      <div class="testi-card">
+        <div class="testi-stars"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
+        <p class="testi-text">"Trip ke Lombok bareng The Mafia Travel benar-benar beyond expectation! Semua detail diurus dengan rapih, guide-nya seru banget, dan Gili Air... wow, gak ada duanya. Udah booking lagi nih buat trip Jepang!"</p>
+        <div class="testi-author">
+          <img src="https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&q=80" alt="Ayu" />
+          <div class="testi-author-info">
+            <strong>Ayu Rahmadhani</strong>
+            <span>Mahasiswa, Surabaya</span>
+            <div class="testi-destination"><i class="fa-solid fa-map-pin"></i> Lombok 4D3N</div>
+          </div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-stars"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
+        <p class="testi-text">"Honeymoon ke Bali sama istri, paket The Mafia Travel keren banget! Villa private-nya instagramable, dinner di Uluwatu romantis banget. Worth every rupiah. Highly recommended buat pasangan baru!"</p>
+        <div class="testi-author">
+          <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80" alt="Dimas" />
+          <div class="testi-author-info">
+            <strong>Dimas & Rara</strong>
+            <span>Newlyweds, Jakarta</span>
+            <div class="testi-destination"><i class="fa-solid fa-map-pin"></i> Bali Honeymoon</div>
+          </div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-stars"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
+        <p class="testi-text">"Japan trip 9 hari sama Mafia Travel adalah pengalaman paling memorable dalam hidup gue! Semua berjalan sesuai itinerary, urusan visa dibantu sampai jadi. Tokyo di musim sakura indah banget!"</p>
+        <div class="testi-author">
+          <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&q=80" alt="Sita" />
+          <div class="testi-author-info">
+            <strong>Sita Permatasari</strong>
+            <span>Karyawan Swasta, Bandung</span>
+            <div class="testi-destination"><i class="fa-solid fa-map-pin"></i> Japan 9D8N</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GALERI -->
+<section id="galeri">
+  <div class="container">
+    <div class="section-header fade-up">
+      <div class="eyebrow">Galeri Trip</div>
+      <h2>Momen Tak Terlupakan Bersama Kami</h2>
+      <p>Setiap foto menceritakan sebuah petualangan. Jadilah bagian dari cerita selanjutnya.</p>
+    </div>
+    <div class="gallery-grid fade-up">
+      <div class="gallery-item"><img src="https://images.unsplash.com/photo-1506197603052-3cc9c3a201bd?w=800&q=80" alt="Trip" /><div class="gallery-overlay"><i class="fa-solid fa-magnifying-glass-plus"></i></div></div>
+      <div class="gallery-item"><img src="https://images.unsplash.com/photo-1559628233-100c798642c8?w=400&q=80" alt="Raja Ampat" /><div class="gallery-overlay"><i class="fa-solid fa-magnifying-glass-plus"></i></div></div>
+      <div class="gallery-item"><img src="https://images.unsplash.com/photo-1589553416260-f586c8f1514f?w=400&q=80" alt="Mountain" /><div class="gallery-overlay"><i class="fa-solid fa-magnifying-glass-plus"></i></div></div>
+      <div class="gallery-item"><img src="https://images.unsplash.com/photo-1570168007204-dfb528c6958f?w=800&q=80" alt="Temple" /><div class="gallery-overlay"><i class="fa-solid fa-magnifying-glass-plus"></i></div></div>
+      <div class="gallery-item"><img src="https://images.unsplash.com/photo-1568454537842-d933259bb258?w=400&q=80" alt="Beach" /><div class="gallery-overlay"><i class="fa-solid fa-magnifying-glass-plus"></i></div></div>
+      <div class="gallery-item"><img src="https://images.unsplash.com/photo-1499392843510-c609fb1cd1a6?w=400&q=80" alt="Waterfall" /><div class="gallery-overlay"><i class="fa-solid fa-magnifying-glass-plus"></i></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- TENTANG -->
+<section id="tentang">
+  <div class="container">
+    <div class="about-wrap">
+      <div class="about-img-wrap fade-up">
+        <img src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=700&q=80" alt="Owner" class="about-img" />
+        <div class="about-float-card">
+          <div class="about-float-icon"><i class="fa-solid fa-award"></i></div>
+          <div><h4>Trusted by</h4><p>500+ Traveler 🌍</p></div>
+        </div>
+      </div>
+      <div class="about-content fade-up">
+        <div class="eyebrow">Tentang Kami</div>
+        <h2>Dibalik Setiap Perjalanan, Ada Kami yang Mengurus Segalanya</h2>
+        <p>Halo! Saya Reza Pratama, founder The Mafia Travel. Berawal dari hobi jalan-jalan dan rasa cinta akan keindahan alam Indonesia dan dunia, saya memutuskan untuk berbagi pengalaman itu dengan lebih banyak orang.</p>
+        <p>Sejak 2019, kami telah membantu ratusan pelanggan menemukan petualangan terbaik mereka — dari pantai tersembunyi di Timur Indonesia hingga kota-kota ikonik Eropa dan Asia. Bukan sekadar agen travel, kami adalah teman perjalananmu.</p>
+        <p>Kami percaya bahwa perjalanan yang baik bukan soal mahalnya biaya, tapi soal pengalaman yang tak terlupakan dan keamanan selama perjalanan.</p>
+        <div class="about-values">
+          <div class="about-value"><i class="fa-solid fa-shield-halved"></i><h4>Aman & Terpercaya</h4><p>Semua perjalanan dipantau langsung oleh tim profesional kami.</p></div>
+          <div class="about-value"><i class="fa-solid fa-dollar-sign"></i><h4>Harga Transparan</h4><p>Tidak ada biaya tersembunyi. Apa yang tertulis, itu yang dibayar.</p></div>
+          <div class="about-value"><i class="fa-solid fa-headset"></i><h4>Support 24/7</h4><p>Tim kami selalu siap membantu, bahkan di tengah perjalanan.</p></div>
+          <div class="about-value"><i class="fa-solid fa-heart"></i><h4>Personal Touch</h4><p>Kami melayani dengan hati, bukan sekadar bisnis semata.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- KONTAK -->
+<section id="kontak">
+  <div class="container">
+    <div class="kontak-wrap">
+      <div class="fade-up">
+        <div class="kontak-info">
+          <div class="badge badge-orange" style="margin-bottom:16px;">Hubungi Kami</div>
+          <h2>Ada Pertanyaan? Kami Siap Membantu!</h2>
+          <p>Konsultasikan rencana perjalananmu dengan kami secara gratis. Kami akan bantu dari perencanaan hingga perjalanan selesai.</p>
+        </div>
+        <div class="kontak-items">
+          <div class="kontak-item">
+            <div class="kontak-icon"><i class="fa-brands fa-whatsapp"></i></div>
+            <div class="kontak-item-text"><strong>WhatsApp</strong><span>+62 812-3456-7890 (Chat & Call)</span></div>
+          </div>
+          <div class="kontak-item">
+            <div class="kontak-icon"><i class="fa-solid fa-envelope"></i></div>
+            <div class="kontak-item-text"><strong>Email</strong><span>hello@themafiatravel.id</span></div>
+          </div>
+          <div class="kontak-item">
+            <div class="kontak-icon"><i class="fa-brands fa-instagram"></i></div>
+            <div class="kontak-item-text"><strong>Instagram</strong><span>@themafiatravel</span></div>
+          </div>
+          <div class="kontak-item">
+            <div class="kontak-icon"><i class="fa-solid fa-location-dot"></i></div>
+            <div class="kontak-item-text"><strong>Alamat</strong><span>Jl. Kayoon No. 12, Surabaya, Jawa Timur</span></div>
+          </div>
+        </div>
+        <div style="margin-top:32px;display:flex;gap:12px;flex-wrap:wrap;">
+          <a href="https://wa.me/6281234567890" class="btn btn-wa"><i class="fa-brands fa-whatsapp"></i> Chat di WhatsApp</a>
+          <a href="https://instagram.com/themafiatravel" class="btn btn-outline"><i class="fa-brands fa-instagram"></i> Follow Instagram</a>
+        </div>
+      </div>
+      <div class="contact-form fade-up">
+        <h3 style="font-size:22px;font-weight:800;margin-bottom:8px;">Kirim Pesan</h3>
+        <p style="color:var(--gray);font-size:14px;margin-bottom:24px;">Isi form di bawah, kami akan balas dalam 1×24 jam.</p>
+        <div class="form-row">
+          <div class="form-group"><label>Nama Lengkap</label><input type="text" placeholder="Masukkan nama kamu" /></div>
+          <div class="form-group"><label>No. WhatsApp</label><input type="tel" placeholder="08xx-xxxx-xxxx" /></div>
+        </div>
+        <div class="form-group"><label>Email</label><input type="email" placeholder="email@kamu.com" /></div>
+        <div class="form-group">
+          <label>Paket yang Diminati</label>
+          <select>
+            <option value="">Pilih paket...</option>
+            <option>Lombok & Gili Islands – 4D3N</option>
+            <option>Labuan Bajo – Komodo Expedition – 5D4N</option>
+            <option>Japan Cultural Discovery – 9D8N</option>
+            <option>Bali Romantic Honeymoon – 5D4N</option>
+            <option>Turkey – 10D9N</option>
+            <option>Raja Ampat – 6D5N</option>
+            <option>Paket Lainnya / Custom Trip</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Pesan</label><textarea placeholder="Ceritakan rencana perjalananmu, tanggal yang diinginkan, jumlah peserta, dan pertanyaan lainnya..."></textarea></div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:16px;" onclick="submitForm()">
+          <i class="fa-solid fa-paper-plane"></i> Kirim Pesan
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="nav-logo" style="margin-bottom:0;">
+          <img src="images/logo.jpeg" alt="Logo" style="width:44px;height:44px;border-radius:10px;" onerror="this.style.display='none'" />
+          <div class="nav-logo-text" style="color:var(--white);">The <span>Mafia</span><br>Travel</div>
+        </div>
+        <p>Travel organizer profesional yang hadir untuk membuat setiap perjalananmu menjadi pengalaman yang tak terlupakan.</p>
+        <div class="footer-socials">
+          <a href="https://instagram.com/themafiatravel" class="social-btn" target="_blank" rel="noopener"><i class="fa-brands fa-instagram"></i></a>
+          <a href="https://www.tiktok.com/@themafiatravel" class="social-btn" target="_blank" rel="noopener"><i class="fa-brands fa-tiktok"></i></a>
+          <a href="https://facebook.com/themafiatravel" class="social-btn" target="_blank" rel="noopener"><i class="fa-brands fa-facebook-f"></i></a>
+          <a href="https://youtube.com/@themafiatravel" class="social-btn" target="_blank" rel="noopener"><i class="fa-brands fa-youtube"></i></a>
+          <a href="https://wa.me/6281234567890" class="social-btn" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp"></i></a>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h4>Paket Wisata</h4>
+        <ul>
+          <li><a href="#paket">Open Trip Domestik</a></li>
+          <li><a href="#paket">Open Trip Mancanegara</a></li>
+          <li><a href="#paket">Private Trip</a></li>
+          <li><a href="#paket">Honeymoon Package</a></li>
+          <li><a href="#paket">Study Tour</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Destinasi</h4>
+        <ul>
+          <li><a href="#destinasi">Lombok & Gili</a></li>
+          <li><a href="#destinasi">Labuan Bajo</a></li>
+          <li><a href="#destinasi">Raja Ampat</a></li>
+          <li><a href="#destinasi">Jepang</a></li>
+          <li><a href="#destinasi">Turkey</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Informasi</h4>
+        <ul>
+          <li><a href="#tentang">Tentang Kami</a></li>
+          <li><a href="#jadwal">Jadwal Trip</a></li>
+          <li><a href="#testimoni">Testimoni</a></li>
+          <li><a href="#galeri">Galeri</a></li>
+          <li><a href="#kontak">Kontak</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 The Mafia Travel. All rights reserved.</span>
+      <span>Made with ❤️ for <a href="https://themafiatravel.com" target="_blank" rel="noopener">para penjelajah dunia</a></span>
+    </div>
+  </div>
+</footer>
+
+<a href="https://wa.me/6281234567890?text=Halo%20The%20Mafia%20Travel%2C%20saya%20mau%20tanya%20tentang%20paket%20wisata" class="float-wa" target="_blank" rel="noopener">
+  <div class="float-wa-tooltip">Chat Sekarang!</div>
+  <i class="fa-brands fa-whatsapp"></i>
+</a>
+
+<script>
+/* ===== PACKAGE DATA ===== */
+const packages = [
+  {
+    name: "Lombok & Gili Islands Paradise",
+    img: "https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?w=1200&q=80",
+    duration: "4D3N", type: "Open Trip", price: "Rp 1.850.000", oldPrice: "Rp 2.200.000",
+    pax: "Min. 6 pax", rating: "4.9", reviews: "124",
+    desc: "Paket wisata terbaik menjelajahi keindahan Lombok dan tiga Gili — Trawangan, Air, dan Meno. Cocok untuk solo traveler maupun group.",
+    itinerary: [
+      { day: "Hari 1", title: "Tiba di Lombok", items: ["Jemput di Bandara Internasional ZAM", "Check-in hotel bintang 3 di Senggigi", "Makan malam seafood di tepi pantai", "Briefing perjalanan bersama guide"] },
+      { day: "Hari 2", title: "Gili Air & Snorkeling", items: ["Sarapan di hotel", "Fast boat ke Gili Air", "Snorkeling di spot terbaik (kura-kura!)", "Keliling Gili Air dengan cidomo", "Sunset di pantai barat Gili Air"] },
+      { day: "Hari 3", title: "Pantai Kuta & Bukit Merese", items: ["Sarapan dan checkout hotel", "Pantai Kuta Lombok yang eksotis", "Naik ke Bukit Merese untuk panorama 360°", "Shopping oleh-oleh khas Lombok"] },
+      { day: "Hari 4", title: "Kepulangan", items: ["Sarapan terakhir", "Antar ke bandara", "Selamat jalan, semoga bertemu lagi!"] }
+    ],
+    include: ["Tiket fast boat Lombok–Gili PP", "Hotel bintang 3 (3 malam)", "Makan sesuai program", "Tour guide profesional", "Semua transportasi selama tour", "Snorkeling gear", "Dokumentasi foto trip"],
+    exclude: ["Tiket pesawat PP", "Pengeluaran pribadi", "Oleh-oleh", "Tips guide (opsional)"]
+  },
+  {
+    name: "Labuan Bajo – Komodo Expedition",
+    img: "https://images.unsplash.com/photo-1596402184320-417e7178b2cd?w=1200&q=80",
+    duration: "5D4N", type: "Open Trip", price: "Rp 2.950.000", oldPrice: "Rp 3.500.000",
+    pax: "Min. 8 pax", rating: "4.8", reviews: "89",
+    desc: "Ekspedisi ke salah satu Wonder of the World. Bertemu Komodo di habitat aslinya, menikmati keindahan bawah laut Pink Beach yang menakjubkan.",
+    itinerary: [
+      { day: "Hari 1", title: "Tiba di Labuan Bajo", items: ["Jemput di Bandara Komodo", "Check-in penginapan & makan malam", "Orientasi kota Labuan Bajo", "Sunset di Puncak Waringin"] },
+      { day: "Hari 2", title: "Sailing – Padar & Pink Beach", items: ["Naik kapal phinisi pagi hari", "Trekking Pulau Padar (pemandangan ikonik!)", "Snorkeling di Pink Beach", "Makan siang di atas kapal", "Menginap di kapal"] },
+      { day: "Hari 3", title: "Pulau Komodo & Manta Point", items: ["Trekking melihat Komodo", "Snorkeling bersama Manta Ray!", "Pulau Kanawa — snorkeling sore hari"] },
+      { day: "Hari 4", title: "Pulau Rinca & Kembali", items: ["Trekking di Pulau Rinca", "Kembali ke pelabuhan Labuan Bajo", "Free time & belanja oleh-oleh", "Dinner bersama"] },
+      { day: "Hari 5", title: "Kepulangan", items: ["Sarapan & checkout", "Antar ke bandara Komodo"] }
+    ],
+    include: ["Sewa kapal phinisi 3 malam", "Makan 3x sehari di atas kapal", "Tour guide & kapten kapal", "Snorkeling gear lengkap", "Tiket masuk Taman Nasional Komodo", "Penginapan malam pertama"],
+    exclude: ["Tiket pesawat PP ke Labuan Bajo", "Tiket ranger trekking", "Pengeluaran pribadi", "Tip guide & kru kapal"]
+  },
+  {
+    name: "Japan Cultural Discovery Tour",
+    img: "https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=1200&q=80",
+    duration: "9D8N", type: "Open Trip", price: "Rp 18.500.000", oldPrice: "Rp 22.000.000",
+    pax: "Min. 10 pax", rating: "5.0", reviews: "62",
+    desc: "Paket tour Jepang terlengkap — Tokyo, Hakone, Kyoto, Nara, dan Osaka. Nikmati sakura di Maruyama Park dan street food legendaris di Dotonbori.",
+    itinerary: [
+      { day: "Hari 1-2", title: "Tiba di Tokyo", items: ["Penerbangan dari Surabaya/Jakarta", "Tiba di Narita / Haneda", "Check-in hotel di Shinjuku", "Makan malam di ramen shop lokal"] },
+      { day: "Hari 3", title: "Tokyo City Tour", items: ["Senso-ji Temple, Asakusa", "Shibuya Crossing yang ikonik", "Harajuku & Takeshita Street", "Akihabara Electric Town"] },
+      { day: "Hari 4", title: "Hakone Day Trip", items: ["Ropeway Hakone dengan view Fuji-san", "Lake Ashi cruise", "Onsen tradisional Jepang"] },
+      { day: "Hari 5-6", title: "Kyoto – Kota Budaya Jepang", items: ["Fushimi Inari Taisha", "Kinkaku-ji Temple (Golden Pavilion)", "Arashiyama Bamboo Grove", "Gion District"] },
+      { day: "Hari 7", title: "Nara & Osaka", items: ["Feeding rusa di Nara Park", "Todai-ji Temple (Great Buddha)", "Transfer ke Osaka", "Dotonbori food tour malam hari"] },
+      { day: "Hari 8-9", title: "Osaka & Kepulangan", items: ["Osaka Castle pagi hari", "Umeda Sky Building", "Shopping di Den Den Town", "Penerbangan pulang ke Indonesia"] }
+    ],
+    include: ["Tiket pesawat PP Jakarta/Surabaya–Tokyo–Osaka", "Hotel bintang 4 (8 malam)", "JR Pass 7 hari", "Tour guide bahasa Indonesia", "Makan sesuai program", "Visa Jepang (pendampingan)", "Asuransi perjalanan"],
+    exclude: ["Pengeluaran pribadi & belanja", "Makan malam bebas (4 malam)", "Tips guide"]
+  },
+  {
+    name: "Bali Romantic Honeymoon",
+    img: "https://images.unsplash.com/photo-1552733407-5d5c46c3bb3b?w=1200&q=80",
+    duration: "5D4N", type: "Private Trip", price: "Rp 6.200.000", oldPrice: "Rp 7.500.000",
+    pax: "Pasangan (2 pax)", rating: "4.9", reviews: "48",
+    desc: "Paket honeymoon terbaik di Bali. Villa private dengan infinity pool, spa treatment couple, candle light dinner, dan semua momen romantis yang kamu impikan.",
+    itinerary: [
+      { day: "Hari 1", title: "Welcome to Bali", items: ["Penjemputan di bandara dengan bunga", "Check-in Private Villa Pool bintang 5", "Flower bath romantis di villa", "Welcome dinner disiapkan khusus"] },
+      { day: "Hari 2", title: "Nusa Penida Day Trip", items: ["Kelingking Beach", "Broken Beach & Angel Billabong", "Crystal Bay snorkeling", "Kembali ke villa & spa couple"] },
+      { day: "Hari 3", title: "Ubud Romance", items: ["Tegalalang Rice Terrace sunrise", "Ubud Palace & Art Market", "Traditional cooking class berdua", "Romantic dinner di sawah"] },
+      { day: "Hari 4", title: "Uluwatu & Seminyak", items: ["Uluwatu Temple", "Candle Light Dinner di tepi tebing", "Sunset cocktail di Potato Head"] },
+      { day: "Hari 5", title: "Kepulangan", items: ["Sarapan terakhir di villa", "Free time pagi hari", "Antar ke bandara"] }
+    ],
+    include: ["Private Villa Pool (4 malam)", "Spa treatment couple 90 menit", "Candle light dinner Uluwatu", "Flower bath & dekorasi kamar", "Welcome fruit basket & wine", "Private driver selama 5 hari", "Foto profesional 1 sesi"],
+    exclude: ["Tiket pesawat PP", "Pengeluaran pribadi", "Tips driver (opsional)"]
+  },
+  {
+    name: "Turkey – Where East Meets West",
+    img: "https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?w=1200&q=80",
+    duration: "10D9N", type: "Open Trip", price: "Rp 21.500.000", oldPrice: "Rp 25.000.000",
+    pax: "Min. 12 pax", rating: "4.8", reviews: "37",
+    desc: "Tour Turkey lengkap — dari megahnya Istanbul, keajaiban Cappadocia, hingga keputihan Pamukkale. Pengalaman lintas budaya yang luar biasa!",
+    itinerary: [
+      { day: "Hari 1-2", title: "Istanbul – Kota Dua Benua", items: ["Tiba di Istanbul Ataturk Airport", "Check-in hotel bintang 4", "Hagia Sophia & Blue Mosque", "Grand Bazaar"] },
+      { day: "Hari 3", title: "Istanbul Lanjutan", items: ["Topkapi Palace museum", "Bosphorus Cruise", "Galata Tower sunset view", "Makan malam di tepi Bosphorus"] },
+      { day: "Hari 4-5", title: "Cappadocia – Negeri Dongeng", items: ["Flight ke Kayseri", "Hot Air Balloon Ride!", "Goreme Open Air Museum", "Underground City Kaymakli"] },
+      { day: "Hari 6-7", title: "Konya & Pamukkale", items: ["Mevlana Museum", "Hierapolis ancient ruins", "Pamukkale Cotton Castle", "Cleopatra's Pool"] },
+      { day: "Hari 8-9", title: "Antalya & Kepulangan", items: ["Kaleici Old Town Antalya", "Duden Waterfall", "Shopping terakhir", "Penerbangan pulang"] }
+    ],
+    include: ["Tiket pesawat PP Jakarta–Istanbul", "Hotel bintang 4 (9 malam)", "Hot Air Balloon Ride Cappadocia", "Tour guide bahasa Indonesia", "Full board makan", "Semua tiket masuk", "Transportasi AC selama tour"],
+    exclude: ["Pengeluaran pribadi", "Turkish bath (hammam) opsional", "Tips guide & driver"]
+  },
+  {
+    name: "Raja Ampat Diving Paradise",
+    img: "https://images.unsplash.com/photo-1559628233-100c798642c8?w=1200&q=80",
+    duration: "6D5N", type: "Private Trip", price: "Rp 7.800.000", oldPrice: "Rp 9.000.000",
+    pax: "Min. 4 pax", rating: "5.0", reviews: "21",
+    desc: "Menyelami keindahan laut Raja Ampat — surga snorkeling dan diving terbaik di dunia. Papua Barat yang eksotis menunggu petualanganmu.",
+    itinerary: [
+      { day: "Hari 1", title: "Tiba di Sorong – Waisai", items: ["Tiba di Bandara DEO Sorong", "Fast boat ke Waisai", "Check-in resort/homestay", "Briefing diving & snorkeling"] },
+      { day: "Hari 2", title: "Wayag – Ikon Raja Ampat", items: ["Boat trip ke Kepulauan Wayag", "Trekking ke puncak batu Wayag", "Snorkeling di spot terumbu karang", "Picnic di pulau pasir putih"] },
+      { day: "Hari 3", title: "Misool & Pianemo", items: ["Snorkeling/Diving di Misool", "Bukit Pianemo", "Laguna tersembunyi & mangrove"] },
+      { day: "Hari 4", title: "Arborek & Fam Island", items: ["Desa adat Arborek (manta ray spot!)", "Pulau Fam yang hijau", "Snorkeling di Tanjung Kri"] },
+      { day: "Hari 5-6", title: "Free Dive & Kepulangan", items: ["Snorkeling bebas pagi hari", "Belanja souvenir di Waisai", "Fast boat ke Sorong", "Penerbangan pulang"] }
+    ],
+    include: ["Fast boat Sorong–Waisai PP", "Penginapan 5 malam", "Makan 3x sehari", "Sewa perahu selama tour", "Snorkeling gear lengkap", "Guide lokal berpengalaman", "Retribusi & SIMAKSI"],
+    exclude: ["Tiket pesawat ke Sorong PP", "Equipment diving (BCD, regulator)", "Pengeluaran pribadi"]
+  }
+];
+
+const scheduleData = [
+  {
+    day: '15', month: 'Mei', title: 'Lombok & Gili Islands Paradise – 4D3N', participants: 12, capacity: 15,
+    location: 'Lombok, NTB', price: 'Rp 1.850.000/pax', whatsappText: 'Halo The Mafia Travel, saya mau booking Lombok 15 Mei'
+  },
+  {
+    day: '22', month: 'Mei', title: 'Labuan Bajo – Komodo Expedition – 5D4N', participants: 8, capacity: 12,
+    location: 'Labuan Bajo, NTT', price: 'Rp 2.950.000/pax', whatsappText: 'Halo The Mafia Travel, saya mau booking Labuan Bajo 22 Mei'
+  },
+  {
+    day: '05', month: 'Jun', title: 'Japan Cultural Discovery – 9D8N', participants: 15, capacity: 15,
+    location: 'Tokyo – Kyoto – Osaka', price: 'Rp 18.500.000/pax', whatsappText: 'Halo The Mafia Travel, saya mau booking Japan 05 Juni'
+  },
+  {
+    day: '19', month: 'Jun', title: 'Turkey – Where East Meets West – 10D9N', participants: 5, capacity: 14,
+    location: 'Istanbul – Cappadocia', price: 'Rp 21.500.000/pax', whatsappText: 'Halo The Mafia Travel, saya mau booking Turkey 19 Juni'
+  },
+  {
+    day: '10', month: 'Jul', title: 'Raja Ampat Diving Paradise – 6D5N', participants: 3, capacity: 8,
+    location: 'Raja Ampat, Papua Barat', price: 'Rp 7.800.000/pax', whatsappText: 'Halo The Mafia Travel, saya mau booking Raja Ampat 10 Juli'
+  }
+];
+
+function renderSchedule() {
+  const container = document.getElementById('scheduleList');
+  if (!container) return;
+
+  container.innerHTML = scheduleData.map(item => {
+    const fill = Math.min(100, Math.round((item.participants / item.capacity) * 100));
+    const remaining = item.capacity - item.participants;
+    const isFull = item.participants >= item.capacity;
+    const badge = isFull
+      ? '<span class="badge badge-red">Full</span>'
+      : remaining <= 3
+        ? `<span class="badge badge-orange">${remaining} Slot Tersisa</span>`
+        : '<span class="badge badge-green">Available</span>';
+    const action = isFull
+      ? '<button class="btn-disabled">Full Booked</button>'
+      : `<a href="https://wa.me/6281234567890?text=${encodeURIComponent(item.whatsappText)}" class="btn btn-wa" style="padding:8px 18px;font-size:13px;"><i class="fa-brands fa-whatsapp"></i> Booking</a>`;
+    const fillStyle = isFull ? 'background:#DC2626' : '';
+
+    return `
+      <div class="schedule-item">
+        <div class="schedule-date"><div class="day">${item.day}</div><div class="month">${item.month}</div></div>
+        <div class="schedule-info">
+          <h4>${item.title}</h4>
+          <div class="meta">
+            <span><i class="fa-solid fa-users"></i> ${item.participants}/${item.capacity} Peserta</span>
+            <span><i class="fa-solid fa-map-pin"></i> ${item.location}</span>
+            <span><i class="fa-solid fa-tag"></i> ${item.price}</span>
+          </div>
+        </div>
+        <div class="schedule-action">
+          ${badge}
+          <div class="quota-bar">
+            <div class="quota-track"><div class="quota-fill" style="width:${fill}%;${fillStyle}"></div></div>
+            <div class="quota-text">${item.participants} / ${item.capacity}</div>
+          </div>
+          ${action}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ===== SEARCH FUNCTION ===== */
+function doSearch() {
+  const destVal = document.getElementById('searchDest').value;
+  const monthVal = document.getElementById('searchMonth').value;
+  const typeVal = document.getElementById('searchType').value;
+
+  const destText = document.getElementById('searchDest').options[document.getElementById('searchDest').selectedIndex].text;
+  const monthText = document.getElementById('searchMonth').options[document.getElementById('searchMonth').selectedIndex].text;
+  const typeText = document.getElementById('searchType').options[document.getElementById('searchType').selectedIndex].text;
+
+  const cards = document.querySelectorAll('.package-card');
+  let count = 0;
+
+  cards.forEach(card => {
+    const cardDest = card.dataset.dest || '';
+    const cardType = card.dataset.type || '';
+
+    const destMatch = destVal === 'all' || cardDest === destVal;
+    const typeMatch = typeVal === 'all' || cardType === typeVal;
+
+    if (destMatch && typeMatch) {
+      card.style.display = '';
+      card.style.opacity = '0';
+      setTimeout(() => { card.style.opacity = '1'; card.style.transition = 'opacity .4s'; }, 30);
+      count++;
+    } else {
+      card.style.display = 'none';
+    }
+  });
+
+  /* Reset filter tabs */
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.filter-tab[data-filter="all"]').classList.add('active');
+
+  /* Show no-results if empty */
+  let noRes = document.getElementById('noResults');
+  if (!noRes) {
+    noRes = document.createElement('div');
+    noRes.id = 'noResults';
+    noRes.className = 'no-results';
+    noRes.innerHTML = '<i class="fa-solid fa-binoculars"></i><strong>Paket tidak ditemukan.</strong><br>Coba pilihan destinasi atau tipe yang lain.';
+    document.getElementById('packageGrid').appendChild(noRes);
+  }
+  noRes.style.display = count === 0 ? 'block' : 'none';
+
+  /* Build result message */
+  let parts = [];
+  if (destVal !== 'all') parts.push('<strong>' + destText + '</strong>');
+  if (monthVal !== 'all') parts.push('<strong>' + monthText + '</strong>');
+  if (typeVal !== 'all') parts.push('<strong>' + typeText + '</strong>');
+
+  const filterDesc = parts.length > 0 ? parts.join(' • ') : 'semua destinasi';
+  document.getElementById('searchResultMsg').innerHTML =
+    'Ditemukan <span class="result-count">' + count + ' paket</span> untuk ' + filterDesc + '.';
+
+  const resultEl = document.getElementById('searchResultText');
+  resultEl.classList.add('show');
+
+  /* Scroll ke section paket */
+  document.getElementById('paket').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ===== MODAL ===== */
+function openModal(idx) {
+  const p = packages[idx];
+  const waMsg = `Halo The Mafia Travel, saya tertarik dengan paket *${p.name}* (${p.duration}). Apakah masih tersedia?`;
+  const waLink = `https://wa.me/6281234567890?text=${encodeURIComponent(waMsg)}`;
+  const itHTML = p.itinerary.map(d => `
+    <div class="itinerary-day">
+      <h4>${d.day}: ${d.title}</h4>
+      ${d.items.map(i => `<div class="itinerary-item"><i class="fa-solid fa-circle-check"></i><span>${i}</span></div>`).join('')}
+    </div>`).join('');
+  const incHTML = p.include.map(i => `<li><i class="fa-solid fa-check"></i> ${i}</li>`).join('');
+  const excHTML = p.exclude.map(i => `<li><i class="fa-solid fa-xmark"></i> ${i}</li>`).join('');
+
+  document.getElementById('modalBox').innerHTML = `
+    <div class="modal-header">
+      <img src="${p.img}" alt="${p.name}" />
+      <div class="overlay"></div>
+      <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+      <div class="modal-header-content">
+        <div class="meta">
+          <span class="badge badge-blue"><i class="fa-solid fa-clock"></i> ${p.duration}</span>
+          <span class="badge badge-green">${p.type}</span>
+          <span class="badge badge-orange">⭐ ${p.rating} (${p.reviews} ulasan)</span>
+        </div>
+        <h2>${p.name}</h2>
+      </div>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--gray);margin-bottom:28px;font-size:15px;line-height:1.8;">${p.desc}</p>
+      <div class="modal-cols">
+        <div>
+          <h3 style="font-size:20px;font-weight:800;margin-bottom:20px;font-family:'Poppins',sans-serif;">📅 Itinerary</h3>
+          ${itHTML}
+          <h3 style="font-size:18px;font-weight:800;margin:24px 0 16px;font-family:'Poppins',sans-serif;">✅ Termasuk</h3>
+          <ul class="include-list">${incHTML}</ul>
+          <h3 style="font-size:18px;font-weight:800;margin:24px 0 16px;font-family:'Poppins',sans-serif;">❌ Tidak Termasuk</h3>
+          <ul class="include-list">${excHTML}</ul>
+        </div>
+        <div>
+          <div class="sticky-book">
+            <div class="price-old">${p.oldPrice}</div>
+            <div class="price-big">${p.price}</div>
+            <div class="price-label">per orang / pax</div>
+            <ul class="booking-info">
+              <li><span>Durasi</span><span>${p.duration}</span></li>
+              <li><span>Tipe</span><span>${p.type}</span></li>
+              <li><span>Min. Peserta</span><span>${p.pax}</span></li>
+              <li><span>Rating</span><span>⭐ ${p.rating}</span></li>
+            </ul>
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:10px;">
+              <a href="${waLink}" target="_blank" class="btn btn-wa" style="justify-content:center;">
+                <i class="fa-brands fa-whatsapp"></i> Pesan via WhatsApp
+              </a>
+              <button onclick="closeModal()" class="btn btn-outline" style="justify-content:center;">
+                <i class="fa-solid fa-arrow-left"></i> Kembali
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('modalOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function closeModalOutside(e) {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+}
+
+function toggleWish(e, btn) {
+  e.stopPropagation();
+  btn.classList.toggle('active');
+  btn.innerHTML = btn.classList.contains('active')
+    ? '<i class="fa-solid fa-heart" style="color:#EF4444"></i>'
+    : '<i class="fa-regular fa-heart"></i>';
+}
+
+function submitForm() {
+  alert('✅ Pesan kamu telah terkirim! Kami akan menghubungi kamu dalam 1×24 jam. Atau langsung chat via WhatsApp untuk respon lebih cepat! 🚀');
+}
+
+/* ===== NAVBAR SCROLL ===== */
+const navbar = document.getElementById('navbar');
+window.addEventListener('scroll', () => {
+  navbar.classList.toggle('scrolled', window.scrollY > 60);
+}, { passive: true });
+
+/* ===== HAMBURGER ===== */
+const hamburger = document.getElementById('hamburger');
+const mobileMenu = document.getElementById('mobileMenu');
+const mobileOverlay = document.getElementById('mobileOverlay');
+const mobileClose = document.getElementById('mobileClose');
+
+function openMobile() { mobileMenu.classList.add('open'); mobileOverlay.classList.add('open'); document.body.style.overflow = 'hidden'; }
+function closeMobile() { mobileMenu.classList.remove('open'); mobileOverlay.classList.remove('open'); document.body.style.overflow = ''; }
+
+hamburger.addEventListener('click', openMobile);
+mobileClose.addEventListener('click', closeMobile);
+mobileOverlay.addEventListener('click', closeMobile);
+document.querySelectorAll('.mobile-link').forEach(a => a.addEventListener('click', closeMobile));
+
+renderSchedule();
+
+/* ===== FILTER TABS ===== */
+document.querySelectorAll('.filter-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const filter = tab.dataset.filter;
+
+    document.querySelectorAll('.package-card').forEach(card => {
+      const cat = card.dataset.cat || '';
+      if (filter === 'all' || cat.includes(filter)) {
+        card.style.display = '';
+        card.style.opacity = '0';
+        setTimeout(() => { card.style.opacity = '1'; card.style.transition = 'opacity .4s'; }, 20);
+      } else {
+        card.style.display = 'none';
+      }
+    });
+
+    /* Hide no-results when filter tab clicked */
+    const noRes = document.getElementById('noResults');
+    if (noRes) noRes.style.display = 'none';
+
+    /* Reset search result */
+    document.getElementById('searchResultText').classList.remove('show');
+  });
+});
+
+/* ===== ESCAPE KEY MODAL ===== */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+/* ===== SCROLL REVEAL ===== */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry, i) => {
+    if (entry.isIntersecting) {
+      setTimeout(() => entry.target.classList.add('visible'), i * 80);
+    }
+  });
+}, { threshold: 0.08 });
+document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+</script>
+
+</body>
+</html>
