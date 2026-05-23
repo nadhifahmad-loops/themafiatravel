@@ -44,17 +44,20 @@ export default function HotelSearchForm({ onSearch, loading, initialParams }: Pr
   useEffect(() => {
     if (initialParams) {
       const dest = POPULAR_DESTINATIONS.find(d => d.id === initialParams.destination_id);
-      setForm(f => ({
-        ...f,
-        destination_id: initialParams.destination_id || f.destination_id,
-        destinationLabel: initialParams.q || dest?.label || f.destinationLabel,
-        checkin_date: initialParams.checkin_date || f.checkin_date,
-        checkout_date: initialParams.checkout_date || f.checkout_date,
-        adult: parseInt(initialParams.adult) || f.adult,
-        child: parseInt(initialParams.child) || f.child,
-        room: parseInt(initialParams.room) || f.room,
-      }));
-      setDestInput(initialParams.q || dest?.label || f.destinationLabel);
+      setForm(f => {
+        const newLabel = initialParams.q || dest?.label || f.destinationLabel;
+        setDestInput(newLabel);
+        return {
+          ...f,
+          destination_id: initialParams.destination_id || f.destination_id,
+          destinationLabel: newLabel,
+          checkin_date: initialParams.checkin_date || f.checkin_date,
+          checkout_date: initialParams.checkout_date || f.checkout_date,
+          adult: parseInt(initialParams.adult) || f.adult,
+          child: parseInt(initialParams.child) || f.child,
+          room: parseInt(initialParams.room) || f.room,
+        };
+      });
     }
   }, [initialParams]);
 
