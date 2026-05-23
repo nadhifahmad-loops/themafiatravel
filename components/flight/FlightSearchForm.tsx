@@ -238,7 +238,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
     e.preventDefault();
     let payload: any = { direction: tripType, ...pax, cabin_class: cabinClass };
     if (tripType === 'Multi') {
-      payload.routes = legs.map(l => ({ origin: l.origin, destination: l.destination, departure_date: l.date.toISOString().split('T')[0] }));
+      payload.routes = legs.map((l : any) => ({ origin: l.origin, destination: l.destination, departure_date: l.date.toISOString().split('T')[0] }));
     } else {
       payload.origin = origin; payload.destination = destination;
       payload.departure_date = startDate?.toISOString().split('T')[0];
