@@ -200,7 +200,8 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
     return null;
   });
 
-  const [legs, setLegs] = useState(() => {
+  type Leg = { origin: string; destination: string; departure_date?: string };
+  const [legs, setLegs] = useState<Leg[]>(() => {
     if (initialData?.routes && Array.isArray(initialData.routes) && initialData.routes.length >= 2) {
       return initialData.routes.map((r: any) => ({
         origin:      r.origin || 'CGK',
