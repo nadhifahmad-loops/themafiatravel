@@ -263,7 +263,7 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
             <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">Tanggal Berangkat</span>
             <div className="flex items-center gap-3">
               <i className="fa-regular fa-calendar text-orange-500 text-base"></i>
-              <DatePicker selected={startDate} onChange={(d) => setStartDate(d)}
+              <DatePicker selected={startDate} onChange={(d: Date | null) => setStartDate(d)}
                 minDate={new Date(Date.now())}
                 className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" placeholderText="Pilih tanggal" />
             </div>
