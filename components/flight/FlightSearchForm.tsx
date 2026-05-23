@@ -231,7 +231,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
   };
 
   const removeLeg = (idx: number) => {
-    if (legs.length > 2) setLegs(legs.filter((_, i) => i !== idx));
+    if (legs.length > 2) setLegs(legs.filter((_: any, i: number) => i !== idx));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
