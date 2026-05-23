@@ -598,6 +598,9 @@ export const hotelAPI = {
 
   cancelBooking: (order_number: string, issued_name: string, provider: string) =>
     orbisRequest('/hotel/booking', 'cancel_booking', { order_number, issued_name, provider }),
+
+  getDetails: (params: any) =>
+    orbisRequest('/hotel/search', 'get_details', params),
 };
 
 // =========================
