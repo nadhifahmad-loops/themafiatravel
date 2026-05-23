@@ -319,6 +319,24 @@ export interface OrbisSchedule {
   }[];
 }
 
+export interface OrbisPassengerIdentity {
+  type: string;
+  number: string;
+  expiry_date: string;
+  country: string;
+}
+
+export interface OrbisPassenger {
+  passenger_number: number;
+  type: string;
+  first_name: string;
+  last_name: string;
+  title: string;
+  birth_date: string;
+  nationality: string;
+  identity?: OrbisPassengerIdentity;
+}
+
 export const flightAPI = {
   search: (params: any) =>
     orbisRequest(
