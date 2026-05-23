@@ -446,7 +446,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
                 <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">Tanggal Pulang</span>
                 <div className="flex items-center gap-3">
                   <i className="fa-regular fa-calendar-check text-orange-500 text-base"></i>
-                  <DatePicker selected={endDate} onChange={(d) => setEndDate(d)}
+                  <DatePicker selected={endDate} onChange={(d: Date | null) => setEndDate(d)}
                     minDate={startDate || new Date(Date.now() + 86400000)}
                     className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" placeholderText="Pilih tanggal" />
                 </div>
