@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH MODELS (NextAuth)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  phone         String?
+  image         String?
+  role          String    @default("user")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  accounts      Account[]
+  sessions      Session[]
+  bookings      Booking[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ORBIS SESSION CACHE
+// Menyimpan signature token Orbis (opsional, saat ini caching dilakukan in-memory)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model OrbisSession {
+  id        String   @id @default(cuid())
+  signature String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOKING — Model utama untuk semua jenis pemesanan
+// bookingType: 'flight' | 'hotel' | 'train' | 'insurance'
+// status:      'pending_payment' | 'paid' | 'payment_failed' | 'cancelled'
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Booking {
+  id              String   @id                    // Format: TMT-FLT-xxx / TMT-HTL-xxx / ...
+  
+  // ✅ PERBAIKAN: userId dan relasi user dibuat opsional (?) agar Guest bisa booking
+  userId          String?
+  
+  orderNumber     String   @unique                // Nomor order dari Orbis (misal: AL.210421452972)
+  bookingType     String                          // flight | hotel | train | insurance
+  status          String   @default("pending_payment")
+
+  // ── Keuangan ──────────────────────────────────────────────────────────────
+  totalAmount     Float
+  currency        String   @default("IDR")
+
+  // ── Midtrans Payment ──────────────────────────────────────────────────────
+  snapToken       String?                         // Token Snap Midtrans
+  snapRedirectUrl String?                         // URL redirect halaman bayar Midtrans
+  paymentId       String?                         // ID transaksi Midtrans (dari webhook)
+  paymentStatus   String?                         // Status dari Midtrans (settlement, pending, dll)
+  paymentType     String?                         // Metode bayar (credit_card, gopay, dll)
+  paidAt          DateTime?                       // Timestamp lunas
+
+  // ── Data Generik (Hotel) ──────────────────────────────────────────────────
+  hotelName       String?                         // Nama hotel — khusus bookingType=hotel
+  checkinDate     DateTime?                       // Tanggal check-in hotel
+  checkoutDate    DateTime?                       // Tanggal check-out hotel
+
+  // ── Data Penerbangan & Kereta ─────────────────────────────────────────────
+  routeLabel      String?                         // Label rute: "CGK → SUB" (flight/train)
+  origin          String?                         // Kode bandara/stasiun asal  (misal: "CGK")
+  destination     String?                         // Kode bandara/stasiun tujuan (misal: "SUB")
+  departureDate   DateTime?                       // Tanggal + jam keberangkatan
+  flightNumber    String?                         // Nomor penerbangan (misal: "QG 123")
+  airlineName     String?                         // Nama maskapai (misal: "Citilink")
+
+  // ── Data Orbis ────────────────────────────────────────────────────────────
+  pnr             String?                         // PNR maskapai / kode booking Orbis
+  provider        String?                         // Provider Orbis (citilink, garuda, sia, dll)
+
+  // ── Data JSON (fleksibel) ─────────────────────────────────────────────────
+  passengerData   Json?                           // Array data penumpang lengkap
+  bookingData     Json?                           // Full response dari commit_booking Orbis
+
+  // ── Pembatalan ────────────────────────────────────────────────────────────
+  cancelledAt     DateTime?                       // Timestamp saat dibatalkan
+  cancelReason    String?                         // Alasan pembatalan (teks bebas)
+  cancelType      String?                         // 'void' | 'refund'
+
+  // ── Timestamps ────────────────────────────────────────────────────────────
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // ── Relations ─────────────────────────────────────────────────────────────
+  
+  // ✅ PERBAIKAN: User diberi tanda tanya (?)
+  user            User?    @relation(fields: [userId], references: [id])
+  payments        Payment[]
+
+  // ── Indexes ───────────────────────────────────────────────────────────────
+  @@index([userId])
+  @@index([status])
+  @@index([bookingType])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYMENT — Log transaksi Midtrans per booking
+// Satu Booking bisa punya >1 Payment (jika user retry bayar)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Payment {
+  id               String   @id @default(cuid())
+  bookingId        String                         // FK ke Booking.id
+  orderId          String   @unique               // order_id yang dikirim ke Midtrans
+  amount           Float
+  currency         String   @default("IDR")
+  status           String   @default("pending")   // pending | settlement | deny | cancel | expire
+  paymentType      String?                        // credit_card | gopay | shopeepay | va | dll
+  snapToken        String?
+  snapRedirectUrl  String?
+  midtransResponse Json?                          // Full notification body dari Midtrans webhook
+  paidAt           DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // ── Relations ─────────────────────────────────────────────────────────────
+  booking          Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+}
