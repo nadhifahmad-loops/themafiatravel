@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { registerLocale } from "react-datepicker";
-import id from 'date-fns/locale/id';
+import { id } from 'date-fns/locale/id';
 registerLocale('id', id);
 
 interface Props { 
