@@ -1,19 +1,18 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma'; // Sesuaikan lokasi instansiasi Prisma Client Anda
+import { prisma } from '@/lib/prisma';
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
+    
     const booking = await prisma.booking.findUnique({
-      where: { id: params.id }
+      where: { id }
     });
 
     if (!booking || (booking.status !== 'issued' && booking.status !== 'paid')) {
       return NextResponse.json({ success: false, error: 'Pesanan tidak memenuhi syarat refund.' }, { status: 400 });
     }
 
-    // --- LOGIKA SIMULASI DENDA ---
-    // Di aplikasi nyata, Anda bisa menembak API vendor (misal action: get_refund_booking pada Orbis)
-    // Di sini kita asumsikan hitungan standar: potongan maskapai 20% + admin fee TMT Rp 50.000
     const penaltyFee = Math.round(booking.totalAmount * 0.20); 
     const adminFee = 50000;
     const estimatedRefund = booking.totalAmount - penaltyFee - adminFee;
