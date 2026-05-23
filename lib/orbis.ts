@@ -601,6 +601,9 @@ export const hotelAPI = {
 
   getDetails: (params: any) =>
     orbisRequest('/hotel/search', 'get_details', params),
+
+  provision: (hotel_code: string, price_code: string) =>
+    orbisRequest('/hotel/search', 'provision', { hotel_code, price_code }),
 };
 
 // =========================
