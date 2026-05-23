@@ -586,6 +586,9 @@ export const hotelAPI = {
 
   sellHotel: (params: any) => 
     orbisRequest('/hotel/booking', 'sell_hotel', params),
+
+  createBooking: (params: any) =>
+    orbisRequest('/hotel/booking', 'create_booking', params),
     
   commitBooking: (params: any) => 
     orbisRequest('/hotel/booking', 'commit_booking', params),
