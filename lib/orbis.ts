@@ -592,6 +592,12 @@ export const hotelAPI = {
     
   commitBooking: (params: any) => 
     orbisRequest('/hotel/booking', 'commit_booking', params),
+
+  checkRefund: (order_number: string, issued_name: string, provider: string) =>
+    orbisRequest('/hotel/booking', 'check_refund', { order_number, issued_name, provider }),
+
+  cancelBooking: (order_number: string, issued_name: string, provider: string) =>
+    orbisRequest('/hotel/booking', 'cancel_booking', { order_number, issued_name, provider }),
 };
 
 // =========================
