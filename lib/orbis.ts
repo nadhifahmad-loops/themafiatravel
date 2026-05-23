@@ -467,6 +467,20 @@ export const flightAPI = {
       'issued',
       { order_number }
     ),
+
+  cancelVoid: (order_number: string) =>
+    orbisRequest(
+      '/booking/airline',
+      'cancel_void',
+      { order_number }
+    ),
+
+  cancelRefund: (params: { order_number: string; provider_bookings: any[] }) =>
+    orbisRequest(
+      '/booking/airline',
+      'cancel_refund',
+      params
+    ),
 };
 
 // =========================
