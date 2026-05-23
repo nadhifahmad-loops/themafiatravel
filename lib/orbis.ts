@@ -320,10 +320,10 @@ export interface OrbisSchedule {
 }
 
 export interface OrbisPassengerIdentity {
-  type: string;
-  number: string;
-  expiry_date: string;
-  country: string;
+  identity_type: string;
+  identity_number: string;
+  identity_expdate: string;
+  identity_country_of_issued_code: string;
 }
 
 export interface OrbisPassenger {
