@@ -111,7 +111,7 @@ function InsuranceCheckoutContent() {
     try {
       const formattedPax = passengers.map((pax, idx) => ({
         ...pax,
-        passenger_seq_id: (session?.user as any)?.id ? `CU.${(session.user as any).id}` : `GUEST.${idx + 1}`,
+        passenger_seq_id: (session?.user as any)?.id ? `CU.${(session?.user as any).id}` : `GUEST.${idx + 1}`,
         email:        pax.email        || contact.email,
         phone_number: pax.phone_number || (contact.calling_code + contact.mobile),
         is_also_booker:  idx === 0,
@@ -120,13 +120,13 @@ function InsuranceCheckoutContent() {
 
       const formattedContact = {
         ...contact,
-        contact_seq_id: (session?.user as any)?.id ? `CU.${(session.user as any).id}` : 'GUEST.1',
+        contact_seq_id: (session?.user as any)?.id ? `CU.${(session?.user as any).id}` : 'GUEST.1',
         is_also_booker: true,
       };
 
       const formattedBooker = {
         ...contact,
-        booker_seq_id: (session?.user as any)?.id ? `CU.${(session.user as any).id}` : 'GUEST.1',
+        booker_seq_id: (session?.user as any)?.id ? `CU.${(session?.user as any).id}` : 'GUEST.1',
       };
 
       const res = await fetch('/api/insurance/book', {
