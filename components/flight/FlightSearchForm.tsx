@@ -398,7 +398,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
                   <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">Tanggal</span>
                   <div className="flex items-center gap-3">
                     <i className="fa-regular fa-calendar text-orange-500"></i>
-                    <DatePicker selected={leg.date} onChange={(d) => { const n = [...legs]; n[i].date = d as Date; setLegs(n); }}
+                    <DatePicker selected={leg.date} onChange={(d: Date | null) => { const n = [...legs]; n[i].date = d as Date; setLegs(n); }}
                       minDate={new Date(Date.now() + 86400000)} className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" />
                   </div>
                 </div>
