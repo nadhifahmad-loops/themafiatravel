@@ -49,10 +49,6 @@ export default function CheckoutNavbar() {
           </Link>
 
           {/* ===== SISI KANAN (KOSONG / DAPAT DIISI BADGE SECURE JIKA DIINGINKAN) ===== */}
-          <div className="hidden sm:flex items-center gap-2 text-slate-400 text-xs font-medium">
-            <i className="fa-solid fa-lock text-[10px] text-emerald-500"></i>
-            <span className="text-slate-500 font-bold text-[11px] uppercase tracking-wider">Secure Checkout</span>
-          </div>
 
         </div>
       </div>
