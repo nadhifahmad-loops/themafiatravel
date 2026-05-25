@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import CheckoutNavbar from '@/components/CheckoutNavbar';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 interface SeatInfo { seat_code: string; column: string; row_number: string; availability: number; base_price: number; seat_name: string; description: string[]; }
@@ -652,9 +653,10 @@ function FlightCheckoutContent() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 pt-16">
+    <div className="min-h-screen bg-gray-50">
+      <CheckoutNavbar />
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 sticky top-16 z-10">
+      <div className="bg-white border-b border-gray-200 sticky top-[73px] z-10 shadow-sm">
         <div className="container mx-auto max-w-[1280px] px-4 py-3 flex items-center justify-between">
           <button onClick={()=>router.push('/flight/search')} className="flex items-center gap-2 text-slate-500 hover:text-orange-600 text-sm font-semibold transition-colors">
             <i className="fa-solid fa-arrow-left text-xs"></i> Kembali
