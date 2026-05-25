@@ -282,7 +282,7 @@ export default function LandingPage() {
       <UnifiedNavbar user={session?.user || null} />
 
       {/* HERO */}
-      <section className="relative pt-28 md:pt-36 pb-14 md:pb-20 overflow-hidden">
+      <section className="relative pt-28 md:pt-36 pb-14 md:pb-20 overflow-visible">
         <div className="absolute inset-0">
           <Image
             src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=1800&q=80"
