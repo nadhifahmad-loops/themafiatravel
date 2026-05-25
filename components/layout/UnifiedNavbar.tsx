@@ -63,6 +63,10 @@ const FlagIcon = ({
 export default function UnifiedNavbar({ user }: Props) {
   const pathname = usePathname();
 
+  if (pathname?.includes('/checkout')) {
+    return null; 
+  }
+
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
