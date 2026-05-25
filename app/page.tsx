@@ -309,7 +309,7 @@ export default function LandingPage() {
           </div>
 
           {/* Search Card */}
-          <div className="max-w-5xl mx-auto bg-white/15 backdrop-blur-2xl border border-white/20 rounded-[28px] md:rounded-[36px] shadow-2xl overflow-hidden">
+          <div className="max-w-5xl mx-auto bg-white/15 backdrop-blur-2xl border border-white/20 rounded-[28px] md:rounded-[36px] shadow-2xl">
             {/* Tabs */}
             <div className="flex overflow-x-auto scrollbar-hide gap-2 p-3 border-b border-white/10">
               {TABS.map(tab => (
