@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -74,6 +74,11 @@ export default function UnifiedNavbar({ user }: Props) {
   const [tempLang, setTempLang] = useState('ID');
   const [tempCurr, setTempCurr] = useState('IDR');
 
+  // Referensi untuk deteksi klik di luar elemen
+  const settingRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Deteksi scroll
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
@@ -85,6 +90,7 @@ export default function UnifiedNavbar({ user }: Props) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Ambil data lokal
   useEffect(() => {
     const storedLang = localStorage.getItem('app_lang') || 'ID';
     const storedCurr = localStorage.getItem('app_currency') || 'IDR';
@@ -94,6 +100,23 @@ export default function UnifiedNavbar({ user }: Props) {
 
     setTempLang(storedLang);
     setTempCurr(storedCurr);
+  }, []);
+
+  // Handler klik di luar dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (settingRef.current && !settingRef.current.contains(event.target as Node)) {
+        setSettingOpen(false);
+      }
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const navLinks = user
@@ -152,7 +175,6 @@ export default function UnifiedNavbar({ user }: Props) {
                 href="/"
                 className="flex items-center gap-3 shrink-0"
               >
-                
                 {/* MOBILE -> LOGO ONLY */}
                 <div className="relative w-10 h-10 sm:hidden">
                   <Image
@@ -251,7 +273,7 @@ export default function UnifiedNavbar({ user }: Props) {
             <div className="flex items-center gap-2 md:gap-3">
 
               {/* SETTINGS */}
-              <div className="relative">
+              <div className="relative" ref={settingRef}>
                 <button
                   onClick={() => {
                     setTempLang(language);
@@ -289,176 +311,170 @@ export default function UnifiedNavbar({ user }: Props) {
                 </button>
 
                 {settingOpen && (
-                  <>
-                    <div
-                      onClick={() => setSettingOpen(false)}
-                      className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
-                    />
+                  <div
+                    className="
+                      fixed md:absolute
+                      left-1/2 md:left-auto
+                      md:right-0
+                      top-1/2 md:top-full
+                      -translate-x-1/2 md:translate-x-0
+                      -translate-y-1/2 md:translate-y-0
+                      md:mt-3
 
-                    <div
-                      className="
-                        fixed md:absolute
-                        left-1/2 md:left-auto
-                        md:right-0
-                        top-1/2 md:top-full
-                        -translate-x-1/2 md:translate-x-0
-                        -translate-y-1/2 md:translate-y-0
-                        md:mt-3
+                      w-[92vw]
+                      max-w-[420px]
+                      md:max-w-[620px]
+                      md:w-[620px]
 
-                        w-[92vw]
-                        max-w-[420px]
-                        md:w-[520px]
+                      max-h-[85vh]
+                      overflow-hidden
 
-                        max-h-[85vh]
-                        overflow-hidden
-
-                        bg-white
-                        rounded-[28px]
-                        shadow-[0_20px_60px_-15px_rgba(0,0,0,0.25)]
-                        border border-slate-100
-                        z-50
-                        animate-fade-in
-                      "
-                    >
-                      
-                      {/* HEADER */}
-                      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                        <div>
-                          <h3 className="font-black text-slate-800 text-[15px]">
-                            Pengaturan Regional
-                          </h3>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            Atur bahasa dan mata uang aplikasi
-                          </p>
-                        </div>
-
-                        <button
-                          onClick={() => setSettingOpen(false)}
-                          className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-all flex items-center justify-center shrink-0"
-                        >
-                          <i className="fa-solid fa-xmark"></i>
-                        </button>
+                      bg-white
+                      rounded-[28px]
+                      shadow-[0_20px_60px_-15px_rgba(0,0,0,0.25)]
+                      border border-slate-100
+                      z-50
+                      animate-fade-in
+                    "
+                  >
+                    
+                    {/* HEADER */}
+                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                      <div>
+                        <h3 className="font-black text-slate-800 text-[15px]">
+                          Pengaturan Regional
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Atur bahasa dan mata uang aplikasi
+                        </p>
                       </div>
 
-                      {/* CONTENT */}
-                      <div className="overflow-y-auto max-h-[calc(85vh-80px)]">
-                        <div className="p-4 md:p-5">
+                      <button
+                        onClick={() => setSettingOpen(false)}
+                        className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-all flex items-center justify-center shrink-0"
+                      >
+                        <i className="fa-solid fa-xmark"></i>
+                      </button>
+                    </div>
 
-                          {/* MOBILE STACK */}
-                          <div className="flex flex-col md:grid md:grid-cols-2 gap-5">
+                    {/* CONTENT */}
+                    <div className="overflow-y-auto max-h-[calc(85vh-80px)]">
+                      <div className="p-4 md:p-5">
 
-                            {/* CURRENCY */}
-                            <div>
-                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.18em] mb-3">
-                                Mata Uang
-                              </label>
+                        {/* DESKTOP 2 COLUMNS, MOBILE STACK */}
+                        <div className="flex flex-col md:grid md:grid-cols-[1.5fr_1fr] gap-5">
 
-                              <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
-                                {CURRENCIES.map(c => (
-                                  <button
-                                    key={c.code}
-                                    onClick={() => setTempCurr(c.code)}
-                                    className={`
-                                      w-full flex items-center justify-between
-                                      px-4 py-3 rounded-2xl border
-                                      transition-all text-left
-                                      ${
-                                        tempCurr === c.code
-                                          ? 'border-orange-500 bg-orange-50'
-                                          : 'border-slate-200 hover:bg-slate-50'
-                                      }
-                                    `}
-                                  >
-                                    <div className="flex items-center gap-3 min-w-0">
-                                      <FlagIcon
-                                        countryCode={c.countryCode}
-                                        size={18}
-                                        isRound={false}
-                                      />
+                          {/* CURRENCY (2 COLUMNS DI LAPTOP) */}
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.18em] mb-3">
+                              Mata Uang
+                            </label>
 
-                                      <div className="min-w-0">
-                                        <div className="font-black text-[14px] text-slate-800">
-                                          {c.code}
-                                        </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[250px] overflow-y-auto pr-1">
+                              {CURRENCIES.map(c => (
+                                <button
+                                  key={c.code}
+                                  onClick={() => setTempCurr(c.code)}
+                                  className={`
+                                    w-full flex items-center justify-between
+                                    px-4 py-3 rounded-2xl border
+                                    transition-all text-left
+                                    ${
+                                      tempCurr === c.code
+                                        ? 'border-orange-500 bg-orange-50'
+                                        : 'border-slate-200 hover:bg-slate-50'
+                                    }
+                                  `}
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <FlagIcon
+                                      countryCode={c.countryCode}
+                                      size={18}
+                                      isRound={false}
+                                    />
 
-                                        <div className="text-[11px] text-slate-400 truncate">
-                                          {c.label}
-                                        </div>
+                                    <div className="min-w-0">
+                                      <div className="font-black text-[14px] text-slate-800">
+                                        {c.code}
+                                      </div>
+
+                                      <div className="text-[11px] text-slate-400 truncate">
+                                        {c.label}
                                       </div>
                                     </div>
+                                  </div>
 
-                                    {tempCurr === c.code && (
-                                      <i className="fa-solid fa-circle-check text-orange-500 text-lg shrink-0"></i>
-                                    )}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* LANGUAGE */}
-                            <div>
-                              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.18em] mb-3">
-                                Bahasa
-                              </label>
-
-                              <div className="space-y-2">
-                                {LANGUAGES.map(l => (
-                                  <button
-                                    key={l.code}
-                                    onClick={() => setTempLang(l.code)}
-                                    className={`
-                                      w-full flex items-center justify-between
-                                      px-4 py-3 rounded-2xl border
-                                      transition-all text-left
-                                      ${
-                                        tempLang === l.code
-                                          ? 'border-orange-500 bg-orange-50'
-                                          : 'border-slate-200 hover:bg-slate-50'
-                                      }
-                                    `}
-                                  >
-                                    <span className="font-bold text-[14px] text-slate-700">
-                                      {l.label}
-                                    </span>
-
-                                    {tempLang === l.code && (
-                                      <i className="fa-solid fa-circle-check text-orange-500 text-lg"></i>
-                                    )}
-                                  </button>
-                                ))}
-                              </div>
+                                  {tempCurr === c.code && (
+                                    <i className="fa-solid fa-circle-check text-orange-500 text-lg shrink-0"></i>
+                                  )}
+                                </button>
+                              ))}
                             </div>
                           </div>
 
-                          {/* BUTTON */}
-                          <div className="pt-5">
-                            <button
-                              onClick={handleSaveSettings}
-                              className="
-                                w-full py-3.5
-                                rounded-2xl
-                                bg-orange-600 hover:bg-orange-700
-                                text-white
-                                font-black
-                                text-[14px]
-                                shadow-lg shadow-orange-600/20
-                                transition-all
-                                active:scale-[0.98]
-                              "
-                            >
-                              Simpan Perubahan
-                            </button>
+                          {/* LANGUAGE */}
+                          <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.18em] mb-3">
+                              Bahasa
+                            </label>
+
+                            <div className="space-y-2">
+                              {LANGUAGES.map(l => (
+                                <button
+                                  key={l.code}
+                                  onClick={() => setTempLang(l.code)}
+                                  className={`
+                                    w-full flex items-center justify-between
+                                    px-4 py-3 rounded-2xl border
+                                    transition-all text-left
+                                    ${
+                                      tempLang === l.code
+                                        ? 'border-orange-500 bg-orange-50'
+                                        : 'border-slate-200 hover:bg-slate-50'
+                                    }
+                                  `}
+                                >
+                                  <span className="font-bold text-[14px] text-slate-700">
+                                    {l.label}
+                                  </span>
+
+                                  {tempLang === l.code && (
+                                    <i className="fa-solid fa-circle-check text-orange-500 text-lg"></i>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
                           </div>
+                        </div>
+
+                        {/* BUTTON */}
+                        <div className="pt-5">
+                          <button
+                            onClick={handleSaveSettings}
+                            className="
+                              w-full py-3.5
+                              rounded-2xl
+                              bg-orange-600 hover:bg-orange-700
+                              text-white
+                              font-black
+                              text-[14px]
+                              shadow-lg shadow-orange-600/20
+                              transition-all
+                              active:scale-[0.98]
+                            "
+                          >
+                            Simpan Perubahan
+                          </button>
                         </div>
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
 
               {/* USER / AUTH */}
               {user ? (
-                <div className="relative hidden md:block">
+                <div className="relative hidden md:block" ref={menuRef}>
                   <button
                     onClick={() => setMenuOpen(!menuOpen)}
                     className={`flex items-center gap-3 px-2 py-1.5 rounded-2xl transition-all ${
@@ -501,55 +517,48 @@ export default function UnifiedNavbar({ user }: Props) {
                   </button>
 
                   {menuOpen && (
-                    <>
-                      <div
-                        onClick={() => setMenuOpen(false)}
-                        className="fixed inset-0 z-40"
-                      />
+                    <div className="absolute right-0 top-[calc(100%+12px)] w-[240px] bg-white rounded-3xl border border-slate-100 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.18)] overflow-hidden z-50">
+                      
+                      <div className="px-5 py-4 bg-slate-50 border-b border-slate-100">
+                        <p className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-1">
+                          Login sebagai
+                        </p>
 
-                      <div className="absolute right-0 top-[calc(100%+12px)] w-[240px] bg-white rounded-3xl border border-slate-100 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.18)] overflow-hidden z-50">
-                        
-                        <div className="px-5 py-4 bg-slate-50 border-b border-slate-100">
-                          <p className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-400 mb-1">
-                            Login sebagai
-                          </p>
-
-                          <p className="text-sm font-black text-slate-800 truncate">
-                            {user.email}
-                          </p>
-                        </div>
-
-                        <div className="p-2">
-                          <Link
-                            href="/bookings"
-                            className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-orange-600 transition-all"
-                          >
-                            <i className="fa-solid fa-calendar-check text-orange-500 w-4"></i>
-                            Pesanan Saya
-                          </Link>
-
-                          <Link
-                            href="/account"
-                            className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-orange-600 transition-all"
-                          >
-                            <i className="fa-solid fa-user-gear text-orange-500 w-4"></i>
-                            Ubah Profil
-                          </Link>
-
-                          <div className="h-px bg-slate-100 my-2"></div>
-
-                          <button
-                            onClick={() =>
-                              signOut({ callbackUrl: '/' })
-                            }
-                            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-red-500 hover:bg-red-50 transition-all"
-                          >
-                            <i className="fa-solid fa-arrow-right-from-bracket w-4"></i>
-                            Keluar
-                          </button>
-                        </div>
+                        <p className="text-sm font-black text-slate-800 truncate">
+                          {user.email}
+                        </p>
                       </div>
-                    </>
+
+                      <div className="p-2">
+                        <Link
+                          href="/bookings"
+                          className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-orange-600 transition-all"
+                        >
+                          <i className="fa-solid fa-calendar-check text-orange-500 w-4"></i>
+                          Pesanan Saya
+                        </Link>
+
+                        <Link
+                          href="/account"
+                          className="flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-700 hover:bg-orange-50 hover:text-orange-600 transition-all"
+                        >
+                          <i className="fa-solid fa-user-gear text-orange-500 w-4"></i>
+                          Ubah Profil
+                        </Link>
+
+                        <div className="h-px bg-slate-100 my-2"></div>
+
+                        <button
+                          onClick={() =>
+                            signOut({ callbackUrl: '/' })
+                          }
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-red-500 hover:bg-red-50 transition-all"
+                        >
+                          <i className="fa-solid fa-arrow-right-from-bracket w-4"></i>
+                          Keluar
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               ) : (
@@ -665,14 +674,12 @@ export default function UnifiedNavbar({ user }: Props) {
           {user ? (
             <div className="mt-5 space-y-3">
 
-              {/* PROFILE CARD — gradient orange */}
+              {/* PROFILE CARD */}
               <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-orange-500 to-orange-600 p-5 shadow-lg shadow-orange-500/25">
-                {/* decorative blobs */}
                 <div className="pointer-events-none absolute -top-6 -right-6 w-28 h-28 rounded-full bg-white/10" />
                 <div className="pointer-events-none absolute -bottom-8 -left-4 w-24 h-24 rounded-full bg-white/10" />
 
                 <div className="relative flex items-center gap-4">
-                  {/* avatar */}
                   <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-white/30 bg-white/20 flex items-center justify-center shadow-md shrink-0">
                     {user.image ? (
                       <img
@@ -687,7 +694,6 @@ export default function UnifiedNavbar({ user }: Props) {
                     )}
                   </div>
 
-                  {/* info */}
                   <div className="min-w-0 flex-1">
                     <div className="font-black text-white text-[15px] leading-tight truncate">
                       {user.name}
@@ -782,7 +788,7 @@ export default function UnifiedNavbar({ user }: Props) {
         </div>
       </div>
 
-      {/* OVERLAY */}
+      {/* OVERLAY UNTUK MOBILE SIDEBAR SAJA */}
       {isMobileOpen && (
         <div
           onClick={() => setIsMobileOpen(false)}
