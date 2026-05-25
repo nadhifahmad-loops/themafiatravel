@@ -396,7 +396,7 @@ export default function LandingPage() {
       </section>
 
       {/* PROMOS */}
-      <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-12">
+      <section className="relative z-10 max-w-[1280px] mx-auto px-4 md:px-8 py-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg sm:text-xl font-black text-slate-900">
             Promo Terbaik
