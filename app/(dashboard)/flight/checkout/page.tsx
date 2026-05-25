@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import CheckoutNavbar from '@/components/CheckoutNavbar';
+import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 interface SeatInfo { seat_code: string; column: string; row_number: string; availability: number; base_price: number; seat_name: string; description: string[]; }
