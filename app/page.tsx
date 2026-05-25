@@ -328,8 +328,8 @@ export default function LandingPage() {
               ))}
             </div>
 
-            {/* Form */}
-            <div className="p-2 sm:p-3">
+            {/* ─── PEMBUNGKUS UTAMA SEARCH FORM (Z-INDEX 999) ─── */}
+            <div className="relative z-[999] w-full p-2 sm:p-3">
               {activeTab === 'flights' && (
                 <Suspense
                   fallback={
@@ -359,7 +359,6 @@ export default function LandingPage() {
                     </div>
                   }
                 >
-                  {/* Komponen TrainSearchForm Baru Kita */}
                   <TrainSearchForm 
                     onSearch={handleTrainSearch} 
                     loading={false} 
@@ -395,8 +394,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* PROMOS */}
-      <section className="relative z-10 max-w-[1280px] mx-auto px-4 md:px-8 py-12">
+      {/* ─── PROMOS (Z-INDEX 0 AGAR TIDAK MENGHALANGI DROPDOWN) ─── */}
+      <section className="relative z-0 isolation-auto max-w-[1280px] mx-auto px-4 md:px-8 py-12">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg sm:text-xl font-black text-slate-900">
             Promo Terbaik
@@ -410,7 +409,7 @@ export default function LandingPage() {
           {PROMOS.map((p, i) => (
             <div
               key={i}
-              className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${p.color} p-5 sm:p-6 text-white shadow-lg`}
+              className={`relative z-0 overflow-hidden rounded-3xl bg-gradient-to-br ${p.color} p-5 sm:p-6 text-white shadow-lg`}
             >
               <span className="inline-flex px-3 py-1 rounded-full bg-white/20 text-[10px] font-black uppercase tracking-widest mb-4">
                 {p.label}
