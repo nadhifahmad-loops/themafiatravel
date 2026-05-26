@@ -1,6 +1,6 @@
 'use client';
-import { useState, useMemo, Suspense, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useMemo, Suspense, useCallback, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import InsuranceCard from '@/components/insurance/InsuranceCard';
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
@@ -364,13 +364,20 @@ function InlineSearchForm({ initialData, onSearch, loading, onCancel }: any) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 function InsuranceSearchContent() {
   const router      = useRouter();
+  const searchParams = useSearchParams();
   const today       = new Date().toISOString().split('T')[0];
   const nextWeek    = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 
-  const [searchMeta, setSearchMeta] = useState<any>({
-    provider: 'all', destination_area: 'Asia',
-    date_start: today, date_end: nextWeek,
-    pax: 1, trip_type: 'single_trip', is_senior: false, nights: 7,
+  const [searchMeta, setSearchMeta] = useState<any>(() => {
+    const p         = searchParams.get('provider')         || 'all';
+    const area      = searchParams.get('destination_area') || 'Asia';
+    const dateStart = searchParams.get('date_start')       || today;
+    const dateEnd   = searchParams.get('date_end')         || nextWeek;
+    const tripType  = searchParams.get('trip_type')        || 'single_trip';
+    const pax       = parseInt(searchParams.get('pax') || '1', 10);
+    const isSenior  = searchParams.get('is_senior') === 'true';
+    const nights    = Math.max(1, Math.round((new Date(dateEnd).getTime() - new Date(dateStart).getTime()) / 86400000));
+    return { provider: p, destination_area: area, date_start: dateStart, date_end: dateEnd, pax, trip_type: tripType, is_senior: isSenior, nights };
   });
 
   const [products,       setProducts]       = useState<any[]>([]);
@@ -388,7 +395,7 @@ function InsuranceSearchContent() {
   const [loadingPrice,     setLoadingPrice]    = useState(false);
   const [selectingId,      setSelectingId]     = useState<string | null>(null);
 
-  // ── Search ──
+  // ── Auto-search dari homepage ──
   const handleSearch = useCallback(async (params: any) => {
     setLoading(true); setError(''); setProducts([]);
     setProviderErrors({}); setFilterProvider('all'); setSearched(false);
@@ -433,6 +440,13 @@ function InsuranceSearchContent() {
       setError(e.message);
     }
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (searchParams.get('autoSearch') === '1') {
+      handleSearch(searchMeta);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Klik Pilih → fetch harga dulu → tampilkan review panel ──

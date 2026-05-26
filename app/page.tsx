@@ -8,8 +8,8 @@ import Image from 'next/image';
 
 import UnifiedNavbar from '@/components/layout/UnifiedNavbar';
 import FlightSearchForm from '@/components/flight/FlightSearchForm';
-// Pastikan path ini sesuai dengan lokasi file TrainSearchForm.tsx Anda
-import TrainSearchForm from '@/components/train/TrainSearchForm'; 
+import TrainSearchForm from '@/components/train/TrainSearchForm';
+import InsuranceSearchForm from '@/components/insurance/InsuranceSearchForm';
 
 /* ─────────────────────────────────────────────────────────────
    HOTEL MINI FORM
@@ -257,6 +257,19 @@ export default function LandingPage() {
     router.push(`/train/search?${params.toString()}`);
   };
 
+  const handleInsuranceSearch = (payload: any) => {
+    const params = new URLSearchParams();
+    params.set('provider',         payload.provider        ?? 'all');
+    params.set('destination_area', payload.destination_area ?? 'Asia');
+    params.set('date_start',       payload.date_start      ?? '');
+    params.set('date_end',         payload.date_end        ?? '');
+    params.set('trip_type',        payload.trip_type       ?? 'single_trip');
+    params.set('pax',              String(payload.pax      ?? 1));
+    params.set('is_senior',        String(payload.is_senior ?? false));
+    params.set('autoSearch',       '1');
+    router.push(`/insurance/search?${params.toString()}`);
+  };
+
   const quickFlight = (dest: string, origin: string) => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -367,27 +380,18 @@ export default function LandingPage() {
               )}
 
               {activeTab === 'insurance' && (
-                <div className="bg-white rounded-[26px] p-5 sm:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 shadow-xl">
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-orange-100 flex items-center justify-center shrink-0">
-                      <i className="fa-solid fa-shield-check text-orange-600 text-xl" />
+                <Suspense
+                  fallback={
+                    <div className="h-32 flex items-center justify-center text-white">
+                      Loading...
                     </div>
-                    <div>
-                      <h3 className="font-black text-slate-900 text-base sm:text-lg">
-                        Proteksi Perjalanan
-                      </h3>
-                      <p className="text-slate-500 text-sm mt-1 leading-relaxed">
-                        Lindungi perjalananmu dari risiko tak terduga.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => router.push('/insurance')}
-                    className="w-full md:w-auto px-7 py-3 rounded-2xl bg-orange-600 text-white text-sm font-bold hover:bg-orange-700 transition-all"
-                  >
-                    Lihat Paket
-                  </button>
-                </div>
+                  }
+                >
+                  <InsuranceSearchForm
+                    onSearch={handleInsuranceSearch}
+                    loading={false}
+                  />
+                </Suspense>
               )}
             </div>
           </div>
