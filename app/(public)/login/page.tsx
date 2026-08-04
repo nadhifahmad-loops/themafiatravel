@@ -1,19 +1,37 @@
 'use client';
-import { useState } from 'react';
-import { signIn } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { signIn, useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
+import { safeCallbackUrl } from '@/lib/security';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 export default function LoginPage() {
+  const { language } = useLanguage();
+  const t = i18n.login[language];
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [requires2FA, setRequires2FA] = useState(false);
   
-  // Menangkap URL asal untuk redirect otomatis setelah login
+  // Menangkap URL asal untuk redirect otomatis setelah login.
+  // Sanitasi untuk mencegah open redirect (hanya URL internal yang diizinkan).
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') || '/';
+  const callbackUrl = safeCallbackUrl(searchParams.get('callbackUrl'));
+
+  // ─── Pengaman ekstra: jika user SEBENARNYA sudah login (cookie sesi ada di browser)
+  // tapi navigasi gagal/terblokir, halaman login otomatis pindah ke callbackUrl.
+  // Menyembuhkan kasus "berhasil login tapi tidak redirect" tanpa restart server.
+  const { status: sessionStatus } = useSession();
+  useEffect(() => {
+    if (sessionStatus === 'authenticated') {
+      window.location.href = callbackUrl;
+    }
+  }, [sessionStatus, callbackUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,21 +39,48 @@ export default function LoginPage() {
     setError('');
     
     try {
-      const res = await signIn('credentials', { 
-        email, 
-        password, 
-        redirect: false 
-      });
-      
+      // Timeout pengaman: jangan sampai spinner login muter selamanya
+      // (masalah umum signIn() client next-auth yang tidak pernah resolve).
+      const res = await Promise.race([
+        signIn('credentials', {
+          email,
+          password,
+          code,
+          redirect: false,
+        }),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 20000)
+        ),
+      ]);
+
+      if (res?.error === '2FA_REQUIRED') {
+        setRequires2FA(true);
+        setLoading(false);
+        return;
+      }
+
+      if (res?.error === 'INVALID_2FA') {
+        setError('Kode 2FA salah atau tidak valid.');
+        setLoading(false);
+        return;
+      }
+
       if (res?.error) {
-        setError('Email atau password salah. Silakan coba lagi.');
+        setError(t.errorWrongCredentials);
         setLoading(false);
       } else {
-        // Redirect ke callbackUrl (bisa dashboard, bisa checkout hotel, dll)
-        router.push(callbackUrl);
+        // Tandai "baru saja login" untuk notifikasi selamat datang (Login sebagai ...)
+        sessionStorage.setItem('mt_welcome_pending', '1');
+        // Navigasi FULL (bukan router.push) agar cookie sesi terpasang dulu
+        // sehingga middleware selalu melihat token saat mengakses halaman tujuan.
+        // Menghindari bug next-auth v4 + Next 15/16 di mana token belum terlihat
+        // middleware pada navigasi client-side pertama → balik ke /login.
+        window.location.href = callbackUrl;
       }
     } catch (err) {
-      setError('Terjadi kesalahan pada server.');
+      setError(err instanceof Error && err.message === 'timeout'
+        ? t.errorNetwork
+        : t.errorServer);
       setLoading(false);
     }
   };
@@ -63,7 +108,7 @@ export default function LoginPage() {
                 </h1>
               </Link>
               <p className="text-white/90 text-lg max-w-sm leading-relaxed">
-                Welcome back, Boss. Your next unstoppable journey awaits.
+                {t.tagline}
               </p>
             </div>
             
@@ -86,8 +131,8 @@ export default function LoginPage() {
             </div>
 
             <div className="mb-10">
-              <h2 className="text-3xl font-black text-slate-900 mb-2 font-display tracking-tight">Selamat Datang Kembali</h2>
-              <p className="text-slate-500 text-sm">Silakan masukkan detail akun Anda untuk mengakses dashboard.</p>
+              <h2 className="text-3xl font-black text-slate-900 mb-2 font-display tracking-tight">{t.title}</h2>
+              <p className="text-slate-500 text-sm">{t.subtitle}</p>
             </div>
 
             {/* Error Alert */}
@@ -99,70 +144,128 @@ export default function LoginPage() {
             )}
 
             {/* 🔥 GOOGLE LOGIN (SUDAH AKTIF) 🔥 */}
-            <div className="mb-6">
-              <button 
-                type="button" 
-                onClick={() => signIn('google', { callbackUrl })}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-slate-200 rounded-lg font-bold text-sm text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
-              >
-                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-                Lanjutkan dengan Google
-              </button>
-            </div>
+            {!requires2FA && (
+              <div className="mb-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sessionStorage.setItem('mt_welcome_pending', '1');
+                    signIn('google', { callbackUrl });
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-slate-200 rounded-lg font-bold text-sm text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
+                >
+                  <Image src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
+                  {t.googleBtn}
+                </button>
+              </div>
+            )}
 
-            <div className="relative flex items-center mb-6">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white">Atau login dengan Email</span>
-              <div className="flex-grow border-t border-slate-200"></div>
-            </div>
+            {!requires2FA && (
+              <div className="relative flex items-center mb-6">
+                <div className="flex-grow border-t border-slate-200"></div>
+                <span className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white">{t.orDivider}</span>
+                <div className="flex-grow border-t border-slate-200"></div>
+              </div>
+            )}
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
               
               {/* Email */}
-              <div className="relative">
-                <input
-                  type="email"
-                  id="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  disabled={loading}
-                  className="peer w-full h-14 px-4 pt-4 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-slate-900 bg-transparent disabled:bg-slate-50"
-                  placeholder=" "
-                />
-                <label htmlFor="email" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
-                  Alamat Email
-                </label>
-              </div>
+              {!requires2FA && (
+                <div className="relative">
+                  <input
+                    type="email"
+                    id="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    required
+                    disabled={loading}
+                    className="peer w-full h-14 px-4 pt-4 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-slate-900 bg-transparent disabled:bg-slate-50"
+                    placeholder=" "
+                  />
+                  <label htmlFor="email" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
+                    {t.emailLabel}
+                  </label>
+                </div>
+              )}
 
               {/* Password */}
-              <div className="relative">
-                <input
-                  type="password"
-                  id="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                  className="peer w-full h-14 px-4 pt-4 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-slate-900 bg-transparent disabled:bg-slate-50"
-                  placeholder=" "
-                />
-                <label htmlFor="password" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
-                  Password
-                </label>
-              </div>
+              {!requires2FA && (
+                <div className="relative">
+                  <input
+                    type="password"
+                    id="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    required
+                    disabled={loading}
+                    className="peer w-full h-14 px-4 pt-4 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-slate-900 bg-transparent disabled:bg-slate-50"
+                    placeholder=" "
+                  />
+                  <label htmlFor="password" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
+                    {t.passwordLabel}
+                  </label>
+                </div>
+              )}
+
+              {requires2FA && (
+                <div className="space-y-5">
+                  {/* Status login sebagai */}
+                  <div className="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <i className="fa-solid fa-shield-halved text-orange-600"></i>
+                      <span className="text-sm text-slate-600 truncate">
+                        Login sebagai <strong className="text-slate-900">{email}</strong>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setRequires2FA(false); setCode(''); setError(''); }}
+                      className="text-xs font-bold text-orange-600 hover:underline underline-offset-4 whitespace-nowrap"
+                    >
+                      Ganti akun
+                    </button>
+                  </div>
+
+                  {/* Kode 2FA */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      id="code"
+                      value={code}
+                      onChange={e => setCode(e.target.value)}
+                      required
+                      disabled={loading}
+                      autoFocus
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      aria-describedby="code-hint"
+                      className="peer w-full h-14 px-4 pt-4 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-slate-900 bg-transparent disabled:bg-slate-50"
+                      placeholder=" "
+                    />
+                    <label htmlFor="code" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
+                      Kode 2FA
+                    </label>
+                  </div>
+                  <p id="code-hint" className="text-xs text-slate-500">
+                    Masukkan 6 digit kode dari aplikasi authenticator, atau kode cadangan.
+                  </p>
+                </div>
+              )}
 
               {/* Remember Me & Forgot Password */}
-              <div className="flex items-center justify-between text-sm font-medium mt-2">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 cursor-pointer" />
-                  <span className="text-slate-500 group-hover:text-slate-900 transition-colors">Ingat saya</span>
-                </label>
-                <Link href="#" className="text-orange-600 hover:underline underline-offset-4 decoration-2">
-                  Lupa password?
-                </Link>
-              </div>
+              {!requires2FA && (
+                <div className="flex items-center justify-between text-sm font-medium mt-2">
+                  <label className="flex items-center gap-2 cursor-pointer group">
+                    <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 cursor-pointer" />
+                    <span className="text-slate-500 group-hover:text-slate-900 transition-colors">{t.rememberMe}</span>
+                  </label>
+                  <Link href="/forgot-password" className="text-orange-600 hover:underline underline-offset-4 decoration-2">
+                    {t.forgotPassword}
+                  </Link>
+                </div>
+              )}
 
               {/* Submit Button */}
               <button
@@ -173,11 +276,11 @@ export default function LoginPage() {
                 {loading ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Memeriksa...
+                    {t.submitting}
                   </>
                 ) : (
                   <>
-                    Masuk Sekarang
+                    {t.submitBtn}
                     <i className="fa-solid fa-arrow-right"></i>
                   </>
                 )}
@@ -186,9 +289,9 @@ export default function LoginPage() {
 
             <div className="mt-8 text-center">
               <p className="text-sm text-slate-500 font-medium">
-                Belum punya akun?{' '}
+                {t.noAccount}{' '}
                 <Link href="/register" className="text-orange-600 font-bold hover:underline underline-offset-4">
-                  Daftar di sini
+                  {t.registerLink}
                 </Link>
               </p>
             </div>

@@ -1,476 +1,286 @@
 'use client';
+
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
-// ─── KAMUS MULTI-BAHASA ──────────────────────────────────────────────────────
-const dict = {
-  ID: {
-    title: 'Pesanan Saya',
-    subtitle: 'Kelola dan pantau pengalaman perjalanan masa lalu dan mendatangmu dengan mudah.',
-    tabs: { 
-      all: 'Semua Pesanan', 
-      pending_payment: 'Menunggu Pembayaran', 
-      paid: 'Aktif & Selesai', 
-      cancelled: 'Dibatalkan' 
-    },
-    services: {
-      all: 'Semua Layanan'
-    },
-    status: { 
-      pending_payment: 'Menunggu Bayar', 
-      paid: 'Terkonfirmasi', 
-      payment_failed: 'Gagal', 
-      cancelled: 'Dibatalkan' 
-    },
-    bookingId: 'ID Pesanan:',
-    checkin: 'Tanggal Check-in',
-    departure: 'Keberangkatan',
-    checkout: 'Check-out',
-    viewDetails: 'Lihat Detail',
-    payNow: 'Bayar Sekarang',
-    empty: 'Belum ada pesanan',
-    emptySub: 'Yuk, mulai rencanakan perjalanan impianmu hari ini!',
-    searchBtn: 'Cari Destinasi',
-    night: 'malam',
-    room: 'Kamar',
-    pax: 'Penumpang',
-    hotel: 'Hotel',
-    flight: 'Pesawat',
-    train: 'Kereta', 
-    insurance: 'Asuransi', // 🔥 Tambahan Asuransi
-    startsFrom: 'Total Harga'
-  },
-  EN: {
-    title: 'My Bookings',
-    subtitle: 'Manage and track your upcoming and past travel experiences with ease.',
-    tabs: { 
-      all: 'All Bookings', 
-      pending_payment: 'Pending Payment', 
-      paid: 'Active & Completed', 
-      cancelled: 'Cancelled' 
-    },
-    services: {
-      all: 'All Services'
-    },
-    status: { 
-      pending_payment: 'Pending', 
-      paid: 'Confirmed', 
-      payment_failed: 'Failed', 
-      cancelled: 'Cancelled' 
-    },
-    bookingId: 'Booking ID:',
-    checkin: 'Check-in Date',
-    departure: 'Departure Date',
-    checkout: 'Check-out',
-    viewDetails: 'View Details',
-    payNow: 'Pay Now',
-    empty: 'No bookings found',
-    emptySub: 'Start planning your journey today!',
-    searchBtn: 'Search Destination',
-    night: 'night(s)',
-    room: 'Room(s)',
-    pax: 'Passenger(s)',
-    hotel: 'Hotel',
-    flight: 'Flight',
-    train: 'Train', 
-    insurance: 'Insurance', // 🔥 Tambahan Asuransi
-    startsFrom: 'Total Price'
-  }
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface Booking {
+  id: string;
+  orderNumber: string;
+  bookingType: string;
+  status: string;
+  totalAmount: number;
+  currency: string;
+  routeLabel?: string | null;
+  hotelName?: string | null;
+  origin?: string | null;
+  destination?: string | null;
+  departureDate?: string | null;
+  checkinDate?: string | null;
+  checkoutDate?: string | null;
+  flightNumber?: string | null;
+  airlineName?: string | null;
+  pnr?: string | null;
+  createdAt: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
+}
+
+function formatDate(dateString: string) {
+  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateString));
+}
+
+function formatDateTime(dateString: string) {
+  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(dateString));
+}
+
+const STATUS_CONFIG: Record<string, { color: string; bg: string }> = {
+  pending_payment: { color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
+  paid:            { color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200' },
+  issued:          { color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+  payment_failed:  { color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
+  cancelled:       { color: 'text-red-600', bg: 'bg-red-50 border-red-200' },
+  refund_requested:{ color: 'text-orange-700', bg: 'bg-orange-50 border-orange-200' },
+  refund:          { color: 'text-purple-700', bg: 'bg-purple-50 border-purple-200' },
 };
 
+const TYPE_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+  flight:    { label: 'Penerbangan', icon: 'fa-plane', color: 'text-blue-500 bg-blue-50' },
+  hotel:     { label: 'Hotel', icon: 'fa-hotel', color: 'text-purple-500 bg-purple-50' },
+  train:     { label: 'Kereta', icon: 'fa-train', color: 'text-emerald-500 bg-emerald-50' },
+  insurance: { label: 'Asuransi', icon: 'fa-shield-halved', color: 'text-orange-500 bg-orange-50' },
+};
+
+const TABS = [
+  { id: 'all' },
+  { id: 'flight' },
+  { id: 'hotel' },
+  { id: 'train' },
+  { id: 'insurance' },
+];
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function BookingsPage() {
-  const [bookings, setBookings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  // 🔥 STATE UNTUK DUA FILTER
-  const [filter, setFilter] = useState('all'); // Filter Status Pembayaran
-  const [serviceFilter, setServiceFilter] = useState('all'); // Filter Jenis Layanan
-  
-  const [language, setLanguage] = useState('ID');
+  const { data: session, status } = useSession();
   const router = useRouter();
+  const { language } = useLanguage();
+  const t = i18n.bookings[language];
+  const tc = i18n.common[language];
+  const td = i18n.bookingDetail[language];
+
+  const statusLabel = (key: string) =>
+    (t.status as Record<string, string | undefined>)[key] ?? (td.statusMap as Record<string, string>)[key] ?? key;
+  const tabLabel = (id: string) => (id === 'all' ? t.tabs.all : t[id as 'flight' | 'hotel' | 'train' | 'insurance']);
+
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
 
   useEffect(() => {
-    setLanguage(localStorage.getItem('app_lang') || 'ID');
+    if (status === 'unauthenticated') {
+      router.replace('/login');
+    }
+  }, [status, router]);
 
-    const handleStateChange = () => {
-      setLanguage(localStorage.getItem('app_lang') || 'ID');
-    };
-    window.addEventListener('appStateChange', handleStateChange);
+  useEffect(() => {
+    if (status !== 'authenticated') return;
 
-    const fetchAllBookings = async () => {
+    async function fetchBookings() {
       try {
-        // 🔥 Tambah Asuransi ke Promise.all
-        const [hotelRes, flightRes, trainRes, insuranceRes] = await Promise.all([
-          fetch('/api/hotel/booking').catch(() => null),
-          fetch('/api/flight/booking').catch(() => null),
-          fetch('/api/train/booking').catch(() => null),
-          fetch('/api/insurance/booking').catch(() => null)
-        ]);
-
-        let allBookings: any[] = [];
-
-        if (hotelRes?.ok) {
-          const hotelData = await hotelRes.json();
-          if (hotelData.success) {
-            const formattedHotels = (hotelData.data || []).map((b: any) => ({ ...b, serviceType: 'hotel' }));
-            allBookings = [...allBookings, ...formattedHotels];
-          }
-        }
-
-        if (flightRes?.ok) {
-          const flightData = await flightRes.json();
-          if (flightData.success) {
-            const formattedFlights = (flightData.data || []).map((b: any) => ({ ...b, serviceType: 'flight' }));
-            allBookings = [...allBookings, ...formattedFlights];
-          }
-        }
-
-        if (trainRes?.ok) {
-          const trainData = await trainRes.json();
-          if (trainData.success) {
-            const formattedTrains = (trainData.data || []).map((b: any) => ({ ...b, serviceType: 'train' }));
-            allBookings = [...allBookings, ...formattedTrains];
-          }
-        }
-
-        // 🔥 Parsing Data Asuransi
-        if (insuranceRes?.ok) {
-          const insuranceData = await insuranceRes.json();
-          if (insuranceData.success) {
-            const formattedInsurance = (insuranceData.data || []).map((b: any) => ({ ...b, serviceType: 'insurance' }));
-            allBookings = [...allBookings, ...formattedInsurance];
-          }
-        }
-
-        // 🔥 SOLUSI DOUBLE CARD: Filter ID yang kembar
-        const uniqueBookings = Array.from(
-          new Map(allBookings.map(item => [item.id || item.orderNumber, item])).values()
-        );
-
-        // Urutkan berdasarkan yang paling baru
-        uniqueBookings.sort((a, b) => {
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return dateB - dateA;
-        });
-        
-        setBookings(uniqueBookings);
-      } catch (error) {
-        console.error("Gagal mengambil data pesanan", error);
+        const res = await fetch('/api/user/bookings');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Gagal memuat pesanan');
+        setBookings(data.bookings || []);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Gagal memuat pesanan';
+        setError(message);
       } finally {
         setLoading(false);
       }
-    };
+    }
 
-    fetchAllBookings();
+    fetchBookings();
+  }, [status]);
 
-    return () => window.removeEventListener('appStateChange', handleStateChange);
-  }, []);
+  if (status === 'loading' || loading) {
+    return (
+      <div className="min-h-screen bg-[#f4f6fb] flex items-center justify-center pt-24">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-400 text-sm font-medium">{tc.loading}</p>
+        </div>
+      </div>
+    );
+  }
 
-  const t = dict[language as keyof typeof dict] || dict.ID;
+  const filtered = bookings.filter(b => activeTab === 'all' || b.bookingType === activeTab);
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString.replace(' ', 'T'));
-    return date.toLocaleDateString(language === 'ID' ? 'id-ID' : 'en-GB', {
-      day: 'numeric', month: 'short', year: 'numeric'
-    });
+  const stats = {
+    total: bookings.length,
+    flight: bookings.filter(b => b.bookingType === 'flight').length,
+    hotel: bookings.filter(b => b.bookingType === 'hotel').length,
+    train: bookings.filter(b => b.bookingType === 'train').length,
+    insurance: bookings.filter(b => b.bookingType === 'insurance').length,
   };
-
-  const STATUS_STYLES: Record<string, string> = {
-    'pending_payment': 'bg-orange-100 text-orange-700',
-    'paid': 'bg-green-100 text-green-700',
-    'issued': 'bg-green-100 text-green-700', 
-    'payment_failed': 'bg-red-100 text-red-700',
-    'cancelled': 'bg-slate-100 text-slate-600',
-  };
-
-  // 🔥 LOGIKA UNTUK 2 FILTER SEKALIGUS (Status & Tipe Layanan)
-  const filtered = bookings.filter(b => {
-    // 1. Cek Status
-    let matchStatus = false;
-    if (filter === 'all') matchStatus = true;
-    else if (filter === 'paid') matchStatus = (b.status === 'paid' || b.status === 'issued');
-    else matchStatus = (b.status === filter);
-
-    // 2. Cek Jenis Layanan
-    let matchService = false;
-    const sType = b.serviceType || b.bookingType; 
-    if (serviceFilter === 'all') matchService = true;
-    else if (serviceFilter === 'hotel' && (!sType || sType === 'hotel')) matchService = true; // Fallback jika DB gak nyimpen tipe
-    else matchService = (sType === serviceFilter);
-
-    return matchStatus && matchService;
-  });
-
-  const tabOptions = [
-    { key: 'all', label: t.tabs.all },
-    { key: 'pending_payment', label: t.tabs.pending_payment },
-    { key: 'paid', label: t.tabs.paid },
-    { key: 'cancelled', label: t.tabs.cancelled },
-  ];
-
-  // 🔥 Opsi Filter Layanan
-  const serviceTabOptions = [
-    { key: 'all', label: t.services.all, icon: 'fa-layer-group' },
-    { key: 'flight', label: t.flight, icon: 'fa-plane' },
-    { key: 'hotel', label: t.hotel, icon: 'fa-hotel' },
-    { key: 'train', label: t.train, icon: 'fa-train' },
-    { key: 'insurance', label: t.insurance, icon: 'fa-shield-halved' },
-  ];
-
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#f8f9ff] gap-4">
-      <div className="w-10 h-10 border-4 border-orange-600 border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-slate-400 text-sm font-medium">Memuat data...</p>
-    </div>
-  );
 
   return (
-    <div className="min-h-screen bg-[#f8f9ff] text-slate-900 font-sans pb-24">
-      <main className="max-w-[1200px] mx-auto px-6 lg:px-8 py-12 space-y-8">
-        
-        {/* ── PAGE HEADER ── */}
-        <div className="animate-fade-in">
-          <Link href="/dashboard" className="inline-flex items-center gap-2 text-slate-400 hover:text-orange-600 text-xs font-bold uppercase tracking-widest mb-4 transition-colors">
-            <i className="fa-solid fa-arrow-left"></i> Dashboard
-          </Link>
-          <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-3 font-display tracking-tight">{t.title}</h1>
-          <p className="text-slate-500 text-base">{t.subtitle}</p>
-        </div>
+    <div className="min-h-screen bg-[#f4f6fb] pt-28 pb-16">
+      <div className="max-w-4xl mx-auto px-4 flex flex-col gap-6">
 
-        {/* ── FITUR BARU: FILTER LAYANAN ── */}
-        <div className="flex gap-3 overflow-x-auto whitespace-nowrap scrollbar-hide py-2">
-          {serviceTabOptions.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setServiceFilter(tab.key)}
-              className={`px-4 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 border ${
-                serviceFilter === tab.key
-                  ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-600/20'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300 hover:text-orange-600'
-              }`}
-            >
-              <i className={`fa-solid ${tab.icon}`}></i> {tab.label}
+        {/* ── Header ── */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+            <button onClick={() => router.back()} style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'white', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#ea580c'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}>
+              <i className="fa-solid fa-arrow-left" style={{ fontSize: '13px', color: '#64748b' }}></i>
             </button>
-          ))}
-        </div>
-
-        {/* ── TAB SYSTEM STATUS ── */}
-        <div className="flex items-center border-b border-slate-200 mb-8 overflow-x-auto whitespace-nowrap scrollbar-hide">
-          {tabOptions.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              className={`px-6 py-4 font-bold text-sm transition-colors relative ${
-                filter === tab.key 
-                  ? 'text-orange-600' 
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              {tab.label}
-              {filter === tab.key && (
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-600 rounded-t-md"></div>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* ── BOOKINGS GRID ── */}
-        {filtered.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200 border-dashed p-16 text-center shadow-sm animate-fade-up">
-            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 text-slate-300">
-              <i className="fa-solid fa-suitcase-rolling"></i>
-            </div>
-            <h2 className="font-black text-slate-900 text-2xl mb-2 font-display">{t.empty}</h2>
-            <p className="text-slate-500 text-sm mb-8">{t.emptySub}</p>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="px-8 py-3.5 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-orange-600/20 active:scale-95"
-            >
-              <i className="fa-solid fa-magnifying-glass mr-2"></i> {t.searchBtn}
-            </button>
+            <h1 className="text-2xl font-black text-slate-800">{t.title}</h1>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6">
-            {filtered.map((b: any, index: number) => {
-              const sType = b.serviceType || b.bookingType;
-              const isFlight = sType === 'flight';
-              const isTrain = sType === 'train';
-              const isInsurance = sType === 'insurance'; // 🔥 Tambahan
-              const isHotel = !isFlight && !isTrain && !isInsurance;
+          <p className="text-slate-500 text-sm">{t.subtitle}</p>
+        </div>
 
-              let statusLabel = t.status[b.status as keyof typeof t.status];
-              if (b.status === 'issued') statusLabel = t.status.paid; 
-              if (!statusLabel) statusLabel = t.status.pending_payment;
-              
-              const statusStyle = STATUS_STYLES[b.status] || STATUS_STYLES['pending_payment'];
-              
-              let imageSrc = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=500&q=80';
-              let badgeBg = 'bg-slate-900/90';
-              let badgeIcon = 'fa-hotel';
-              let badgeLabel = t.hotel;
+        {/* ── Stats Cards ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { label: tc.total, value: stats.total, icon: 'fa-receipt', color: 'text-slate-600 bg-slate-50' },
+            { label: t.flight, value: stats.flight, icon: 'fa-plane', color: 'text-blue-600 bg-blue-50' },
+            { label: t.hotel, value: stats.hotel, icon: 'fa-hotel', color: 'text-purple-600 bg-purple-50' },
+            { label: t.train, value: stats.train, icon: 'fa-train', color: 'text-emerald-600 bg-emerald-50' },
+            { label: t.insurance, value: stats.insurance, icon: 'fa-shield-halved', color: 'text-orange-600 bg-orange-50' },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.color}`}>
+                <i className={`fa-solid ${s.icon} text-sm`}></i>
+              </div>
+              <div>
+                <p className="text-xl font-black text-slate-800 leading-none">{s.value}</p>
+                <p className="text-[11px] text-slate-400 font-medium mt-0.5">{s.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
 
-              if (isFlight) {
-                imageSrc = 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=500&q=80';
-                badgeBg = 'bg-blue-900/90';
-                badgeIcon = 'fa-plane';
-                badgeLabel = t.flight;
-              } else if (isTrain) {
-                imageSrc = '/images/train.jpg'; 
-                badgeBg = 'bg-emerald-700/90';
-                badgeIcon = 'fa-train';
-                badgeLabel = t.train;
-              } else if (isInsurance) {
-                imageSrc = 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=500&q=80';
-                badgeBg = 'bg-purple-700/90';
-                badgeIcon = 'fa-shield-halved';
-                badgeLabel = t.insurance;
-              }
+        {/* ── Tabs & Content ── */}
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex overflow-x-auto gap-2">
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all
+                  ${activeTab === tab.id
+                    ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+              >
+                {tabLabel(tab.id)}
+                {tab.id !== 'all' && (
+                  <span className="ml-1.5 text-xs opacity-70">
+                    {tab.id === 'flight' ? stats.flight : tab.id === 'hotel' ? stats.hotel : tab.id === 'train' ? stats.train : stats.insurance}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
 
-              const nights = (isHotel && b.checkinDate && b.checkoutDate)
-                ? Math.max(1, Math.round((new Date(b.checkoutDate).getTime() - new Date(b.checkinDate).getTime()) / 86400000))
-                : 1;
+          {error ? (
+            <div className="p-8 text-center">
+              <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <i className="fa-solid fa-circle-exclamation text-red-400 text-lg"></i>
+              </div>
+              <p className="text-slate-500 text-sm">{error}</p>
+              <button
+                onClick={() => { setError(''); setLoading(true); fetch('/api/user/bookings').then(r => r.json()).then(data => { if (data.bookings) setBookings(data.bookings); else throw new Error(data.error); }).catch(err => setError(err instanceof Error ? err.message : 'Gagal memuat')).finally(() => setLoading(false)); }}
+                className="mt-4 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-xl transition-colors"
+              >
+                <i className="fa-solid fa-arrow-rotate-right mr-1.5"></i>{tc.retry}
+              </button>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i className="fa-solid fa-ticket text-slate-300 text-2xl"></i>
+              </div>
+              <p className="text-slate-500 font-bold text-sm">{t.empty}</p>
+              <p className="text-slate-400 text-xs mt-1">Pesanan kamu akan muncul di sini</p>
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 mt-5 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-xl transition-colors"
+              >
+                <i className="fa-solid fa-magnifying-glass text-xs"></i>
+                {t.searchBtn}
+              </Link>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-50">
+              {filtered.map(booking => {
+                const statusCfg = STATUS_CONFIG[booking.status] || { color: 'text-slate-600', bg: 'bg-slate-50 border-slate-200' };
+                const typeCfg = TYPE_CONFIG[booking.bookingType] || { label: booking.bookingType, icon: 'fa-circle-question', color: 'text-slate-500 bg-slate-50' };
 
-              // 🔥 AREA RAWAN 404 - LIHAT PENJELASAN DI BAWAH KODE
-              const detailUrl = `/bookings/${b.id || b.orderNumber}`;
+                return (
+                  <Link
+                    key={booking.id}
+                    href={`/bookings/${booking.id}`}
+                    className="block px-5 py-4 hover:bg-slate-50/80 transition-colors group"
+                  >
+                    <div className="flex items-start gap-4">
+                      {/* Type Icon */}
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${typeCfg.color}`}>
+                        <i className={`fa-solid ${typeCfg.icon} text-sm`}></i>
+                      </div>
 
-              return (
-                <div 
-                  key={`${b.id || b.orderNumber}-${index}`} 
-                  className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row transition-all duration-300 hover:shadow-xl hover:border-orange-200 group animate-fade-up"
-                >
-                  {/* Left Side: Image */}
-                  <div className="md:w-1/4 relative min-h-[200px] bg-slate-100 overflow-hidden">
-                    <img 
-                      src={imageSrc} 
-                      alt={badgeLabel} 
-                      className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
-                    />
-                    <div className="absolute top-4 left-4">
-                      <span className={`backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm ${badgeBg}`}>
-                        <i className={`fa-solid ${badgeIcon} text-[10px]`}></i> 
-                        {badgeLabel}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Right Side: Details */}
-                  <div className="p-6 md:p-8 flex-grow flex flex-col justify-between">
-                    
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
-                      <div>
-                        <div className="flex items-center gap-3 mb-2 flex-wrap">
-                          <h3 className="font-black text-xl text-slate-900 font-display leading-tight">
-                            {isFlight || isTrain || isInsurance
-                              ? (b.hotelName || b.routeLabel || b.packageName || `${b.origin || 'Asal'} ➔ ${b.destination || 'Tujuan'}`) 
-                              : (b.hotelName || 'Pesanan Hotel')
-                            }
-                          </h3>
-                          <span className={`px-3 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold ${statusStyle}`}>
-                            {statusLabel}
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-slate-800 text-sm">{booking.orderNumber || booking.id}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusCfg.bg} ${statusCfg.color}`}>
+                            {statusLabel(booking.status)}
                           </span>
                         </div>
-                        <p className="text-slate-500 text-sm font-medium">
-                          {t.bookingId} <span className="text-slate-900 font-bold uppercase">{b.orderNumber || b.id?.slice(0, 8)}</span>
-                        </p>
-                      </div>
-                      
-                      <div className="text-left md:text-right shrink-0 bg-slate-50 md:bg-transparent p-3 md:p-0 rounded-xl">
-                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">
-                          {isFlight || isTrain ? t.departure : t.checkin}
-                        </p>
-                        <p className="font-black text-slate-900 text-lg">
-                          {formatDate(b.departureDate || b.checkinDate || b.createdAt)}
-                        </p>
-                      </div>
-                    </div>
 
-                    {/* Bottom Row / Actions */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-6 border-t border-slate-100 gap-4">
-                      
-                      <div className="flex gap-4 flex-wrap">
-                        {isFlight ? (
-                          <>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <i className="fa-solid fa-plane-departure text-slate-400"></i>
-                              <span className="text-sm font-medium">{b.carrierName || 'Maskapai'}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <i className="fa-solid fa-users text-slate-400"></i>
-                              <span className="text-sm font-medium">{b.adult || 1} {t.pax}</span>
-                            </div>
-                          </>
-                        ) : isTrain ? (
-                          <>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <i className="fa-solid fa-train text-slate-400"></i>
-                              <span className="text-sm font-medium">Kereta Api (KAI)</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <i className="fa-solid fa-users text-slate-400"></i>
-                              <span className="text-sm font-medium">{b.adult || 1} {t.pax}</span>
-                            </div>
-                          </>
-                        ) : isInsurance ? (
-                          <>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <i className="fa-solid fa-file-contract text-slate-400"></i>
-                              <span className="text-sm font-medium">Polis Asuransi</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <i className="fa-solid fa-user-shield text-slate-400"></i>
-                              <span className="text-sm font-medium">{b.insuredCount || 1} {t.pax}</span>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <i className="fa-solid fa-moon text-slate-400"></i>
-                              <span className="text-sm font-medium">{nights} {t.night}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-slate-500">
-                              <i className="fa-solid fa-door-open text-slate-400"></i>
-                              <span className="text-sm font-medium">1 {t.room}</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center gap-3 w-full sm:w-auto">
-                        <div className="text-right mr-2 hidden sm:block">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">{t.startsFrom}</p>
-                          <p className="font-black text-orange-600 text-lg leading-none">
-                            {b.currency || 'IDR'} {b.totalAmount?.toLocaleString('id-ID')}
-                          </p>
+                        <p className="text-slate-500 text-xs mt-1 font-medium">
+                          {booking.bookingType === 'hotel'
+                            ? booking.hotelName || '-'
+                            : booking.routeLabel || `${booking.origin || ''} → ${booking.destination || ''}`
+                          }
+                        </p>
+
+                        <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-400">
+                          {booking.flightNumber && (
+                            <span><i className="fa-solid fa-plane text-[9px] mr-1"></i>{booking.flightNumber}</span>
+                          )}
+                          {booking.airlineName && (
+                            <span>{booking.airlineName}</span>
+                          )}
+                          {booking.pnr && (
+                            <span className="font-bold text-orange-500">PNR: {booking.pnr}</span>
+                          )}
+                          <span><i className="fa-regular fa-calendar text-[9px] mr-1"></i>{formatDate(booking.departureDate || booking.checkinDate || booking.createdAt)}</span>
                         </div>
+                      </div>
 
-                        {b.status === 'pending_payment' && (b.snapToken || b.snapRedirectUrl) ? (
-                          <button 
-                            onClick={() => window.open(b.snapRedirectUrl, '_blank')}
-                            className="flex-1 sm:flex-none px-6 py-3 bg-orange-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-orange-600/20 hover:bg-orange-700 active:scale-95 transition-all text-center"
-                          >
-                            <i className="fa-solid fa-credit-card mr-1.5"></i> {t.payNow}
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => router.push(detailUrl)}
-                            className="flex-1 sm:flex-none px-6 py-3 border-2 border-slate-200 text-slate-700 font-bold text-sm rounded-xl hover:bg-slate-50 hover:border-slate-300 active:scale-95 transition-all text-center"
-                          >
-                            {t.viewDetails}
-                          </button>
-                        )}
+                      {/* Price & Arrow */}
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-slate-800 text-sm">{formatCurrency(booking.totalAmount)}</p>
+                        <i className="fa-solid fa-chevron-right text-slate-300 text-xs mt-2 group-hover:text-orange-400 transition-colors"></i>
                       </div>
                     </div>
-
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </main>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

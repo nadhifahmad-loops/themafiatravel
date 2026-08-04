@@ -1,5 +1,7 @@
 'use client';
 import { memo, useMemo, useState, useCallback } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 function formatDuration(elapsed: string) {
   if (!elapsed) return '-';
@@ -23,7 +25,10 @@ function getAirlineLogoUrl(code: string) {
   return `https://assets.wego.com/image/upload/h_72,c_fit,f_auto,fl_lossy,q_auto/v20250101/flights/airlines_square/${code}.png`;
 }
 
-function FlightCard({ journey, onSelect, adultCount }: any) {
+function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) {
+  const { language } = useLanguage();
+  const t = i18n.flightSearch[language];
+  const tf = i18n.searchForm[language].flight;
   const [showFares, setShowFares] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
 
@@ -86,13 +91,24 @@ function FlightCard({ journey, onSelect, adultCount }: any) {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md hover:border-orange-200 transition-all duration-200">
-        {/* Promo badge if first fare is cheapest */}
-        {fares[0]?.fare_name && (
-          <div className="px-5 pt-3 pb-0">
-            <span className="inline-block text-[10px] font-black uppercase tracking-wider bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">
-              {fares[0].fare_name}
-            </span>
+      <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-200 hover:border-orange-200'}`}>
+        <div className="h-1.5 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600" />
+
+        {/* Promo & termurah badge */}
+        {(isCheapest || fares[0]?.fare_name) && (
+          <div className="px-5 pt-3 pb-0 flex flex-wrap items-center gap-2">
+            {isCheapest && (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white px-2.5 py-1 rounded-full shadow-sm">
+                <i className="fa-solid fa-tags text-[9px]"></i>
+                Harga Termurah
+              </span>
+            )}
+            {fares[0]?.fare_name && (
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-orange-100 text-orange-600 px-2.5 py-1 rounded-full">
+                <i className="fa-solid fa-tag text-[9px]"></i>
+                {fares[0].fare_name}
+              </span>
+            )}
           </div>
         )}
 
@@ -113,7 +129,7 @@ function FlightCard({ journey, onSelect, adultCount }: any) {
             <div>
               <p className="font-black text-slate-800 text-sm leading-tight">{airlineName.split(' ')[0]}</p>
               <p className="text-[11px] text-slate-400 font-semibold">{airlineCode}{flightNum ? ` ${flightNum}` : ''}</p>
-              <p className="text-[11px] text-slate-400">{fares[0]?.cabin_class === 'Y' ? 'Ekonomi' : fares[0]?.cabin_class === 'C' ? 'Bisnis' : 'Ekonomi'}</p>
+              <p className="text-[11px] text-slate-400">{fares[0]?.cabin_class === 'C' ? tf.business : tf.economy}</p>
             </div>
           </div>
 
@@ -132,7 +148,7 @@ function FlightCard({ journey, onSelect, adultCount }: any) {
                 <div className="flex-1 h-px bg-slate-200"></div>
               </div>
               <p className={`text-[10px] font-bold mt-1 uppercase ${stopsCount === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                {stopsCount === 0 ? 'Langsung' : `${stopsCount} Transit`}
+                {stopsCount === 0 ? t.directOnly : `${stopsCount} Transit`}
               </p>
             </div>
 
@@ -145,7 +161,7 @@ function FlightCard({ journey, onSelect, adultCount }: any) {
           {/* Right: Baggage + Price + Button */}
           <div className="md:w-52 shrink-0 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-5 flex flex-col gap-2">
             {/* Baggage tag */}
-            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-full px-2.5 py-1 self-start">
               <i className="fa-solid fa-suitcase-rolling text-slate-400"></i>
               <span className="font-semibold">{baggageInfo} Bagasi</span>
             </div>
@@ -162,7 +178,7 @@ function FlightCard({ journey, onSelect, adultCount }: any) {
                 disabled={isSelecting || !fares.length}
                 className="flex-1 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-sm transition-all disabled:opacity-50 active:scale-95"
               >
-                Pilih
+                {t.selectFlight}
               </button>
               {fares.length > 1 && (
                 <button

@@ -4,12 +4,31 @@ import { authOptions } from '@/lib/auth';
 import { insuranceAPI } from '@/lib/orbis';
 import { createSnapTransaction } from '@/lib/midtrans';
 import { bookingStore } from '@/lib/store';
+import { insuranceBookSchema, validateBody, apiError } from '@/lib/validate';
+import { getMarkup, applyPercentMarkup } from '@/lib/markup';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { generateBookingId } from '@/lib/security';
+import { checkSubmittedPrice } from '@/lib/price-check';
+import type { Prisma } from '@prisma/client';
+
+export const maxDuration = 90;
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
+  const ip = getClientIp(req as unknown as Request);
+  const rateLimit = await checkRateLimit(`booking:insurance:${ip}`, 'booking');
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Terlalu banyak percobaan booking. Silakan coba lagi nanti.', retryAfter: rateLimit.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfter ?? 60) } }
+    );
+  }
 
   try {
     const body = await req.json();
+    const validation = validateBody(insuranceBookSchema, body);
+    if (!validation.success) return validation.response;
+
     const {
       contacts,
       passengers,
@@ -21,11 +40,59 @@ export async function POST(req: NextRequest) {
       product_code,
       date_start,
       date_end,
-      destination,
-    } = body;
+    } = validation.data;
 
-    if (!contacts?.length || !passengers?.length || !booker || !provider) {
-      return NextResponse.json({ error: 'Data kontak, penumpang, dan provider wajib diisi' }, { status: 400 });
+    // ── STEP 0: Price Revalidation (fail-closed) ──────────────────────────
+    // total_amount dikirim dari client — sebelumnya dipercaya mentah-mentah,
+    // artinya siapa pun bisa mengubahnya di request jadi lebih rendah dari
+    // premi asli sementara polis tetap diterbitkan dengan harga asli.
+    // Re-quote produk yang sama (sellInsurance) & bandingkan dengan premi riil.
+    // Perbandingan SATU ARAH (hanya cek batas bawah) — total_amount yang sah
+    // memang sudah termasuk biaya admin platform di atas premi dasar, jadi
+    // lebih tinggi itu wajar, lebih rendah itu indikasi manipulasi harga.
+    // Jika premi riil tidak bisa diverifikasi, booking DITOLAK (fail-closed).
+    if (!product_code) {
+      console.warn('[Insurance Book] Price revalidation gagal: product_code tidak dikirim.');
+      return apiError('Data produk asuransi tidak lengkap untuk verifikasi harga. Silakan pilih ulang produk.', 422, { error: 'REVALIDATION_REQUIRED' });
+    }
+    try {
+      const paxCount = Array.isArray(passengers) && passengers.length > 0 ? passengers.length : 1;
+      const defaultBirth = new Date();
+      defaultBirth.setFullYear(defaultBirth.getFullYear() - 30);
+      const fallbackBd = defaultBirth.toISOString().split('T')[0];
+      const ageArray = (passengers || [])
+        .map((p: any) => p.birth_date || fallbackBd)
+        .slice(0, paxCount);
+      while (ageArray.length < paxCount) ageArray.push(fallbackBd);
+
+      const quote = await insuranceAPI.sellInsurance({
+        data: { product_code, provider, carrier_code: carrier_code || provider },
+        pax: paxCount,
+        package: 1,
+        age: ageArray,
+        age_type: 'birth_date',
+        adult: paxCount,
+      });
+      const quoted = Array.isArray(quote) ? quote[0] : quote;
+      const realPrice = quoted?.total_price;
+
+      const priceCheck = checkSubmittedPrice({ submitted: total_amount, refreshed: realPrice, lowerBoundOnly: true });
+
+      if (priceCheck.kind === 'changed') {
+        console.warn(`[Insurance Book] PRICE_CHANGED — submitted=${total_amount} realPrice=${realPrice}`);
+        return apiError(priceCheck.message || 'Harga premi telah berubah. Silakan pilih ulang produk asuransi.', 409, {
+          error: 'PRICE_CHANGED',
+          originalPrice: priceCheck.originalPrice,
+          newPrice: priceCheck.newPrice,
+        });
+      }
+      if (priceCheck.kind === 'unverifiable') {
+        console.warn(`[Insurance Book] PRICE_UNVERIFIABLE — submitted=${total_amount} realPrice=${realPrice}`);
+        return apiError('Harga premi tidak dapat diverifikasi saat ini. Silakan coba lagi beberapa saat.', 503, { error: 'PRICE_UNVERIFIABLE' });
+      }
+    } catch (priceErr: any) {
+      console.error('[Insurance Book] Price revalidation error:', priceErr.message);
+      return apiError('Harga premi tidak dapat diverifikasi saat ini. Silakan coba lagi beberapa saat.', 503, { error: 'PRICE_UNVERIFIABLE' });
     }
 
     // 1. Commit Booking ke API Asuransi Orbis
@@ -44,54 +111,61 @@ export async function POST(req: NextRequest) {
       console.log('[INSURANCE] Booking result:', bookingData?.order_number);
     } catch (e: any) {
       console.error('[INSURANCE] Booking error:', e.message);
-      return NextResponse.json({ error: `Gagal membuat polis asuransi: ${e.message}` }, { status: 422 });
+      return apiError(`Gagal membuat polis asuransi: ${e.message}`, 422);
     }
 
+    // Apply markup (percentage)
+    const markup = await getMarkup();
+    const markedUpAmount = applyPercentMarkup(total_amount, markup.insurance);
+    console.log(`[Insurance Book] Markup applied: ${markup.insurance}% = ${total_amount} → ${markedUpAmount}`);
+
     // 2. Buat Transaksi Midtrans
-    const orderId = `TMT-INS-${Date.now()}`;
+    // FIX (Bug #2): ID acak (tidak lagi predictable dari Date.now() saja).
+    const orderId = generateBookingId('INS');
     let snap = { token: '', redirect_url: '' };
     try {
       snap = await createSnapTransaction({
         orderId,
-        amount: total_amount,
+        amount: markedUpAmount,
         customerName: `${booker.first_name} ${booker.last_name}`,
         customerEmail: booker.email,
         customerPhone: booker.calling_code + booker.mobile,
         itemDetails: [{
           id: product_code || orderId,
-          price: Math.round(total_amount),
+          price: Math.round(markedUpAmount),
           quantity: 1,
           name: `Asuransi: ${product_name || 'Travel Insurance'}`,
         }],
       });
     } catch (e: any) {
       console.error('[Midtrans] error:', e.message);
-      return NextResponse.json({ error: `Gagal membuat pembayaran: ${e.message}` }, { status: 500 });
+      return apiError(`Gagal membuat pembayaran: ${e.message}`, 500);
     }
 
-    // 3. Simpan ke Database (hanya jika user login)
-    if (session) {
-      try {
-        await bookingStore.create({
-          id: orderId,
-          userId: (session.user as any).id,
-          orderNumber: bookingData?.order_number || orderId,
-          bookingType: 'insurance',
-          status: 'pending_payment',
-          totalAmount: total_amount,
-          currency: 'IDR',
-          hotelName: product_name || 'Asuransi Perjalanan',
-          checkinDate: date_start ? new Date(date_start).toISOString() : new Date().toISOString(),
-          checkoutDate: date_end ? new Date(date_end).toISOString() : new Date().toISOString(),
-          passengerData: passengers,
-          bookingData: bookingData || {},
-          snapToken: snap.token,
-          snapRedirectUrl: snap.redirect_url,
-        });
-      } catch (dbErr: any) {
-        console.error('[DB] Save booking error:', dbErr.message);
-        // Non-fatal: lanjut meski DB gagal
-      }
+    // 3. Simpan ke database (baik login maupun guest)
+    try {
+      await bookingStore.create({
+        id: orderId,
+        userId: session?.user.id ?? undefined,
+        orderNumber: bookingData?.order_number || orderId,
+        bookingType: 'insurance',
+        status: 'pending_payment',
+        totalAmount: markedUpAmount,
+        currency: 'IDR',
+        hotelName: product_name || 'Asuransi Perjalanan',
+        checkinDate: date_start ? new Date(date_start).toISOString() : new Date().toISOString(),
+        checkoutDate: date_end ? new Date(date_end).toISOString() : new Date().toISOString(),
+        passengerData: passengers as unknown as Prisma.InputJsonValue,
+        bookingData: {
+          ...(bookingData || {}),
+          booker,
+          contacts,
+        } as Prisma.InputJsonValue,
+        snapToken: snap.token,
+        snapRedirectUrl: snap.redirect_url,
+      });
+    } catch (dbErr: any) {
+      console.error('[DB] Save booking error:', dbErr.message);
     }
 
     return NextResponse.json({
@@ -105,6 +179,6 @@ export async function POST(req: NextRequest) {
 
   } catch (e: any) {
     console.error('[INSURANCE BOOK] Fatal:', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return apiError(e.message || 'Gagal membuat pemesanan asuransi', 500);
   }
 }

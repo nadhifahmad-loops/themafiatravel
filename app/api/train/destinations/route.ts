@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { trainAPI } from '@/lib/orbis';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 // Cache sederhana in-memory (daftar stasiun jarang berubah)
 let _cache: any[] | null = null;
@@ -10,7 +11,15 @@ const CACHE_TTL = 1000 * 60 * 60 * 6; // 6 jam
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const ip = getClientIp(req);
+  const rateLimit = await checkRateLimit(`search:${ip}`, 'search');
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Terlalu banyak percobaan. Silakan coba lagi nanti.', retryAfter: rateLimit.retryAfter },
+      { status: 429 }
+    );
+  }
 
   try {
     const now = Date.now();

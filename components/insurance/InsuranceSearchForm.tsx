@@ -1,10 +1,12 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { registerLocale } from 'react-datepicker';
-import { id } from 'date-fns/locale/id';
-registerLocale('id', id);
+import { id as localeId } from 'date-fns/locale';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
+registerLocale('id', localeId);
 
 interface Props {
   onSearch: (p: any) => void;
@@ -138,8 +140,17 @@ function DropdownSelect({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function InsuranceSearchForm({ onSearch, loading, initialData }: Props) {
+  const { language } = useLanguage();
+  const t = i18n.searchForm[language].insurance;
+  const tc = i18n.common[language];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  const minDateTomorrow = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d;
+  }, []);
 
   const [provider, setProvider] = useState<string>(initialData?.provider || 'all');
   const [area, setArea]         = useState<string>(initialData?.destination_area || 'Asia');
@@ -241,7 +252,7 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
 
         {/* Tanggal Mulai */}
         <div className="flex-1 min-w-[150px] px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all">
-          <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">Tanggal Berangkat</span>
+          <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">{t.departure}</span>
           <div className="flex items-center gap-3">
             <i className="fa-regular fa-calendar text-orange-500 text-base" />
             <DatePicker
@@ -253,7 +264,7 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
                   setEndDate(nd);
                 }
               }}
-              minDate={new Date(Date.now() + 86400000)}
+              minDate={minDateTomorrow}
               locale="id"
               className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer"
               dateFormat="dd MMM yyyy"
@@ -265,9 +276,9 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
         {/* Tanggal Selesai */}
         <div className="flex-1 min-w-[150px] px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all">
           <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">
-            Tanggal Pulang
+            {t.return}
             {nights > 0 && (
-              <span className="ml-1 text-orange-400">· {nights} malam</span>
+              <span className="ml-1 text-orange-400">· {nights} {tc.night}</span>
             )}
           </span>
           <div className="flex items-center gap-3">
@@ -275,7 +286,7 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
             <DatePicker
               selected={endDate}
               onChange={(d: Date | null) => setEndDate(d)}
-              minDate={startDate ? new Date(startDate.getTime() + 86400000) : new Date(Date.now() + 86400000)}
+              minDate={startDate ? new Date(startDate.getTime() + 86400000) : minDateTomorrow}
               locale="id"
               className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer"
               dateFormat="dd MMM yyyy"
@@ -290,7 +301,7 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
             onClick={() => setOpenPax(o => !o)}
             className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all h-full"
           >
-            <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">Peserta</span>
+            <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">{t.passengers}</span>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <i className="fa-solid fa-users text-orange-500 text-sm" />
@@ -351,21 +362,12 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
           ) : (
             <div className="flex items-center gap-2 lg:gap-0">
               <i className="fa-solid fa-magnifying-glass text-sm" />
-              <span className="text-sm font-bold lg:hidden">Cari Asuransi</span>
+              <span className="text-sm font-bold lg:hidden">{t.search}</span>
             </div>
           )}
         </button>
       </div>
 
-      <style jsx global>{`
-        .react-datepicker { background-color: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; font-family: inherit; color: white; }
-        .react-datepicker__header { background-color: #1e293b; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .react-datepicker__current-month, .react-datepicker__day-name { color: white; }
-        .react-datepicker__day { color: rgba(255,255,255,0.8); }
-        .react-datepicker__day:hover { background-color: #ea580c; border-radius: 0.5rem; }
-        .react-datepicker__day--selected, .react-datepicker__day--in-range { background-color: #ea580c !important; color: white !important; }
-        .react-datepicker__day--disabled { color: rgba(255,255,255,0.2) !important; }
-      `}</style>
     </form>
   );
 }

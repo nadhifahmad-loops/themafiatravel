@@ -3,10 +3,14 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 function FindBookingContent() {
   const searchParams = useSearchParams();
   const router       = useRouter();
+  const { language } = useLanguage();
+  const t = i18n.findBooking[language];
 
   const [orderNumber, setOrderNumber] = useState('');
   const [phone,       setPhone]       = useState('');
@@ -37,13 +41,13 @@ function FindBookingContent() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setError(data.error || 'Pesanan tidak ditemukan. Pastikan nomor pesanan dan nomor HP sudah benar.');
+        setError(data.error || t.notFound);
         setLoading(false);
       } else {
-        router.push(`/flight/bookings/${data.bookingId}`);
+        router.push(`/bookings/${data.bookingId}`);
       }
     } catch {
-      setError('Koneksi terputus. Silakan coba lagi.');
+      setError(t.connectionError);
       setLoading(false);
     }
   };
@@ -67,9 +71,9 @@ function FindBookingContent() {
               <i className="fa-solid fa-check text-white text-sm"></i>
             </div>
             <div>
-              <p className="text-emerald-300 font-black text-sm">Pemesanan Berhasil!</p>
+              <p className="text-emerald-300 font-black text-sm">{t.successTitle}</p>
               <p className="text-emerald-400/80 text-xs mt-0.5">
-                Masukkan nomor HP pemesan untuk melihat detail tiket Anda.
+                {t.successSub}
               </p>
             </div>
           </div>
@@ -80,8 +84,8 @@ function FindBookingContent() {
             <div className="w-14 h-14 bg-orange-600/20 border border-orange-500/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <i className="fa-solid fa-ticket text-orange-400 text-2xl"></i>
             </div>
-            <h1 className="text-2xl font-black text-white mb-1">Cari Pesanan</h1>
-            <p className="text-gray-400 text-sm">Lacak tiket tanpa perlu masuk ke akun</p>
+            <h1 className="text-2xl font-black text-white mb-1">{t.title}</h1>
+            <p className="text-gray-400 text-sm">{t.subtitle}</p>
           </div>
 
           {error && (
@@ -94,13 +98,13 @@ function FindBookingContent() {
           <form onSubmit={handleSearch} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">
-                Nomor Pesanan / Kode Tiket
+                {t.orderLabel}
               </label>
               <input
                 type="text"
                 value={orderNumber}
                 onChange={e => setOrderNumber(e.target.value)}
-                placeholder="Contoh: AL.210421552976"
+                placeholder={t.orderPlaceholder}
                 required
                 className="w-full px-4 py-3.5 bg-black/40 border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all text-sm font-mono"
               />
@@ -108,13 +112,13 @@ function FindBookingContent() {
 
             <div>
               <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">
-                Nomor HP Pemesan
+                {t.phoneLabel}
               </label>
               <input
                 type="tel"
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
-                placeholder="Contoh: 081234567890"
+                placeholder={t.phonePlaceholder}
                 required
                 className="w-full px-4 py-3.5 bg-black/40 border border-white/10 rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all text-sm"
               />
@@ -126,26 +130,26 @@ function FindBookingContent() {
               className="w-full py-4 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-black rounded-xl transition-all shadow-lg shadow-orange-600/20 flex items-center justify-center gap-2 mt-2"
             >
               {loading
-                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Mencari...</>
-                : <><i className="fa-solid fa-magnifying-glass" />Lacak Pesanan</>
+                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{t.searching}</>
+                : <><i className="fa-solid fa-magnifying-glass" />{t.submitBtn}</>
               }
             </button>
           </form>
 
           <div className="mt-6 pt-5 border-t border-white/10 space-y-2 text-center">
-            <p className="text-gray-500 text-xs">Punya akun?</p>
+            <p className="text-gray-500 text-xs">{t.loginInfo}</p>
             <Link
               href="/login"
               className="text-orange-400 hover:text-orange-300 text-sm font-bold transition-colors"
             >
-              Masuk untuk lihat semua pesanan →
+              {t.loginLink}
             </Link>
           </div>
         </div>
 
         <div className="mt-5 text-center">
           <Link href="/" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">
-            ← Kembali ke Beranda
+            {t.backHome}
           </Link>
         </div>
       </div>

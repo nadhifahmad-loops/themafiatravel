@@ -2,102 +2,96 @@
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 function ConfirmationContent() {
+  const { language } = useLanguage();
+  const t = i18n.trainConfirmation[language];
   const sp = useSearchParams();
-  const orderId    = sp.get('order') || '';
-  const kaiOrder   = sp.get('kai') || '';
-  const pnr        = sp.get('pnr') || '';
-  const status     = sp.get('status') || 'pending';
-  const isSuccess  = status === 'success';
-  const isPending  = status === 'pending';
+  const orderId = sp.get('order') || '';
+  const kaiOrder = sp.get('kai') || '';
+  const pnr = sp.get('pnr') || '';
+  const status = sp.get('status') || 'pending';
+  const isSuccess = status === 'success';
+  const isPending = status === 'pending';
 
-  const statusConfig = {
-    success: {
-      icon: '✓', color: '#27AE60', bg: 'rgba(39,174,96,0.12)',
-      title: 'Pembayaran Berhasil!',
-      desc: 'E-tiket KAI akan segera dikirim ke email kamu.',
-    },
-    pending: {
-      icon: '🚆', color: '#C9A84C', bg: 'rgba(201,168,76,0.12)',
-      title: 'Menunggu Pembayaran',
-      desc: 'Selesaikan pembayaranmu sebelum batas waktu. Tiket dikunci sementara.',
-    },
-    failed: {
-      icon: '✗', color: '#e74c3c', bg: 'rgba(231,76,60,0.12)',
-      title: 'Pembayaran Gagal',
-      desc: 'Kursi tidak jadi dikunci. Silakan coba lagi.',
-    },
+  const config = {
+    icon: isSuccess ? '✓' : isPending ? '🚆' : '✕',
+    title: isSuccess ? 'Pembayaran Berhasil!' : isPending ? 'Menunggu Pembayaran' : 'Pembayaran Gagal',
+    desc: isSuccess
+      ? 'E-tiket KAI Anda telah dikonfirmasi. Silakan cek email untuk detail perjalanan.'
+      : isPending
+      ? 'Tiket kereta dikunci sementara sampai pembayaran selesai.'
+      : 'Kursi tidak jadi dikunci. Silakan coba lagi atau pilih jadwal lain.',
+    iconBg: isSuccess ? 'bg-emerald-100' : isPending ? 'bg-orange-100' : 'bg-red-100',
+    iconColor: isSuccess ? 'text-emerald-600' : isPending ? 'text-orange-600' : 'text-red-600',
+    iconBorder: isSuccess ? 'border-emerald-200' : isPending ? 'border-orange-200' : 'border-red-200',
   };
 
-  const cfg = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
-
   return (
-    <div style={{ fontFamily: 'DM Sans, sans-serif', minHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px' }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600;700&display=swap'); @keyframes pop{0%{transform:scale(0.7);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}} @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
-
-      <div style={{ maxWidth: 540, width: '100%', textAlign: 'center' }}>
-        {/* Status Icon */}
-        <div style={{
-          width: 96, height: 96, borderRadius: '50%', margin: '0 auto 28px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: isSuccess ? 44 : 40,
-          background: cfg.bg, border: `2px solid ${cfg.color}`,
-          animation: 'pop 0.5s cubic-bezier(.34,1.56,.64,1) both',
-        }}>
-          {cfg.icon}
+    <div className="min-h-screen bg-[#f8f9ff] flex items-center justify-center px-4 py-10">
+      <div className="w-full max-w-2xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm">
+        <div className={`px-6 py-8 text-center ${isSuccess ? 'bg-emerald-50' : isPending ? 'bg-orange-50' : 'bg-red-50'}`}>
+          <div className={`mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border-2 text-3xl ${config.iconBg} ${config.iconBorder}`}>
+            <span className={config.iconColor}>{config.icon}</span>
+          </div>
+          <h1 className="text-2xl font-black text-slate-900">{config.title}</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{config.desc}</p>
         </div>
 
-        <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: 28, fontWeight: 700, marginBottom: 10, color: '#F8F6F0', animation: 'fadeUp 0.4s ease 0.1s both' }}>
-          {cfg.title}
-        </h1>
-        <p style={{ color: '#888', fontSize: 15, lineHeight: 1.7, marginBottom: 28, animation: 'fadeUp 0.4s ease 0.15s both' }}>
-          {cfg.desc}
-        </p>
-
-        {/* Booking details card */}
-        <div style={{ background: '#161616', border: '1px solid rgba(201,168,76,0.15)', borderRadius: 16, padding: '22px 24px', marginBottom: 28, textAlign: 'left', animation: 'fadeUp 0.4s ease 0.2s both' }}>
-          <div style={{ fontSize: 11, color: '#666', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 16 }}>
-            Informasi Pesanan
+        <div className="p-6 md:p-7 space-y-5">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+            {orderId && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">{t.orderNumber}</span>
+                <span className="font-black text-slate-800">{orderId}</span>
+              </div>
+            )}
+            {kaiOrder && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">Nomor Order KAI</span>
+                <span className="font-semibold text-orange-600">{kaiOrder}</span>
+              </div>
+            )}
+            {pnr && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">Kode Booking</span>
+                <span className="font-black text-emerald-600">{pnr}</span>
+              </div>
+            )}
           </div>
 
-          {orderId && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 11, color: '#555', marginBottom: 4 }}>NOMOR PESANAN (INTERNAL)</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#F8F6F0', fontFamily: 'monospace' }}>{orderId}</div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <i className="fa-solid fa-list-check text-orange-500" />
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Catatan penting</p>
             </div>
-          )}
+            <ul className="space-y-2 text-sm text-slate-600">
+              <li className="flex items-start gap-2">
+                <i className="fa-solid fa-circle-check mt-0.5 text-orange-500" />
+                <span>Pastikan data penumpang sesuai dokumen yang akan dipakai saat naik kereta.</span>
+              </li>
+              {isPending && (
+                <li className="flex items-start gap-2">
+                  <i className="fa-solid fa-circle-check mt-0.5 text-orange-500" />
+                  <span>Segera selesaikan pembayaran untuk menghindari pembatalan otomatis.</span>
+                </li>
+              )}
+            </ul>
+          </div>
 
-          {kaiOrder && (
-            <div style={{ marginBottom: 14, padding: '12px 14px', background: 'rgba(201,168,76,0.06)', borderRadius: 10, border: '1px solid rgba(201,168,76,0.12)' }}>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>NOMOR ORDER KAI</div>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#C9A84C', fontFamily: 'monospace' }}>{kaiOrder}</div>
-            </div>
-          )}
-
-          {pnr && (
-            <div style={{ padding: '12px 14px', background: 'rgba(39,174,96,0.05)', borderRadius: 10, border: '1px solid rgba(39,174,96,0.15)' }}>
-              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>KODE BOOKING (PNR)</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: '#27AE60', fontFamily: 'monospace', letterSpacing: '0.15em' }}>{pnr}</div>
-              <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>Tunjukkan kode ini di loket / mesin cetak KAI</div>
-            </div>
-          )}
-
-          {isPending && (
-            <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(231,76,60,0.06)', border: '1px solid rgba(231,76,60,0.15)', borderRadius: 10, fontSize: 12, color: '#e74c3c', lineHeight: 1.6 }}>
-              ⏰ Kursi dikunci sementara. Segera selesaikan pembayaran agar tiket tidak dibatalkan otomatis.
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'fadeUp 0.4s ease 0.3s both' }}>
-          <Link href="/bookings" style={{ padding: '14px', borderRadius: 12, background: 'linear-gradient(135deg,#C9A84C,#A07830)', color: '#0A0A0A', fontWeight: 800, fontSize: 15, textDecoration: 'none', display: 'block', fontFamily: 'inherit', letterSpacing: '0.02em' }}>
-            📋 Lihat Pesanan Saya
-          </Link>
-          <Link href="/train/search" style={{ padding: '14px', borderRadius: 12, border: '1px solid rgba(201,168,76,0.2)', color: '#C9A84C', fontWeight: 600, fontSize: 14, textDecoration: 'none', display: 'block', fontFamily: 'inherit' }}>
-            🚆 Cari Tiket Lagi
-          </Link>
+          <div className="flex flex-col gap-3">
+            <Link href="/bookings" className="flex w-full items-center justify-center gap-2 rounded-2xl bg-orange-600 px-4 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-600/20 transition-all hover:bg-orange-700">
+              <i className="fa-solid fa-list-check" /> {t.viewBooking}
+            </Link>
+            <Link href="/train/search" className="flex w-full items-center justify-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3.5 text-sm font-bold text-orange-600 transition-colors hover:bg-orange-100">
+              <i className="fa-solid fa-train" /> Cari Tiket Kereta Lagi
+            </Link>
+            <Link href="/dashboard" className="mt-1 text-center text-xs text-slate-400 transition-colors hover:text-slate-600">
+              Kembali ke Dashboard
+            </Link>
+          </div>
         </div>
       </div>
     </div>
@@ -107,9 +101,8 @@ function ConfirmationContent() {
 export default function TrainConfirmationPage() {
   return (
     <Suspense fallback={
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 12 }}>
-        <div style={{ width: 28, height: 28, border: '2px solid rgba(201,168,76,0.3)', borderTopColor: '#C9A84C', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-3 border-orange-200 border-t-orange-600" />
       </div>
     }>
       <ConfirmationContent />

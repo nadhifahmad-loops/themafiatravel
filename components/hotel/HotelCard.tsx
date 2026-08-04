@@ -1,14 +1,22 @@
 'use client';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
-function getLowestPrice(prices: any): { price: number; provider: string } {
-  if (!prices) return { price: 0, provider: '' };
+function getLowestPrice(prices: any): { price: number; provider: string; mealType: string } {
+  if (!prices) return { price: 0, provider: '', mealType: '' };
   let lowest = Infinity;
   let lowestProvider = '';
+  let lowestMeal = '';
   Object.entries(prices).forEach(([provider, p]: any) => {
-    if (p?.price && p.price < lowest) { lowest = p.price; lowestProvider = provider; }
+    if (p?.price && p.price < lowest) {
+      lowest = p.price;
+      lowestProvider = provider;
+      lowestMeal = p.meal_type || '';
+    }
   });
-  return { price: lowest === Infinity ? 0 : lowest, provider: lowestProvider };
+  return { price: lowest === Infinity ? 0 : lowest, provider: lowestProvider, mealType: lowestMeal };
 }
 
 function Stars({ n }: { n: number }) {
@@ -16,20 +24,54 @@ function Stars({ n }: { n: number }) {
   return (
     <div className="flex gap-0.5">
       {Array.from({ length: 5 }, (_, i) => (
-        <i key={i} className={`fa-solid fa-star text-[14px] ${i < n ? 'text-orange-500' : 'text-slate-300'}`}></i>
+        <i key={i} className={`fa-solid fa-star text-[11px] ${i < n ? 'text-amber-400' : 'text-slate-200'}`}></i>
       ))}
     </div>
   );
 }
 
-export default function HotelCard({ hotel, searchParams, nights = 1 }: { hotel: any; searchParams: any; nights?: number }) {
-  const router = useRouter();
-  const { price, provider } = getLowestPrice(hotel.prices);
-  const image = hotel.images?.[0]?.url;
-  const rating = parseInt(hotel.rating) || 0;
-  const isWithMeal = Object.values(hotel.prices || {}).some((p: any) => p?.is_with_meal);
+function PriceTag({ price, nights }: { price: number; nights: number }) {
+  const { language } = useLanguage();
+  const t = i18n.hotelSearch[language];
+  const tc = i18n.common[language];
+  if (price <= 0) return <span className="text-sm text-slate-400 italic">Harga tidak tersedia</span>;
+  const perNight = Math.round(price / nights);
+  return (
+    <div className="flex flex-col items-end">
+      <span className="font-black text-orange-600 text-2xl leading-none">
+        IDR {perNight.toLocaleString('id-ID')}
+      </span>
+      <span className="text-[10px] text-slate-400 font-semibold mt-0.5">{t.perNight} · {nights} {tc.night}</span>
+    </div>
+  );
+}
 
-  // LOGIKA ASLI MILIKMU (TIDAK DIUBAH)
+function HotelMetaChip({ icon, label, accent }: { icon: string; label: string; accent: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${accent}`}>
+      <i className={`fa-solid ${icon} text-[9px]`} />
+      {label}
+    </span>
+  );
+}
+
+export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest = false }: {
+  hotel: any;
+  searchParams: any;
+  nights?: number;
+  isCheapest?: boolean;
+}) {
+  const { language } = useLanguage();
+  const t = i18n.hotelSearch[language];
+  const tc = i18n.common[language];
+  const router = useRouter();
+  const [imgErr, setImgErr] = useState(false);
+  const { price, mealType } = getLowestPrice(hotel.prices);
+  const image = !imgErr ? hotel.images?.[0]?.url : null;
+  const rating = parseInt(hotel.rating) || 0;
+  const isWithMeal = mealType && mealType !== 'ROOM ONLY' && mealType !== 'RO' && mealType !== 'Room Only';
+  const isConfirmed = hotel.state === 'confirm';
+
   const handleSelect = () => {
     const q = new URLSearchParams({
       hotel_id: hotel.id,
@@ -37,109 +79,128 @@ export default function HotelCard({ hotel, searchParams, nights = 1 }: { hotel: 
       checkout_date: searchParams.checkout_date,
       destination_id: searchParams.destination_id,
       adult: String(searchParams.adult),
-      child: String(searchParams.child),
+      child: String(searchParams.child || 0),
       room: String(searchParams.room),
-      nationality: searchParams.nationality,
+      nationality: searchParams.nationality || 'ID',
     }).toString();
     router.push(`/hotel/${hotel.id}?${q}`);
   };
 
   return (
-    <article 
+    <article
       onClick={handleSelect}
-      className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row hover:shadow-md transition-all duration-300 group cursor-pointer"
+      className={`bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col md:flex-row hover:shadow-lg transition-all duration-300 group cursor-pointer ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200/60'}`}
     >
-      {/* KIRI: Gambar (Width 1/3 di Desktop) */}
-      <div className="md:w-1/3 relative min-h-[220px] bg-slate-100 overflow-hidden shrink-0">
+      {/* ── IMAGE ── */}
+      <div className="md:w-[260px] lg:w-[280px] relative h-[220px] md:h-auto bg-slate-100 overflow-hidden shrink-0">
         {image ? (
           <img
             src={image}
             alt={hotel.name}
-            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            onError={() => setImgErr(true)}
           />
         ) : (
-          <div className="flex items-center justify-center h-full text-5xl text-slate-300 bg-slate-50">🏨</div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-50" />
-        
-        {/* Badge Kiri Atas */}
-        <div className="absolute top-4 left-4">
-          <span className="bg-slate-900 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
-            <i className="fa-solid fa-hotel text-[10px]"></i> Hotel
-          </span>
-        </div>
-
-        {/* Favorite Icon Kanan Atas */}
-        <button className="absolute top-4 right-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 transition-colors shadow-sm">
-          <i className="fa-solid fa-heart"></i>
-        </button>
-      </div>
-
-      {/* KANAN: Konten Detail (Width 2/3 di Desktop) */}
-      <div className="md:w-2/3 p-6 flex flex-col flex-grow">
-        
-        {/* Header Title & Rating */}
-        <div className="flex justify-between items-start mb-2 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-bold text-xl md:text-2xl text-slate-900 font-display leading-tight">{hotel.name}</h3>
-              <Stars n={rating} />
+          <div className="flex flex-col items-center justify-center h-full gap-3 bg-gradient-to-br from-slate-100 to-slate-50">
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+              <i className="fa-solid fa-hotel text-3xl text-slate-300"></i>
             </div>
-            <p className="text-sm text-slate-500 flex items-center gap-1.5">
-              <i className="fa-solid fa-location-dot text-slate-400 text-lg"></i>
-              <span className="truncate max-w-[280px]">
-                {[hotel.location?.city, hotel.location?.state, hotel.location?.country_code].filter(Boolean).join(', ')}
-              </span>
-            </p>
+            <span className="text-xs text-slate-400 font-semibold">Foto tidak tersedia</span>
           </div>
+        )}
+        {/* Overlay gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
 
-          {/* Rating Bubble Kanan Atas */}
-          {rating > 0 && (
-            <div className="flex flex-col items-end shrink-0 hidden sm:flex">
-              <div className="bg-blue-50 text-blue-700 font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm border border-blue-100">
-                <i className="fa-solid fa-thumbs-up text-sm"></i> 8.{rating}
-              </div>
-              <span className="text-[10px] text-slate-400 mt-1 font-medium uppercase tracking-wider">Top Pick</span>
+        {/* Meal badge */}
+        {isWithMeal && (
+          <div className="absolute top-3 left-3">
+            <span className="bg-emerald-500 text-white text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+              <i className="fa-solid fa-utensils text-[8px]"></i> Sarapan
+            </span>
+          </div>
+        )}
+
+        {/* Status badge */}
+        {!isConfirmed && (
+          <div className="absolute top-3 right-3">
+            <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">Draft</span>
+          </div>
+        )}
+        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+          <div className="rounded-full bg-white/90 backdrop-blur-sm px-3 py-1 text-[10px] font-black text-slate-700 shadow-sm">
+            {hotel.location?.city || 'Lokasi populer'}
+          </div>
+          {isCheapest && (
+            <div className="rounded-full bg-orange-500/90 px-3 py-1 text-[10px] font-black text-white shadow-sm">
+              Best Price
             </div>
           )}
         </div>
+      </div>
 
-        {/* Fasilitas & Harga Bawah */}
-        <div className="flex-1 flex items-end justify-between mt-6 pt-6 border-t border-slate-100 gap-4">
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-4 flex-wrap">
-              <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
-                <i className="fa-solid fa-wifi text-slate-400 text-sm"></i> Free Wi-Fi
-              </div>
-              {isWithMeal && (
-                <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold">
-                  <i className="fa-solid fa-utensils text-slate-400 text-sm"></i> Breakfast incl.
-                </div>
-              )}
-            </div>
-            <span className="text-emerald-600 text-xs font-bold flex items-center gap-1.5 mt-1">
-              <i className="fa-solid fa-shield-check text-sm"></i> {hotel.state === 'confirm' ? 'Certified Clean' : 'Info Awal'}
-            </span>
+      {/* ── CONTENT ── */}
+      <div className="flex-1 p-5 flex flex-col min-w-0">
+
+        {/* Top: name + location */}
+        <div className="mb-3">
+          <div className="flex items-start justify-between gap-3 mb-1.5">
+            <h3 className="font-black text-slate-900 text-lg leading-tight truncate flex-1">
+              {hotel.name}
+            </h3>
+            {rating > 0 && (
+              <span className="shrink-0 bg-blue-600 text-white text-xs font-black px-2 py-0.5 rounded-lg">
+                {rating}.0
+              </span>
+            )}
           </div>
-
-          <div className="flex flex-col items-end shrink-0">
-            {price > 0 ? (
-              <>
-                <span className="font-black text-orange-600 text-2xl font-display leading-none mb-1">
-                  IDR {price.toLocaleString('id-ID')}
-                </span>
-                <span className="text-[10px] text-slate-400 mb-3 uppercase tracking-widest font-bold">per malam · {provider}</span>
-                <button className="bg-orange-600 text-white font-bold px-6 py-2.5 rounded-lg active:scale-95 transition-all shadow-md shadow-orange-600/20 hover:bg-orange-700">
-                  Lihat Penawaran
-                </button>
-              </>
-            ) : (
-              <span className="text-sm font-bold text-slate-400 italic">Harga tidak tersedia</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Stars n={rating} />
+            {hotel.location?.city && (
+              <span className="flex items-center gap-1 text-xs text-slate-400 font-medium">
+                <i className="fa-solid fa-location-dot text-slate-300 text-[10px]"></i>
+                {[hotel.location.city, hotel.location.country_code].filter(Boolean).join(', ')}
+              </span>
             )}
           </div>
         </div>
 
+        {/* Amenity chips */}
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <HotelMetaChip icon="fa-wifi" label="Wi-Fi" accent="text-slate-600 bg-slate-50 border-slate-100" />
+          {isWithMeal && (
+            <HotelMetaChip icon="fa-mug-hot" label="Sarapan" accent="text-emerald-600 bg-emerald-50 border-emerald-100" />
+          )}
+          {isConfirmed && (
+            <HotelMetaChip icon="fa-shield-check" label="Terverifikasi" accent="text-blue-600 bg-blue-50 border-blue-100" />
+          )}
+          {Object.keys(hotel.prices || {}).length > 1 && (
+            <HotelMetaChip icon="fa-tags" label={`${Object.keys(hotel.prices).length} penawaran`} accent="text-purple-600 bg-purple-50 border-purple-100" />
+          )}
+        </div>
+
+        {/* Bottom: price + CTA */}
+        <div className="mt-auto flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 pt-4 border-t border-slate-100">
+          <div className="flex flex-col">
+            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Mulai dari</span>
+            <PriceTag price={price} nights={nights} />
+            {price > 0 && (
+              <span className="text-[10px] text-slate-400 mt-0.5">
+                {tc.total} IDR {price.toLocaleString('id-ID')} · {nights} {tc.night}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSelect();
+            }}
+            className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all active:scale-95 shadow-sm shadow-orange-200 group-hover:shadow-md group-hover:shadow-orange-200 shrink-0 flex items-center justify-center gap-2"
+          >
+            {t.selectHotel}
+            <i className="fa-solid fa-arrow-right text-xs"></i>
+          </button>
+        </div>
       </div>
     </article>
   );

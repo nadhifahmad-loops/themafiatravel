@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { insuranceAPI } from '@/lib/orbis';
+import { insuranceSearchSchema, validateBody } from '@/lib/validate';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 // Map destination_area per provider agar API tidak error
 const PROVIDER_AREAS: Record<string, string[]> = {
@@ -26,8 +28,25 @@ function pickBestArea(provider: string, requestedArea: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rateLimit = await checkRateLimit(`search:${ip}`, 'search');
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak pencarian. Silakan coba lagi nanti.', retryAfter: rateLimit.retryAfter },
+      { status: 429 }
+    );
+  }
+
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Request body tidak valid.' }, { status: 400 });
+    }
+
+    const validation = validateBody(insuranceSearchSchema, body);
+    if (!validation.success) return validation.response;
+    const v = validation.data;
+
     const {
       date_start,
       date_end,
@@ -38,8 +57,8 @@ export async function POST(req: NextRequest) {
       destination_area,
       type = 'single_trip',
       product_type = 'individual',
-      providers, // array of providers, or single provider string
-    } = body;
+      providers,
+    } = v;
 
     if (!date_start || !date_end) {
       return NextResponse.json({ error: 'date_start dan date_end wajib diisi' }, { status: 400 });
@@ -58,7 +77,7 @@ export async function POST(req: NextRequest) {
       const payload = {
         date_start,
         date_end,
-        pax,
+        pax: Number(pax),
         destination,
         is_senior,
         international,

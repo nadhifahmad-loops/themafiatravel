@@ -1,5 +1,8 @@
 'use client';
 import { memo, useState, useMemo } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
+import { sanitizeInsuranceHtml } from '@/lib/insurance-html';
 
 function fmtIDR(n: number) {
   if (!n) return 'Rp 0';
@@ -21,6 +24,7 @@ function InfoRenderer({ html }: { html: string }) {
   const hasRichHtml = /<(table|tr|td|th|ul|ol|li|div|p)\b/i.test(html);
 
   if (hasRichHtml) {
+    const safeHtml = sanitizeInsuranceHtml(html);
     return (
       <>
         <style>{`
@@ -32,7 +36,7 @@ function InfoRenderer({ html }: { html: string }) {
           .ins-benefit ul{padding-left:18px;margin:4px 0}.ins-benefit li{color:#475569;font-size:12px;margin-bottom:3px;line-height:1.5}
           .ins-benefit p{color:#475569;font-size:12px;margin:4px 0;line-height:1.55}
         `}</style>
-        <div className="ins-benefit" dangerouslySetInnerHTML={{ __html: html }} />
+        <div className="ins-benefit" dangerouslySetInnerHTML={{ __html: safeHtml }} />
       </>
     );
   }
@@ -59,11 +63,14 @@ function InfoRenderer({ html }: { html: string }) {
   );
 }
 
-function InsuranceCard({ product, onSelect, isSelecting }: {
+function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
   product: any;
   onSelect: (p: any) => void;
   isSelecting?: boolean;
+  isCheapest?: boolean;
 }) {
+  const { language } = useLanguage();
+  const t = i18n.insuranceSearch[language];
   const [showInfo, setShowInfo] = useState(false);
 
   const provider = product.provider || product.carrier_code || '';
@@ -72,7 +79,6 @@ function InsuranceCard({ product, onSelect, isSelecting }: {
   const info     = product.info || '';
 
   const summary  = product.service_charge_summary?.[0];
-  const baseFare = summary?.total_fare || summary?.base_fare || price;
   const commission = Math.abs(summary?.total_commission || summary?.base_commission || 0);
 
   const limitTags = useMemo(() => {
@@ -84,9 +90,14 @@ function InsuranceCard({ product, onSelect, isSelecting }: {
   }, [product]);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md hover:border-orange-200 transition-all duration-200">
+    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-200 hover:border-orange-200'}`}>
       {/* Provider Badge */}
       <div className={`px-5 pt-3 pb-0 flex items-center gap-2`}>
+        {isCheapest && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white px-2.5 py-1 rounded-full shadow-sm">
+            <i className="fa-solid fa-tags text-[9px]"></i> Harga Termurah
+          </span>
+        )}
         <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 py-1 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
           {badge.label}
         </span>
@@ -135,11 +146,13 @@ function InsuranceCard({ product, onSelect, isSelecting }: {
           {info && !showInfo && (
             <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed"
                dangerouslySetInnerHTML={{
-                 __html: info
-                   .replace(/<[^>]+>/g, ' ')
-                   .replace(/\s{2,}/g, ' ')
-                   .trim()
-                   .substring(0, 120) + (info.length > 120 ? '...' : '')
+                 __html: sanitizeInsuranceHtml(
+                   info
+                     .replace(/<[^>]+>/g, ' ')
+                     .replace(/\s{2,}/g, ' ')
+                     .trim()
+                     .substring(0, 120) + (info.length > 120 ? '...' : '')
+                 )
                }}
             />
           )}
@@ -159,11 +172,11 @@ function InsuranceCard({ product, onSelect, isSelecting }: {
         {/* Kanan: Harga + CTA */}
         <div className="md:w-48 shrink-0 flex flex-col items-start md:items-end justify-between pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
           <div className="md:text-right">
-            <p className="text-[11px] text-slate-400 font-medium mb-0.5">Total Premi</p>
+            <p className="text-[11px] text-slate-400 font-medium mb-0.5">{t.premium}</p>
             <p className="text-2xl font-black text-orange-600 leading-tight">
               {fmtIDR(price)}
             </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">per orang / IDR</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{t.perPax} / IDR</p>
             {commission > 0 && (
               <p className="text-[10px] text-emerald-600 font-bold mt-1">
                 Komisi: {fmtIDR(commission)}
@@ -180,7 +193,7 @@ function InsuranceCard({ product, onSelect, isSelecting }: {
                 <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 Memproses...
               </span>
-            ) : 'Pilih Paket'}
+            ) : t.selectPlan}
           </button>
           {product.pdf && (
             <a href={product.pdf} target="_blank" rel="noopener noreferrer"

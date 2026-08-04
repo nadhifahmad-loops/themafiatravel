@@ -1,8 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 export default function InsuranceBookingDetailPage() {
+  const { language } = useLanguage();
+  const t = i18n.bookingDetail[language];
   const { id } = useParams();
   const router = useRouter();
   const [booking, setBooking] = useState<any>(null);
@@ -26,20 +30,20 @@ export default function InsuranceBookingDetailPage() {
     if (id) fetchDetail();
   }, [id]);
 
-  if (loading) return <div style={{ color: '#C9A84C', textAlign: 'center', padding: '100px' }}>⏳ Memuat Detail Polis...</div>;
+  if (loading) return <div style={{ color: '#C9A84C', textAlign: 'center', padding: '100px' }}>⏳ {t.loading}</div>;
   if (error) return <div style={{ color: '#e74c3c', textAlign: 'center', padding: '100px' }}>⚠️ {error}</div>;
 
   return (
     <div style={{ padding: '32px', maxWidth: 800, margin: '0 auto', fontFamily: 'DM Sans, sans-serif', color: '#F8F6F0' }}>
-      <button onClick={() => router.back()} style={{ background: 'transparent', border: '1px solid rgba(201,168,76,0.3)', color: '#C9A84C', padding: '8px 16px', borderRadius: 8, cursor: 'pointer', marginBottom: '24px' }}>← Kembali</button>
+      <button onClick={() => router.back()} style={{ background: 'transparent', border: '1px solid rgba(201,168,76,0.3)', color: '#C9A84C', padding: '8px 16px', borderRadius: 8, cursor: 'pointer', marginBottom: '24px' }}>← {t.back}</button>
       
       <div style={{ background: '#1A1A1A', border: '1px solid rgba(201,168,76,0.2)', borderRadius: 20, padding: '40px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
           <div style={{ fontSize: '50px', marginBottom: '10px' }}>🛡️</div>
-          <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: '28px', color: '#C9A84C', margin: '0 0 8px 0' }}>E-Polis Asuransi</h1>
-          <p style={{ color: '#666', fontSize: '14px' }}>ID Pesanan: {id}</p>
+          <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: '28px', color: '#C9A84C', margin: '0 0 8px 0' }}>{t.policyInsurance}</h1>
+          <p style={{ color: '#666', fontSize: '14px' }}>{t.orderNumber}: {id}</p>
           <span style={{ display: 'inline-block', marginTop: '15px', padding: '6px 16px', background: 'rgba(39,174,96,0.1)', color: '#27AE60', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold', border: '1px solid rgba(39,174,96,0.2)' }}>
-             TERKONFIRMASI
+             {t.statusMap.paid.toUpperCase()}
           </span>
         </div>
 
@@ -55,7 +59,7 @@ export default function InsuranceBookingDetailPage() {
         </div>
 
         <div style={{ marginTop: '30px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
-           <h3 style={{ fontSize: '14px', marginBottom: '15px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '10px' }}>Informasi Tertanggung</h3>
+           <h3 style={{ fontSize: '14px', marginBottom: '15px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '10px' }}>{t.insurance.insured}</h3>
            {booking?.passengerData?.map((pax: any, i: number) => (
              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '14px' }}>
                 <span style={{ color: '#AAA' }}>{pax.title} {pax.first_name} {pax.last_name}</span>

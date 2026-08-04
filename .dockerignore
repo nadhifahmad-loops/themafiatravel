@@ -1,0 +1,13 @@
+Dockerfile
+docker-compose.yml
+.dockerignore
+node_modules
+.git
+.gitignore
+.env
+.env.local
+.next
+.vercel
+*.md
+tmp-*
+cookie.txt

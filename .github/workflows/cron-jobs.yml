@@ -1,0 +1,19 @@
+name: Booking cron jobs
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  run-crons:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run expiry job
+        run: |
+          curl -X POST "${{ secrets.APP_URL }}/api/cron/expire-bookings" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+      - name: Run reminder job
+        run: |
+          curl -X POST "${{ secrets.APP_URL }}/api/cron/reminders" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

@@ -2,13 +2,6 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
-/**
- * Halaman ini menerima redirect dari Midtrans setelah proses pembayaran.
- * Midtrans mengirimkan query params:
- *   - order_id        → ID pesanan (misal: TMT-FLT-xxx, TMT-HTL-xxx)
- *   - status_code     → HTTP-like code: 200=sukses, 201=pending, 202=denied
- *   - transaction_status → settlement | pending | deny | cancel | expire
- */
 function FinishContent() {
   const sp = useSearchParams();
   const router = useRouter();
@@ -29,17 +22,15 @@ function FinishContent() {
     const isFailed = statusCode === '202' || transactionStatus === 'deny' || transactionStatus === 'cancel' || transactionStatus === 'expire';
 
     if (isSuccess) {
-      setMessage('Pembayaran berhasil! Mengarahkan ke pesanan Anda...');
+      setMessage('Pembayaran berhasil! Mengarahkan ke rincian pesanan...');
     } else if (isPending) {
-      setMessage('Pembayaran sedang diproses. Mengarahkan ke pesanan Anda...');
+      setMessage('Pembayaran sedang diproses. Mengarahkan ke rincian pesanan...');
     } else if (isFailed) {
-      setMessage('Pembayaran tidak berhasil. Mengarahkan ke pesanan Anda...');
+      setMessage('Pembayaran tidak berhasil. Mengarahkan ke rincian pesanan...');
     }
 
-    // Selalu redirect ke /bookings, apapun statusnya
-    // Halaman bookings menampilkan status terkini dari database
     const timer = setTimeout(() => {
-      router.replace('/bookings');
+      router.replace(`/bookings/${orderId}`);
     }, 1800);
 
     return () => clearTimeout(timer);
@@ -51,33 +42,17 @@ function FinishContent() {
         style={{
           width: 52,
           height: 52,
-          border: '3px solid #F97316',
+          border: '3px solid #1e293b',
           borderTopColor: 'transparent',
           borderRadius: '50%',
           animation: 'spin 0.8s linear infinite',
         }}
       />
       <div className="text-center space-y-1">
-        <p className="text-gray-700 font-semibold text-base">{message}</p>
-        <p className="text-gray-400 text-sm">Harap tunggu sebentar...</p>
+        <p className="text-slate-700 font-semibold text-base">{message}</p>
+        <p className="text-slate-400 text-sm">Harap tunggu sebentar...</p>
       </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
-}
-
-function ErrorContent() {
-  const router = useRouter();
-  useEffect(() => {
-    const t = setTimeout(() => router.replace('/bookings'), 3000);
-    return () => clearTimeout(t);
-  }, [router]);
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-white gap-5">
-      <div className="text-4xl">⚠️</div>
-      <p className="text-gray-700 font-semibold">Terjadi gangguan saat redirect.</p>
-      <p className="text-gray-400 text-sm">Mengarahkan ke halaman pesanan...</p>
     </div>
   );
 }
@@ -91,13 +66,13 @@ export default function PaymentFinish() {
             style={{
               width: 48,
               height: 48,
-              border: '3px solid #F97316',
+              border: '3px solid #1e293b',
               borderTopColor: 'transparent',
               borderRadius: '50%',
               animation: 'spin 0.8s linear infinite',
             }}
           />
-          <p className="text-gray-400 text-sm font-medium">Memproses...</p>
+          <p className="text-slate-400 text-sm font-medium">Memproses...</p>
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </div>
       }

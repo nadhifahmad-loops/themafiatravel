@@ -4,6 +4,8 @@ import { useState, useMemo, Suspense, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TrainSearchForm from '@/components/train/TrainSearchForm';
 import TrainCard from '@/components/train/TrainCard';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtIDR(n: number) {
@@ -22,6 +24,15 @@ function fmtDate(dt: string) {
 const CABIN_LABELS: Record<string, string> = {
   E: 'Eksekutif', B: 'Bisnis', K: 'Ekonomi', P: 'Prioritas',
 };
+
+const POPULAR_TRAIN_ROUTES = [
+  { origin: 'GMR', destination: 'BD',  name: 'Jakarta – Bandung',    nameEN: 'Jakarta – Bandung',    price: 75000,  img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&q=80' },
+  { origin: 'GMR', destination: 'YK',  name: 'Jakarta – Yogyakarta', nameEN: 'Jakarta – Yogyakarta', price: 200000, img: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=600&q=80' },
+  { origin: 'GMR', destination: 'SGU', name: 'Jakarta – Surabaya',   nameEN: 'Jakarta – Surabaya',   price: 180000, img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=600&q=80' },
+  { origin: 'BD',  destination: 'YK',  name: 'Bandung – Yogyakarta', nameEN: 'Bandung – Yogyakarta', price: 120000, img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=600&q=80' },
+  { origin: 'GMR', destination: 'SMC', name: 'Jakarta – Semarang',   nameEN: 'Jakarta – Semarang',   price: 150000, img: 'https://images.unsplash.com/photo-1541592106381-b31e9677c0e5?w=600&q=80' },
+  { origin: 'YK',  destination: 'SGU', name: 'Yogyakarta – Surabaya', nameEN: 'Yogyakarta – Surabaya', price: 95000,  img: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=600&q=80' },
+];
 
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
 function SkeletonLoader() {
@@ -54,6 +65,8 @@ function SkeletonLoader() {
 
 // ─── Compact Search Bar ───────────────────────────────────────────────────────
 function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; onSearch: (p: any) => void; loading: boolean }) {
+  const { language } = useLanguage();
+  const tc = i18n.common[language];
   const [collapsed, setCollapsed] = useState(true);
   
   if (collapsed) {
@@ -71,7 +84,7 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
           <div>
             <p className="font-black text-slate-900 text-sm">{origin} → {dest}</p>
             <p className="text-xs text-slate-500">
-              {date} · {dirLabel} · {searchMeta?.adult || 1} Dewasa
+              {date} · {dirLabel} · {searchMeta?.adult || 1} {tc.adult}
             </p>
           </div>
         </div>
@@ -94,7 +107,7 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
   };
 
   return (
-    <div className="bg-slate-900 rounded-2xl p-5 shadow-xl transition-all">
+    <div className="bg-slate-900 rounded-2xl p-5 shadow-xl relative z-50 transition-all">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-black text-white text-sm">Ubah Pencarian</h3>
         <button onClick={() => setCollapsed(true)} className="text-white/60 hover:text-white transition-colors">
@@ -106,14 +119,75 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
   );
 }
 
+// ─── Landing (default, belum mencari) ────────────────────────────────────────
+function TrainLanding({ onSearch, loading }: { onSearch: (p: any) => void; loading: boolean }) {
+  const { language } = useLanguage();
+  const t = i18n.trainSearch[language];
+  const isEN = language === 'EN';
+
+  const quickSearch = (route: { origin: string; destination: string }) => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    onSearch({ origin: route.origin, destination: route.destination, depart: d.toISOString().split('T')[0], adult: 1, infant: 0, direction: 'OW' });
+  };
+
+  return (
+    <>
+      <section className="relative overflow-hidden bg-gradient-to-br from-orange-700 via-orange-600 to-orange-500">
+        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-32 -left-16 w-80 h-80 rounded-full bg-amber-400/20 blur-3xl" />
+        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-14">
+          <div className="mb-6 md:mb-8">
+            <p className="text-orange-100 text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-2">
+              <i className="fa-solid fa-train"></i> {isEN ? 'Train Search' : 'Pencarian Kereta'}
+            </p>
+            <h1 className="text-2xl md:text-4xl font-black text-white leading-tight">{t.landing.title}</h1>
+            <p className="text-orange-100/90 text-sm md:text-base mt-2">{t.landing.subtitle}</p>
+          </div>
+          <div className="bg-slate-900/40 border border-white/20 rounded-3xl p-5 md:p-6 shadow-2xl backdrop-blur-sm">
+            <TrainSearchForm onSearch={onSearch} loading={loading} />
+          </div>
+        </div>
+      </section>
+
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-8">
+        <div className="mb-5">
+          <h2 className="text-lg sm:text-xl font-black text-slate-900">{t.landing.popularTitle}</h2>
+          <p className="text-slate-500 text-xs sm:text-sm mt-1">{t.landing.popularSub}</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
+          {POPULAR_TRAIN_ROUTES.map(r => (
+            <button key={`${r.origin}-${r.destination}`} onClick={() => quickSearch(r)}
+              className="group relative overflow-hidden rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
+              <div className="aspect-[4/3] relative">
+                <img src={r.img} alt={isEN ? r.nameEN : r.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3">
+                  <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? r.nameEN : r.name}</p>
+                  <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">{t.landing.startingFrom} {fmtIDR(r.price)}</p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Main Content ─────────────────────────────────────────────────────────────
 function TrainSearchContent() {
+  const { language } = useLanguage();
+  const t = i18n.trainSearch[language];
+  const tc = i18n.common[language];
+
   const searchParamsHook = useSearchParams();
   const router = useRouter();
 
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
   
   // Ambil state pencarian dari URL / Props saat awal render
   const [searchMeta, setSearchMeta] = useState<any>({
@@ -136,6 +210,7 @@ function TrainSearchContent() {
     setLoading(true);
     setError('');
     setResults(null);
+    setHasSearched(true);
     setFilterCabin([]);
     setFilterDepartureTime([]);
     
@@ -168,7 +243,9 @@ function TrainSearchContent() {
       if (!res.ok || !data.success) throw new Error(data.error || 'Gagal mencari jadwal kereta. Pastikan rute & tanggal benar.');
       setResults(data.data);
     } catch (e: any) {
-      setError(e.message);
+      setError(e instanceof TypeError
+        ? 'Koneksi internet terputus. Periksa sinyalmu lalu coba lagi.'
+        : e.message);
     }
     setLoading(false);
   };
@@ -260,6 +337,18 @@ function TrainSearchContent() {
     return list;
   }, [allJourneys, filterCabin, filterDepartureTime, sortBy]);
 
+  // ── Indeks jadwal termurah (badge highlight) ──
+  const cheapestIdx = useMemo(() => {
+    let bestIdx = -1;
+    let bestPrice = Infinity;
+    filteredJourneys.forEach((j, i) => {
+      const summary = j.fares?.[0]?.service_charge_summary?.[0];
+      const p = summary?.base_price || summary?.base_fare || 0;
+      if (p > 0 && p < bestPrice) { bestPrice = p; bestIdx = i; }
+    });
+    return bestIdx;
+  }, [filteredJourneys]);
+
   const toggleFilter = (arr: string[], val: string, setArr: (a: string[]) => void) => {
     setArr(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]);
   };
@@ -270,6 +359,10 @@ function TrainSearchContent() {
 
   return (
     <div className="bg-[#f4f6fb] min-h-screen pt-20">
+      {!hasSearched ? (
+        <TrainLanding onSearch={handleSearch} loading={loading} />
+      ) : (
+      <>
       {/* ─── Route Banner ──────────────────────────────────────────────────── */}
       <div className="bg-orange-700 text-white">
         <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
@@ -284,7 +377,7 @@ function TrainSearchContent() {
             )}
             <span className="text-orange-300">·</span>
             <span className="text-sm text-orange-100">
-              {searchMeta.adult || 1} Dewasa · {isRT ? 'Pulang Pergi' : 'Sekali Jalan'}
+              {searchMeta.adult || 1} {tc.adult} · {isRT ? 'Pulang Pergi' : 'Sekali Jalan'}
             </span>
           </div>
           
@@ -318,6 +411,19 @@ function TrainSearchContent() {
           <CompactSearchBar searchMeta={searchMeta} onSearch={handleSearch} loading={loading} />
         </div>
 
+        {!loading && allJourneys.length > 0 && (
+          <div className="mb-5 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-900">Jadwal kereta yang paling relevan</p>
+              <p className="text-xs text-slate-500 mt-1">Bandingkan kelas, waktu berangkat, dan harga dalam satu tampilan yang lebih rapi.</p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">
+              <span className="rounded-full bg-orange-50 px-2.5 py-1 text-orange-700">Kursi tersedia terpantau</span>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1">Pilih tarif lebih cepat</span>
+            </div>
+          </div>
+        )}
+
         {/* ─── Main Layout ─────────────────────────────────────────────────── */}
         <div className="flex flex-col lg:flex-row gap-5 items-start">
 
@@ -327,7 +433,7 @@ function TrainSearchContent() {
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <i className="fa-solid fa-sliders text-orange-500 text-sm"></i>
-                  <h3 className="font-black text-slate-800 text-sm">Filter</h3>
+                  <h3 className="font-black text-slate-800 text-sm">{tc.filter}</h3>
                 </div>
                 <button
                   onClick={() => { setFilterCabin([]); setFilterDepartureTime([]); setSortBy('price_asc'); }}
@@ -338,7 +444,7 @@ function TrainSearchContent() {
               <div className="p-4 space-y-5 max-h-[calc(100vh-180px)] overflow-y-auto">
                 {/* Waktu Berangkat */}
                 <div>
-                  <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">Waktu Berangkat</h4>
+                  <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">{t.departure}</h4>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[
                       { id: 'morning',   label: 'Pagi',  icon: 'fa-sun',       sub: '00-12' },
@@ -361,7 +467,7 @@ function TrainSearchContent() {
                 {/* Kelas Kereta */}
                 {cabinOptions.length > 0 && (
                   <div>
-                    <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">Kelas Kereta</h4>
+                    <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">{t.class}</h4>
                     <div className="space-y-1.5">
                       {cabinOptions.map(cabin => (
                         <label key={cabin} className="flex items-center gap-2.5 cursor-pointer group">
@@ -381,11 +487,11 @@ function TrainSearchContent() {
 
                 {/* Urutkan */}
                 <div>
-                  <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">Urutkan</h4>
+                  <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">{t.sortBy}</h4>
                   <div className="space-y-1.5">
                     {[
-                      { id: 'price_asc',  label: 'Harga Termurah' },
-                      { id: 'earliest',   label: 'Berangkat Paling Awal' },
+                      { id: 'price_asc',  label: t.sortOptions.price },
+                      { id: 'earliest',   label: t.sortOptions.departure },
                       { id: 'latest',     label: 'Berangkat Paling Akhir' },
                     ].map(opt => (
                       <label key={opt.id} className="flex items-center gap-2.5 cursor-pointer group">
@@ -410,7 +516,7 @@ function TrainSearchContent() {
                   Menampilkan <span className="font-black text-slate-900">{filteredJourneys.length}</span> jadwal kereta KAI
                 </p>
                 <div className="flex gap-2">
-                  {[{ id: 'price_asc', label: 'Termurah' }, { id: 'earliest', label: 'Paling Awal' }].map(s => (
+                  {[{ id: 'price_asc', label: t.sortOptions.price }, { id: 'earliest', label: t.sortOptions.departure }].map(s => (
                     <button key={s.id} onClick={() => setSortBy(s.id as any)}
                       className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${sortBy === s.id ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'}`}>
                       {s.label}
@@ -424,10 +530,16 @@ function TrainSearchContent() {
 
             {error && (
               <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl flex items-start gap-3 shadow-sm">
-                <i className="fa-solid fa-circle-exclamation text-red-500 mt-1"></i>
-                <div>
+                <i className="fa-solid fa-wifi text-red-500 mt-1"></i>
+                <div className="flex-1">
                   <h3 className="font-bold text-red-800">Gagal Mencari Tiket Kereta</h3>
                   <p className="text-sm text-red-600 mt-1">{error}</p>
+                  <button
+                    onClick={() => handleSearch(searchMeta)}
+                    className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors"
+                  >
+                    <i className="fa-solid fa-rotate-right"></i> Coba Lagi
+                  </button>
                 </div>
               </div>
             )}
@@ -435,7 +547,7 @@ function TrainSearchContent() {
             {!loading && filteredJourneys.length > 0 && (
               <div className="space-y-4 animate-fade-in">
                 {filteredJourneys.map((j: any, i: number) => (
-                  <TrainCard key={i} journey={j} onSelect={handleSelect} adultCount={parseInt(searchMeta?.adult || '1')} />
+                  <TrainCard key={i} journey={j} onSelect={handleSelect} adultCount={parseInt(searchMeta?.adult || '1')} isCheapest={cheapestIdx === i} />
                 ))}
               </div>
             )}
@@ -459,13 +571,15 @@ function TrainSearchContent() {
                 <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <i className="fa-solid fa-magnifying-glass text-3xl text-slate-300"></i>
                 </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">Tidak Ada Jadwal Kereta</h3>
-                <p className="text-slate-500 text-sm">Coba pilih tanggal lain atau stasiun berbeda.</p>
+                <h3 className="text-lg font-black text-slate-900 mb-2">{t.noResult}</h3>
+                <p className="text-slate-500 text-sm">{t.noResultSub}</p>
               </div>
             )}
           </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

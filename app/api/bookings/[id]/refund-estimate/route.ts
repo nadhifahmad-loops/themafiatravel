@@ -1,31 +1,73 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { estimateRefundByType } from '@/lib/refund';
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// ─── POST ──────────────────────────────────────────────────────────────────
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await params;
-    
-    const booking = await prisma.booking.findUnique({
-      where: { id }
-    });
-
-    if (!booking || (booking.status !== 'issued' && booking.status !== 'paid')) {
-      return NextResponse.json({ success: false, error: 'Pesanan tidak memenuhi syarat refund.' }, { status: 400 });
+    const session = await getServerSession(authOptions);
+    const sessionEmail = session?.user?.email;
+    if (!sessionEmail) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const penaltyFee = Math.round(booking.totalAmount * 0.20); 
-    const adminFee = 50000;
-    const estimatedRefund = booking.totalAmount - penaltyFee - adminFee;
+    const requester = await prisma.user.findUnique({ where: { email: sessionEmail } });
+    if (!requester) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const resolvedParams = await params;
+    const id = resolvedParams.id;
+
+    // Cari booking
+    const booking = await prisma.booking.findFirst({
+      where: { OR: [{ id }, { orderNumber: id }] },
+    });
+
+    if (!booking) {
+      return NextResponse.json(
+        { success: false, error: 'Pesanan tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    // Validasi ownership
+    if (booking.userId) {
+      if (requester.role !== 'admin' && booking.userId !== requester.id) {
+        return NextResponse.json(
+          { success: false, error: 'Akses ditolak' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Hanya bisa estimasi jika status paid atau issued
+    if (!['paid', 'issued'].includes(booking.status)) {
+      return NextResponse.json(
+        { success: false, error: `Tidak bisa estimasi refund untuk status: ${booking.status}` },
+        { status: 400 }
+      );
+    }
+
+    const estimate = estimateRefundByType(booking.bookingType, booking.totalAmount);
 
     return NextResponse.json({
       success: true,
-      data: {
-        penalty_fee: penaltyFee,
-        admin_fee: adminFee,
-        estimated_refund_amount: estimatedRefund > 0 ? estimatedRefund : 0
-      }
+      data: estimate,
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error('Error fetching refund estimate:', error);
+    return NextResponse.json(
+      { success: false, error: 'Gagal menghitung estimasi refund' },
+      { status: 500 }
+    );
   }
 }

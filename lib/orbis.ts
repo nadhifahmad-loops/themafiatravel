@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import type { OrbisError, OrbisStruct } from '@/lib/orbis-types';
 
 // =========================
 // 🔐 CONFIG
@@ -9,10 +10,11 @@ const ORBIS_PASSWORD = process.env.ORBISWAY_PASSWORD!;
 const ORBIS_API_KEY = process.env.ORBISWAY_API_KEY!;
 
 // =========================
-// ⚡ MEMORY CACHE
+// ⚡ MEMORY CACHE & LOCK
 // =========================
 let memorySignature: string | null = null;
 let memoryExpiredAt = 0;
+let fetchingSignature: Promise<string> | null = null; // Kunci Promise untuk cegah Race Condition
 
 // =========================
 // 🗺️ ERROR MAP
@@ -20,8 +22,11 @@ let memoryExpiredAt = 0;
 const ORBIS_ERROR_MESSAGES: Record<number, string> = {
   1001: 'Permintaan tidak valid',
   1002: 'Sesi login maskapai habis',
+  4006: 'Harga telah berubah',
   4011: 'Sesi pencarian expired, silakan cari ulang',
   4014: 'Jadwal sudah terkunci',
+  4021: 'Harga tidak tersedia, silakan pilih kamar lain',
+  4023: 'Data tidak ditemukan',
   9999: 'Sistem maskapai sedang gangguan',
 };
 
@@ -72,144 +77,153 @@ export async function getOrbisSignature(
   const now = Date.now();
 
   // =========================
-  // ⚡ MEMORY CACHE
+  // ⚡ 1. CEK MEMORY CACHE
   // =========================
-  if (
-    !forceRefresh &&
-    memorySignature &&
-    now < memoryExpiredAt
-  ) {
+  if (!forceRefresh && memorySignature && now < memoryExpiredAt) {
     return memorySignature;
   }
 
   // =========================
-  // 🗄️ DATABASE CACHE
+  // ⏳ 2. TUNGGU JIKA ADA PROSES FETCHING BERJALAN
   // =========================
-  if (!forceRefresh) {
-    const dbSession = await prisma.orbisSession.findFirst({
-      where: {
-        expiresAt: {
-          gt: new Date(),
+  if (!forceRefresh && fetchingSignature) {
+    return fetchingSignature;
+  }
+
+  // =========================
+  // 🔒 3. LOCK PROSES KE DALAM PROMISE
+  // =========================
+  fetchingSignature = (async () => {
+    // 🗄️ Cek Database Cache
+    if (!forceRefresh) {
+      const dbSession = await prisma.orbisSession.findFirst({
+        where: {
+          expiresAt: {
+            gt: new Date(),
+          },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
+        orderBy: {
+          createdAt: 'desc',
+        },
+      });
+
+      if (dbSession) {
+        memorySignature = dbSession.signature;
+        memoryExpiredAt = dbSession.expiresAt.getTime();
+        return dbSession.signature;
+      }
+    }
+
+    console.log('[ORBIS] Requesting new signature...');
+    
+    // Pengecekan .env variables untuk memastikan kredensial masuk
+    console.log('[ORBIS CONFIG CHECK]', {
+      url: ORBIS_URL ? 'Terisi' : 'KOSONG',
+      user: ORBIS_USER ? 'Terisi' : 'KOSONG',
+      pass: ORBIS_PASSWORD ? 'Terisi' : 'KOSONG',
+      key: ORBIS_API_KEY ? 'Terisi' : 'KOSONG'
+    });
+
+    let res: Response;
+
+    try {
+      res = await fetchWithTimeout(
+        `${ORBIS_URL}/session`,
+        {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            // User-Agent ini penting untuk melewati proteksi firewall/Cloudflare maskapai
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            action: 'signin',
+          },
+          body: JSON.stringify({
+            user: ORBIS_USER,
+            password: ORBIS_PASSWORD,
+            api_key: ORBIS_API_KEY,
+          }),
+        },
+        15000
+      );
+    } catch (err) {
+      console.error('[ORBIS LOGIN ERROR]', err);
+      throw new Error('Tidak dapat terhubung ke sistem maskapai');
+    }
+
+    if (!res.ok) {
+      // Tangkap pesan asli dari server jika terjadi error 403 atau lainnya
+      const errorText = await res.text();
+      console.error('[ORBIS RAW ERROR RESPONSE]:', errorText);
+      throw new Error(`Sistem maskapai error (${res.status})`);
+    }
+
+    const raw = await res.json();
+    const data = raw.result || raw;
+
+    if (data.error_code !== 0) {
+      throw new Error(data.error_msg || 'Login ORBIS gagal');
+    }
+
+    const newSignature = data.response?.signature;
+
+    if (!newSignature) {
+      throw new Error('Signature ORBIS tidak ditemukan');
+    }
+
+    console.log('[Orbis] Signature refreshed successfully');
+
+    // ⏰ Set Expiry 20 Menit (sesuai API spec: signature valid for 20 minutes)
+    const expiryDate = new Date();
+    expiryDate.setMinutes(expiryDate.getMinutes() + 20);
+
+    // ⚡ Save Memory
+    memorySignature = newSignature;
+    memoryExpiredAt = expiryDate.getTime();
+
+    // 🗄️ Save Database
+    await prisma.orbisSession.create({
+      data: {
+        signature: newSignature,
+        expiresAt: expiryDate,
       },
     });
 
-    if (dbSession) {
-      memorySignature = dbSession.signature;
-      memoryExpiredAt = dbSession.expiresAt.getTime();
+    // Cleanup old session
+    await prisma.orbisSession.deleteMany({
+      where: {
+        expiresAt: {
+          lt: new Date(),
+        },
+      },
+    });
 
-      return dbSession.signature;
-    }
-  }
-
-  console.log('[ORBIS] Requesting new signature...');
-
-  let res: Response;
+    return newSignature;
+  })();
 
   try {
-    res = await fetchWithTimeout(
-      `${ORBIS_URL}/session`,
-      {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          action: 'signin',
-        },
-        body: JSON.stringify({
-          user: ORBIS_USER,
-          password: ORBIS_PASSWORD,
-          api_key: ORBIS_API_KEY,
-        }),
-      },
-      15000
-    );
-  } catch (err) {
-    console.error('[ORBIS LOGIN ERROR]', err);
-
-    throw new Error(
-      'Tidak dapat terhubung ke sistem maskapai'
-    );
+    const signature = await fetchingSignature;
+    return signature;
+  } finally {
+    // 🔓 Lepaskan lock setelah selesai agar token bisa di-refresh nanti
+    fetchingSignature = null;
   }
-
-  if (!res.ok) {
-    throw new Error(
-      `Sistem maskapai error (${res.status})`
-    );
-  }
-
-  const raw = await res.json();
-
-  const data = raw.result || raw;
-
-  if (data.error_code !== 0) {
-    throw new Error(
-      data.error_msg || 'Login ORBIS gagal'
-    );
-  }
-
-  const newSignature =
-    data.response?.signature;
-
-  if (!newSignature) {
-    throw new Error(
-      'Signature ORBIS tidak ditemukan'
-    );
-  }
-
-  // =========================
-  // ⏰ EXPIRY
-  // =========================
-  const expiryDate = new Date();
-
-  expiryDate.setMinutes(
-    expiryDate.getMinutes() + 45
-  );
-
-  // =========================
-  // ⚡ SAVE MEMORY
-  // =========================
-  memorySignature = newSignature;
-  memoryExpiredAt = expiryDate.getTime();
-
-  // =========================
-  // 🗄️ SAVE DATABASE
-  // =========================
-  await prisma.orbisSession.create({
-    data: {
-      signature: newSignature,
-      expiresAt: expiryDate,
-    },
-  });
-
-  // cleanup old session
-  await prisma.orbisSession.deleteMany({
-    where: {
-      expiresAt: {
-        lt: new Date(),
-      },
-    },
-  });
-
-  return newSignature;
 }
 
 // =========================
 // 🌐 CORE REQUEST
 // =========================
-export async function orbisRequest(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- respons Orbisway tidak memiliki skema ketat; caller mengetik ulang per penggunaan
+export async function orbisRequest<T = any>(
   endpoint: string,
   action: string,
-  body: object = {}
-): Promise<any> {
+  body: object = {},
+  timeoutMs = 60000,
+  maxRetries = 3
+): Promise<T> {
   let signature = await getOrbisSignature();
 
-  const doFetch = async (
-    currentSignature: string
-  ) => {
+  const doFetch = async (currentSignature: string) => {
     let res: Response;
 
     try {
@@ -222,88 +236,83 @@ export async function orbisRequest(
             'Content-Type': 'application/json',
             action,
             signature: currentSignature,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           },
           body: JSON.stringify(body),
         },
-        25000
+        timeoutMs
       );
     } catch (err) {
-      console.error(
-        `[ORBIS FETCH ERROR] ${action}`,
-        err
-      );
-
-      throw new Error(
-        'Koneksi ke sistem maskapai terputus'
-      );
+      console.error(`[ORBIS FETCH ERROR] ${action}`, err);
+      throw new Error('Koneksi ke sistem maskapai terputus');
     }
 
-    if (
-      res.status === 502 ||
-      res.status === 503
-    ) {
-      throw new Error(
-        'Sistem maskapai sedang sibuk'
-      );
+    if (res.status === 502 || res.status === 503) {
+      throw new Error('Sistem maskapai sedang sibuk');
     }
 
     if (!res.ok) {
-      throw new Error(
-        `HTTP ${res.status} pada ${action}`
-      );
+      throw new Error(`HTTP ${res.status} pada ${action}`);
     }
 
     return res.json();
   };
 
-  // =========================
-  // 🚀 FIRST REQUEST
-  // =========================
-  let json = await doFetch(signature);
+  let lastError: unknown;
 
-  let result = json.result || json;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      let json = await doFetch(signature);
+      let result = json.result || json;
 
-  // =========================
-  // 🔄 AUTO REFRESH TOKEN
-  // =========================
-  if (result.error_code === 1002) {
-    console.warn(
-      '[ORBIS] Signature expired, refreshing...'
-    );
+      // Auto Refresh Token
+      if (result.error_code === 1002 || result.error_code === 4003) {
+        console.warn(`[ORBIS] Signature expired (${result.error_code}), refreshing...`);
+        signature = await getOrbisSignature(true);
+        json = await doFetch(signature);
+        result = json.result || json;
+      }
 
-    signature = await getOrbisSignature(true);
+      if (result.error_code !== 0) {
+        const responseKeys = result.response && typeof result.response === 'object'
+          ? Object.keys(result.response).join(',')
+          : String(result.response ?? 'null');
+        console.error(
+          `[ORBIS ERROR] action=${action}`,
+          `code=${result.error_code}`,
+          `msg=${JSON.stringify(result.error_msg)}`,
+          `response_keys=${responseKeys}`
+        );
+        const friendlyMsg = getOrbisErrorMessage(result.error_code, result.error_msg);
+        const err = new Error(friendlyMsg) as OrbisError;
+        err.orbisCode = result.error_code;
+        err.orbisResponse = result.response;
+        throw err;
+      }
 
-    json = await doFetch(signature);
-
-    result = json.result || json;
-  }
-
-  // =========================
-  // ❌ HANDLE ERROR
-  // =========================
-  if (result.error_code !== 0) {
-    console.error(
-      `[ORBIS ERROR]`,
-      action,
-      result.error_code,
-      result.error_msg
-    );
-
-    const friendlyMsg =
-      getOrbisErrorMessage(
-        result.error_code,
-        result.error_msg
+      return result.response;
+    } catch (err: unknown) {
+      const orbisErr = err as OrbisError;
+      lastError = orbisErr;
+      const isRetryable = !orbisErr.orbisCode && (
+        orbisErr.message?.includes('terputus') ||
+        orbisErr.message?.includes('sibuk') ||
+        orbisErr.message?.includes('Timeout') ||
+        orbisErr.message?.includes('abort')
       );
 
-    const err = new Error(friendlyMsg);
+      if (isRetryable && attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+        console.warn(`[ORBIS] Retry ${attempt}/${maxRetries} for ${action} in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
 
-    (err as any).orbisCode =
-      result.error_code;
-
-    throw err;
+      throw err;
+    }
   }
 
-  return result.response;
+  throw lastError;
 }
 
 // =========================
@@ -338,227 +347,121 @@ export interface OrbisPassenger {
 }
 
 export const flightAPI = {
-  search: (params: any) =>
-    orbisRequest(
-      '/booking/airline',
-      'search',
-      {
-        ...params,
-        cabin_class:
-          params.cabin_class || 'Y',
-        carrier_codes:
-          params.carrier_codes || [],
-        promo_codes:
-          params.promo_codes || [],
-        is_combo_price:
-          params.is_combo_price ?? false,
-      }
-    ),
+  search: (params: OrbisStruct) =>
+    orbisRequest('/booking/airline', 'search', {
+      ...params,
+      cabin_class: params.cabin_class || 'Y',
+      carrier_codes: params.carrier_codes || [],
+      promo_codes: params.promo_codes || [],
+      is_combo_price: params.is_combo_price ?? false,
+    }),
 
-  getPriceItinerary: (params: any) =>
-    orbisRequest(
-      '/booking/airline',
-      'get_price_itinerary',
-      params
-    ),
+  getPriceItinerary: (params: OrbisStruct) =>
+    orbisRequest('/booking/airline', 'get_price_itinerary', params),
 
-  sellJourneys: (params: any) =>
-    orbisRequest(
-      '/booking/airline',
-      'sell_journeys',
-      params
-    ),
+  sellJourneys: (params: OrbisStruct) =>
+    orbisRequest('/booking/airline', 'sell_journeys', params),
 
-  updateContacts: (params: any) =>
-    orbisRequest(
-      '/booking/airline',
-      'update_contacts',
-      params
-    ),
+  updateContacts: (params: OrbisStruct) =>
+    orbisRequest('/booking/airline', 'update_contacts', params),
 
-  updatePassengers: (params: any) =>
-    orbisRequest(
-      '/booking/airline',
-      'update_passengers',
-      params
-    ),
+  updatePassengers: (params: OrbisStruct) =>
+    orbisRequest('/booking/airline', 'update_passengers', params),
 
   getSeatAvailability: () =>
-    orbisRequest(
-      '/booking/airline',
-      'get_seat_availability',
-      {}
-    ),
+    orbisRequest('/booking/airline', 'get_seat_availability', {}),
 
   getSsrAvailability: () =>
-    orbisRequest(
-      '/booking/airline',
-      'get_ssr_availability',
-      {}
-    ),
+    orbisRequest('/booking/airline', 'get_ssr_availability', {}),
 
-  // Dipanggil SETELAH sell_journeys (lock) — memberikan harga bagasi yang lebih akurat
-  getPostSsrAvailability: (params?: { order_number?: string; schedules?: any[] }) =>
-    orbisRequest(
-      '/booking/airline',
-      'get_post_ssr_availability',
-      params || {}
-    ),
+  getPostSsrAvailability: (params?: { order_number?: string; schedules?: OrbisStruct[] }) =>
+    orbisRequest('/booking/airline', 'get_post_ssr_availability', params || {}),
 
-  assignSeats: (params: any) =>
-    orbisRequest(
-      '/booking/airline',
-      'assign_seats',
-      params
-    ),
+  assignSeats: (params: OrbisStruct) =>
+    orbisRequest('/booking/airline', 'assign_seats', params),
 
-  /**
-   * Jual SSR (bagasi tambahan dll.) SEBELUM commit_booking.
-   * Format REQ sesuai docs:
-   * { sell_ssrs_request: [{ sell_ssrs: [{ journey_code, availability_type, passengers:[{passenger_number, ssr_code}] }], provider }] }
-   */
   sellSsrs: (params: {
     sell_ssrs_request: Array<{
       provider: string;
       sell_ssrs: Array<{
-        journey_code:      string;
+        journey_code: string;
         availability_type: string;
-        passengers:        Array<{ passenger_number: number; ssr_code: string }>;
+        passengers: Array<{ passenger_number: number; ssr_code: string }>;
       }>;
     }>;
-  }) =>
-    orbisRequest('/booking/airline', 'sell_ssrs', params),
+  }) => orbisRequest('/booking/airline', 'sell_ssrs', params),
 
-  /**
-   * Jual SSR SETELAH commit_booking (jika sudah punya order_number & pnr).
-   * Format REQ:
-   * { sell_ssrs_request: [{ sell_ssrs: [...], pnr }], order_number }
-   */
   sellPostSsrs: (params: {
     order_number: string;
     sell_ssrs_request: Array<{
-      pnr:       string;
+      pnr: string;
       sell_ssrs: Array<{
-        journey_code:      string;
+        journey_code: string;
         availability_type: string;
-        passengers:        Array<{ passenger_number: number; ssr_code: string }>;
+        passengers: Array<{ passenger_number: number; ssr_code: string }>;
       }>;
     }>;
-  }) =>
-    orbisRequest('/booking/airline', 'sell_post_ssrs', params),
+  }) => orbisRequest('/booking/airline', 'sell_post_ssrs', params),
 
-  commitBooking: (params: any) =>
-    orbisRequest(
-      '/booking/airline',
-      'commit_booking',
-      params
-    ),
+  commitBooking: (params: OrbisStruct) =>
+    orbisRequest('/booking/airline', 'commit_booking', params),
 
   getBooking: (order_number: string) =>
-    orbisRequest(
-      '/booking/airline',
-      'get_booking',
-      { order_number }
-    ),
+    orbisRequest('/booking/airline', 'get_booking', { order_number }),
 
   issued: (order_number: string) =>
-    orbisRequest(
-      '/booking/airline',
-      'issued',
-      { order_number }
-    ),
+    orbisRequest('/booking/airline', 'issued', { order_number }),
+
+  cancel: (params: { order_number: string; provider_bookings?: OrbisStruct[] }) =>
+    orbisRequest('/booking/airline', 'cancel', params),
 
   cancelVoid: (order_number: string) =>
-    orbisRequest(
-      '/booking/airline',
-      'cancel_void',
-      { order_number }
-    ),
+    orbisRequest('/booking/airline', 'cancel', { order_number }),
 
-  cancelRefund: (params: { order_number: string; provider_bookings: any[] }) =>
-    orbisRequest(
-      '/booking/airline',
-      'cancel_refund',
-      params
-    ),
+  cancelRefund: (params: { order_number: string; provider_bookings: OrbisStruct[] }) => {
+    console.log('[ORBIS CANCEL REFUND] Full request body:', JSON.stringify(params, null, 2));
+    return orbisRequest('/booking/airline', 'cancel', params);
+  },
 };
 
 // =========================
 // 🚆 TRAIN API (KAI RODEXTRIP)
 // =========================
 export const trainAPI = {
-  /**
-   * Cari jadwal kereta.
-   * REQ: { journey_list: [{origin, destination, departure_date}], direction, adult, infant, provider }
-   */
   search: (params: {
     journey_list: Array<{ origin: string; destination: string; departure_date: string }>;
     direction: 'OW' | 'RT';
     adult: number;
     infant: number;
     provider: string;
-  }) =>
-    orbisRequest('/booking/train', 'search', params),
+  }) => orbisRequest('/booking/train', 'search', params),
 
-  /**
-   * Ambil daftar semua stasiun KAI.
-   * REQ: { provider_type: "train" }
-   */
   getDestinations: () =>
     orbisRequest('/booking/train', 'get_destination', { provider_type: 'train' }),
 
-  /**
-   * Cek ketersediaan kursi untuk fare_code tertentu.
-   * REQ: { fare_codes: string[], provider: "kai" }
-   */
   getSeatAvailability: (params: { fare_codes: string[]; provider: string }) =>
     orbisRequest('/booking/train', 'get_seat_availability', params),
 
-  /**
-   * Pilih kursi untuk penumpang.
-   * REQ: { order_number, provider_bookings: [{provider, sequence, journeys: [{sequence, seats: [{cabin_code, seat_row, seat_column, passenger_sequence}]}]}] }
-   */
-  assignSeats: (params: any) =>
+  assignSeats: (params: OrbisStruct) =>
     orbisRequest('/booking/train', 'assign_seats', params),
 
-  /**
-   * Buat booking / lock seat.
-   * REQ: { contacts, passengers, schedules: [{journeys:[{journey_code, fare_code}], provider}], booker, force_issued? }
-   */
   commitBooking: (params: {
-    contacts: any[];
-    passengers: any[];
-    schedules: any[];
-    booker: any;
+    contacts: OrbisStruct[];
+    passengers: OrbisStruct[];
+    schedules: OrbisStruct[];
+    booker: OrbisStruct;
     force_issued?: boolean;
-  }) =>
-    orbisRequest('/booking/train', 'commit_booking', params),
+  }) => orbisRequest('/booking/train', 'commit_booking', params),
 
-  /**
-   * Ambil detail booking berdasarkan order_number.
-   * REQ: { order_number }
-   */
   getBooking: (order_number: string) =>
     orbisRequest('/booking/train', 'get_booking', { order_number }),
 
-  /**
-   * Issue tiket (konfirmasi pembayaran ke KAI).
-   * REQ: { order_number }
-   */
   issued: (order_number: string) =>
     orbisRequest('/booking/train', 'issued', { order_number }),
 
-  /**
-   * Batalkan booking / refund ke KAI.
-   * REQ: { order_number }
-   */
   cancelBooking: (order_number: string) =>
     orbisRequest('/booking/train', 'cancel_booking', { order_number }),
 
-  /**
-   * Ambil printout / e-tiket.
-   * REQ: { order_number, mode: "ticket", provider_type: "train" }
-   */
   getPrintout: (order_number: string) =>
     orbisRequest('/booking/train', 'get_printout', {
       order_number,
@@ -566,62 +469,99 @@ export const trainAPI = {
       provider_type: 'train',
     }),
 
-  /**
-   * Cek saldo agent.
-   * REQ: {}
-   */
-  getBalance: () =>
-    orbisRequest('/booking/train', 'get_balance', {}),
+  getBalance: () => orbisRequest('/booking/train', 'get_balance', {}),
 };
 
 // =========================
-// 🏨 HOTEL API (BARU DITAMBAHKAN)
+// 🏨 HOTEL API
+// Semua action hotel menggunakan endpoint /booking/hotel
+// Action names sesuai dokumentasi API Section 3.x
 // =========================
 export const hotelAPI = {
-  search: (params: any) => 
-    orbisRequest('/hotel/search', 'search', params),
+  // 3.4 Search Hotel Availability
+  // FIX: timeout 90 detik – hotel search aggregates banyak vendor, bisa lambat
+  search: (params: OrbisStruct) =>
+    orbisRequest('/booking/hotel', 'search', params, 90000),
 
-  getBooking: (order_number: string, issued_name: string, provider: string) => 
-    orbisRequest('/hotel/booking', 'get_booking', { order_number, issued_name, provider }),
+  // 3.5 Hotel Search Detail (action header: get_details)
+  // FIX: timeout 90 detik – sama seperti search
+  getDetails: (params: OrbisStruct) =>
+    orbisRequest('/booking/hotel', 'get_details', params, 90000),
 
-  sellHotel: (params: any) => 
-    orbisRequest('/hotel/booking', 'sell_hotel', params),
+  // 3.6 Get Cancellation Policy
+  getCancellationPolicy: (hotel_code: string, price_code: string) =>
+    orbisRequest('/booking/hotel', 'get_cancellation_policy', { hotel_code, price_code }),
 
-  createBooking: (params: any) =>
-    orbisRequest('/hotel/booking', 'create_booking', params),
-    
-  commitBooking: (params: any) => 
-    orbisRequest('/hotel/booking', 'commit_booking', params),
+  // 3.7 Provision – harga & ketersediaan terbaru (error 4006 = harga berubah, data tetap ada)
+  // price_code = string dari get_details (format "{int}~{float}", server Orbis melakukan .split("~"))
+  // Dikonfirmasi live (debug hotel provision):
+  //  - Field "provider" WAJIB dikirim. Tanpa provider Orbis balas 500 "Internal server error, 'provider'"
+  //    (KeyError literal di sisi mereka) — walau tidak tercantum di dokumentasi 3.7.1.1.
+  //  - Wajib memanggil get_cancellation_policy untuk price_code yang sama SEBELUM provision.
+  //    Tanpa gcp, provision selalu dibalas 4021 "No Match Room ... in Cache" (kamar belum
+  //    "terdaftar" di cache vendor). Dengan gcp → provision berhasil (sudah diverifikasi).
+  //  - Kode price_code dari hasil search (format vendor asli, mis. "RM_1511_0~Flexi~RO~False"
+  //    untuk MG Bedbank) TIDAK bisa dipakai provision — bagian int() gagal parse.
+  //  - MG Bedbank (mgjarvis) butuh provider INTERNAL ("mgjarvis") — bukan nama tampilan
+  //    ("MG Bedbank"). Respons get_cancellation_policy memuat provider internal tersebut;
+  //    pakai itu sebagai field provider provision, jika tidak → 4021 No Match Room.
+  // includeProvider dipakai agar provider selalu ikut terkirim (wajib untuk provision).
+  provision: (hotel_code: string, price_code: string, provider?: string, includeProvider = true) =>
+    orbisRequest('/booking/hotel', 'provision', {
+        hotel_code: String(hotel_code),
+        price_code: String(price_code),
+        ...(includeProvider && provider ? { provider: String(provider) } : {}),
+    }),
 
-  checkRefund: (order_number: string, issued_name: string, provider: string) =>
-    orbisRequest('/hotel/booking', 'check_refund', { order_number, issued_name, provider }),
+  // 3.8 Create Booking (action header: booked)
+  // Dikonfirmasi langsung ke server Orbis: field yang dibaca server adalah `price_codes`
+  // (PLURAL — walau dokumen 3.8.1.1 menulis `price_code`; tanpa field ini server balas
+  // KeyError 'price_codes'). Nilainya INTEGER — bagian int dari price_code get_details
+  // (format "{int}~{float}"); dokumen menulis contoh `"price_code": "1"`.
+  // search_data/passenger/contact/booker/special_request dikirim sebagai JSON string
+  // (server melakukan json.loads; objek mentah memicu error "must be str ... not bool").
+  createBooking: (params: OrbisStruct & {
+    hotel_code: string;
+    price_code?: string;
+    price_codes?: string | number;
+    provider?: string;
+    special_request?: string;
+  }) => {
+    const { price_code, price_codes, search_data, passenger, contact, booker, special_request, ...rest } = params;
+    const rawCode = price_codes || String(price_code || '');
+    const intCode = String(rawCode).split('~')[0];
+    const jsonString = (v: unknown) => JSON.stringify(v);
+    return orbisRequest('/booking/hotel', 'booked', {
+      ...rest,
+      price_codes: intCode,
+      ...(search_data !== undefined ? { search_data: jsonString(search_data) } : {}),
+      ...(passenger !== undefined ? { passenger: jsonString(passenger) } : {}),
+      ...(contact !== undefined ? { contact: jsonString(contact) } : {}),
+      ...(booker !== undefined ? { booker: jsonString(booker) } : {}),
+      ...(special_request !== undefined ? { special_request: jsonString(special_request) } : {}),
+    });
+  },
 
+  // 3.9 Check Booking Status (action header: check_booking_status)
+  getBooking: (order_number: string, issued_name: string, provider: string) =>
+    orbisRequest('/booking/hotel', 'check_booking_status', { order_number, issued_name, provider }),
+
+  // 3.10 Check Refund Amount
+  checkRefundAmount: (order_number: string, issued_name: string, provider: string) =>
+    orbisRequest('/booking/hotel', 'check_refund_amount', { order_number, issued_name, provider }),
+
+  // 3.11 Cancel Booking
   cancelBooking: (order_number: string, issued_name: string, provider: string) =>
-    orbisRequest('/hotel/booking', 'cancel_booking', { order_number, issued_name, provider }),
-
-  getDetails: (params: any) =>
-    orbisRequest('/hotel/search', 'get_details', params),
-
-  provision: (hotel_code: string, price_code: string) =>
-    orbisRequest('/hotel/search', 'provision', { hotel_code, price_code }),
+    orbisRequest('/booking/hotel', 'cancel_booking', { order_number, issued_name, provider }),
 };
 
 // =========================
 // 🛡️ INSURANCE API
 // =========================
 export const insuranceAPI = {
-  /**
-   * Ambil konfigurasi semua provider asuransi (area, tipe perjalanan, dll).
-   * REQ: {} (kosong)
-   */
   getConfig: () =>
     orbisRequest('/booking/insurance', 'get_config', {}),
 
-  /**
-   * Cek ketersediaan produk asuransi.
-   * REQ: { date_start, date_end, pax, destination, is_senior, international,
-   *        destination_area, type, provider, product_type, carrier_code, age? }
-   */
   getAvailability: (params: {
     date_start: string;
     date_end: string;
@@ -635,14 +575,8 @@ export const insuranceAPI = {
     product_type: string;
     carrier_code: string;
     age?: string;
-  }) =>
-    orbisRequest('/booking/insurance', 'get_availability', params),
+  }) => orbisRequest('/booking/insurance', 'get_availability', params),
 
-  /**
-   * Hitung harga & validasi produk asuransi sebelum booking.
-   * REQ: { data: { product_code, provider, carrier_code },
-   *        pax, package, age: string[], age_type: "age"|"birth_date", adult, child?, infant? }
-   */
   sellInsurance: (params: {
     data: { product_code: string; provider: string; carrier_code: string };
     pax: number;
@@ -652,48 +586,26 @@ export const insuranceAPI = {
     adult: number;
     child?: number;
     infant?: number;
-  }) =>
-    orbisRequest('/booking/insurance', 'sell_insurance', params),
+  }) => orbisRequest('/booking/insurance', 'sell_insurance', params),
 
-  /**
-   * Buat booking / commit polis asuransi.
-   * REQ: { contacts, passengers, booker, provider, carrier_code, voucher? }
-   */
   commitBooking: (params: {
-    contacts: any[];
-    passengers: any[];
-    booker: any;
+    contacts: OrbisStruct[];
+    passengers: OrbisStruct[];
+    booker: OrbisStruct;
     provider: string;
     carrier_code: string;
     voucher?: object;
-  }) =>
-    orbisRequest('/booking/insurance', 'commit_booking', params),
+  }) => orbisRequest('/booking/insurance', 'commit_booking', params),
 
-  /**
-   * Issue polis (konfirmasi pembayaran ke provider).
-   * REQ: { order_number, voucher?, agent_payment_method?, member?, use_point? }
-   */
   issued: (params: { order_number: string; voucher?: object; agent_payment_method?: string; member?: boolean; use_point?: boolean }) =>
     orbisRequest('/booking/insurance', 'issued', { agent_payment_method: 'balance', member: false, use_point: false, voucher: {}, ...params }),
 
-  /**
-   * Ambil detail booking asuransi berdasarkan order_number.
-   * REQ: { order_number, force_sync? }
-   */
   getBooking: (order_number: string, force_sync = false) =>
     orbisRequest('/booking/insurance', 'get_booking', { order_number, force_sync }),
 
-  /**
-   * Batalkan polis asuransi.
-   * REQ: { order_number }
-   */
   cancelBooking: (order_number: string) =>
     orbisRequest('/booking/insurance', 'cancel_booking', { order_number }),
 
-  /**
-   * Cek saldo agent untuk asuransi.
-   * REQ: {}
-   */
   getBalance: () =>
     orbisRequest('/booking/insurance', 'get_balance', {}),
 };

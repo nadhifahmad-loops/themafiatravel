@@ -4,8 +4,11 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
+import LeaveGuard from '@/components/checkout/LeaveGuard';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
+import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, parsePhoneWithCode, scrollToFirstError } from '@/lib/checkout-utils';
 
-// ─── Interfaces ───────────────────────────────────────────────────────────────
 interface SeatInfo { seat_code: string; column: string; row_number: string; availability: number; base_price: number; seat_name: string; description: string[]; }
 interface CabinData { cabin_name: string; cabin_code: string; seat_rows: { row_number: string; seats: SeatInfo[] }[]; }
 interface SegmentSeatData { segment_code: string; origin: string; destination: string; carrier_name: string; provider: string; cabins: CabinData[]; }
@@ -13,11 +16,9 @@ interface SelectedSeat { seat_code: string; base_price: number; }
 interface PassengerIdentity { identity_type: 'ktp' | 'passport'; identity_number: string; identity_expdate: string; identity_country_of_issued_code: string; }
 interface Passenger { title: string; first_name: string; last_name: string; birth_date: string; pax_type: 'ADT' | 'CHD' | 'INF'; nationality_code: string; identity: PassengerIdentity; }
 interface PriceBreakdown { adultFare: number; adultTax: number; adultCount: number; childFare: number; childTax: number; childCount: number; infantFare: number; infantTax: number; infantCount: number; otherCharges: number; totalFlight: number; }
-
-// Baggage SSR dari API
 interface BaggageSsr { ssr_code: string; name: string; kg: number; base_price: number; journey_code: string; }
+interface MarkupSettings { flight: number; hotel: number; train: number; insurance: number; }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtIDR(n: number) { if (!n || isNaN(n)) return 'Rp 0'; return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
 function fmtTime(dt: string) { if (!dt) return '--:--'; return dt.split(' ')[1]?.substring(0, 5) || dt.substring(11, 16); }
 function fmtDate(dt: string) { if (!dt) return ''; return new Date(dt).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
@@ -49,76 +50,38 @@ function parsePriceBreakdown(priceResponse: any): PriceBreakdown | null {
   return {adultFare,adultTax,adultCount,childFare,childTax,childCount,infantFare,infantTax,infantCount,otherCharges,totalFlight};
 }
 
-// ─── Parse SSR Baggage dari respons API ────────────────────────────────────────
-// Mengembalikan opsi bagasi per journey_code. Jika ada beberapa journey (RT/Multi),
-// akan dikembalikan semua agar UI bisa filter per journey.
 function parseBaggageSsr(ssrData: any): BaggageSsr[] {
   if (!ssrData) return [];
-
-  // Terima format: { ssr_availability_provider: [...] }
-  // atau sudah di-unwrap ke level response
-  const providers: any[] =
-    ssrData?.ssr_availability_provider ||
-    ssrData?.response?.ssr_availability_provider ||
-    [];
-
+  const providers: any[] = ssrData?.ssr_availability_provider || ssrData?.response?.ssr_availability_provider || [];
   if (!providers.length) return [];
-
-  // key = `${ssr_code}::${journey_code}` agar per-rute tidak tabrakan
   const ssrMap = new Map<string, BaggageSsr>();
-
   for (const provider of providers) {
     const baggageList: any[] = provider?.ssr_availability?.baggage || [];
     for (const bag of baggageList) {
       const journeyCode = bag.journey_code || '';
       const ssrs: any[] = bag?.ssrs || [];
-
       for (const ssr of ssrs) {
-        // Hanya proses tipe BG (baggage)
         if (ssr.ssr_type !== 'BG') continue;
-
-        // Ambil kg dari nama SSR (e.g. "10 Kg Baggage" → 10)
         const kgMatch = (ssr.name || '').match(/(\d+)\s*[Kk][Gg]/);
         const kg = kgMatch ? parseInt(kgMatch[1]) : 0;
         if (kg === 0) continue;
-
-        // Cari harga untuk ADT; fallback ke charge pertama
-        const scForAdt = (ssr.service_charges || []).find(
-          (c: any) => c.pax_type === 'ADT'
-        ) || ssr.service_charges?.[0];
-
+        const scForAdt = (ssr.service_charges || []).find((c: any) => c.pax_type === 'ADT') || ssr.service_charges?.[0];
         if (!scForAdt) continue;
-
         const price = ssr.base_price || scForAdt.amount || scForAdt.total || 0;
         if (price === 0) continue;
-
         const key = `${ssr.ssr_code}::${journeyCode}`;
-        if (!ssrMap.has(key)) {
-          ssrMap.set(key, {
-            ssr_code:     ssr.ssr_code,
-            name:         ssr.name,
-            kg,
-            base_price:   price,
-            journey_code: journeyCode,
-          });
-        }
+        if (!ssrMap.has(key)) ssrMap.set(key, { ssr_code: ssr.ssr_code, name: ssr.name, kg, base_price: price, journey_code: journeyCode });
       }
     }
   }
-
-  // Kembalikan unik per ssr_code (ambil harga terkecil jika ada duplikat ssr_code)
   const byCode = new Map<string, BaggageSsr>();
   for (const item of ssrMap.values()) {
     const existing = byCode.get(item.ssr_code);
-    if (!existing || item.base_price < existing.base_price) {
-      byCode.set(item.ssr_code, item);
-    }
+    if (!existing || item.base_price < existing.base_price) byCode.set(item.ssr_code, item);
   }
-
   return Array.from(byCode.values()).sort((a, b) => a.kg - b.kg);
 }
 
-// ─── Seat Map Component ───────────────────────────────────────────────────────
 function SeatMap({ segment, passengerCount, selectedSeats, onSelectSeat }: {
   segment: SegmentSeatData; passengerCount: number;
   selectedSeats: Record<string,SelectedSeat>;
@@ -127,11 +90,9 @@ function SeatMap({ segment, passengerCount, selectedSeats, onSelectSeat }: {
   const [activePassenger, setActivePassenger] = useState(0);
   const validCabins = segment.cabins.filter(c => c.seat_rows?.length > 0);
   if (!validCabins.length) return <p className="text-slate-400 text-sm py-4">Data kursi tidak tersedia.</p>;
-
   const selectedForSeg = Object.entries(selectedSeats)
     .filter(([k]) => k.startsWith(segment.segment_code+'__'))
     .reduce<Record<number,SelectedSeat>>((acc,[k,v]) => { acc[parseInt(k.split('__')[1])]=v; return acc; }, {});
-
   return (
     <div className="space-y-4">
       <div className="flex gap-2 flex-wrap">
@@ -139,7 +100,7 @@ function SeatMap({ segment, passengerCount, selectedSeats, onSelectSeat }: {
           const hasSel = selectedForSeg[i];
           return (
             <button key={i} onClick={()=>setActivePassenger(i)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${activePassenger===i?'bg-slate-900 text-white border-slate-900':hasSel?'bg-emerald-50 text-emerald-700 border-emerald-300':'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${activePassenger===i?'bg-slate-800 text-white border-slate-800':hasSel?'bg-emerald-50 text-emerald-700 border-emerald-300':'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
               {hasSel?'✓ ':''}Pax {i+1}
             </button>
           );
@@ -170,7 +131,7 @@ function SeatMap({ segment, passengerCount, selectedSeats, onSelectSeat }: {
                       const hasFee=seat&&seat.base_price>0;
                       let cls='w-8 h-8 rounded-md text-[9px] font-bold flex items-center justify-center transition-all border ';
                       if(isUnavail)cls+='bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed';
-                      else if(selBySelf)cls+='bg-orange-500 border-orange-600 text-white scale-105 shadow-md cursor-pointer';
+                      else if(selBySelf)cls+='bg-slate-800 border-slate-800 text-white scale-105 shadow cursor-pointer';
                       else if(selByOther)cls+='bg-emerald-200 border-emerald-400 text-emerald-700 cursor-not-allowed';
                       else if(hasFee)cls+='bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 hover:scale-105 cursor-pointer';
                       else cls+='bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 hover:scale-105 cursor-pointer';
@@ -194,93 +155,65 @@ function SeatMap({ segment, passengerCount, selectedSeats, onSelectSeat }: {
   );
 }
 
-// ─── Toggle Addon Card ────────────────────────────────────────────────────────
-function AddonCard({ icon, bgIcon, title, subtitle, badge, badgeColor, children, isChecked, onToggle, price, expandable }: any) {
-  const [detailOpen, setDetailOpen] = useState(false);
-  return (
-    <div className={`bg-white rounded-2xl border-2 transition-all ${isChecked?'border-orange-400 shadow-sm':'border-slate-200'}`}>
-      <div className="p-4">
-        <div className="flex items-start gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${bgIcon||'bg-orange-100'}`}>
-            <i className={`fa-solid ${icon} text-base`}></i>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-bold text-slate-800 text-sm">{title}</p>
-              {badge && <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wide ${badgeColor||'bg-orange-100 text-orange-700'}`}>{badge}</span>}
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>
-            {expandable && (
-              <button onClick={()=>setDetailOpen(!detailOpen)} className="text-xs text-orange-600 hover:underline font-semibold mt-0.5">
-                Selengkapnya {detailOpen?'▲':'▼'}
-              </button>
-            )}
-          </div>
-          {onToggle && (
-            <div className={`relative inline-flex items-center w-10 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${isChecked?'bg-orange-500':'bg-slate-200'}`} onClick={onToggle}>
-              <div className={`absolute w-4 h-4 bg-white rounded-full shadow transition-transform ${isChecked?'translate-x-5':'translate-x-1'}`}/>
-            </div>
-          )}
-        </div>
-        {detailOpen && children && <div className="mt-3">{children}</div>}
-        {!expandable && children && <div className="mt-3">{children}</div>}
-        {price !== undefined && price > 0 && isChecked && (
-          <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
-            <span className="text-xs text-slate-500">Ditambahkan</span>
-            <span className="text-sm font-black text-orange-600">+ {fmtIDR(price)}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Passenger Form ───────────────────────────────────────────────────────────
-function PassengerForm({ pax, index, inputCls, labelCls, selectCls, onChange }: {
-  pax: Passenger; index: number; inputCls: string; labelCls: string; selectCls: string;
+function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onChange }: {
+  pax: Passenger; index: number; fieldCls: (err?: string) => string; selectCls: string; labelCls: string;
+  errors?: Record<string,string>;
   onChange: (idx: number, field: string, value: any) => void;
 }) {
-  const paxLabel = pax.pax_type==='ADT'?'Dewasa':pax.pax_type==='CHD'?'Anak':'Bayi';
+  const { language } = useLanguage();
+  const t = i18n.flightCheckout[language];
+  const paxLabel = pax.pax_type==='ADT'?t.adult:pax.pax_type==='CHD'?t.child:t.infant;
+  const k = (key: string) => `${key}_${index}`;
+  const errFirst = errors?.[k('pax_first')];
+  const errLast = errors?.[k('pax_last')];
+  const errBirth = errors?.[k('pax_birth')];
+  const errId = errors?.[k('pax_id')];
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <div className="bg-white rounded-xl border border-slate-200 p-5" id={`pax_card_${index}`}>
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-7 h-7 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-black text-xs">{index+1}</div>
-        <h3 className="font-black text-slate-800 text-sm">Penumpang {index+1} · <span className="font-semibold text-slate-500">{paxLabel}</span></h3>
+        <span className="w-6 h-6 rounded-full bg-slate-800 text-white text-[11px] font-bold flex items-center justify-center">{index+1}</span>
+        <span className="text-xs font-bold text-slate-500">{t.passengerTitle} {index+1}</span>
+        <span className="text-xs text-slate-300">·</span>
+        <span className="text-xs font-semibold text-slate-400">{paxLabel}</span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div><label className={labelCls}>Sapaan</label>
           <select value={pax.title} onChange={e=>onChange(index,'title',e.target.value)} className={selectCls}>
-            <option value="MR">Tn. (Mr.)</option><option value="MRS">Ny. (Mrs.)</option><option value="MS">Nn. (Ms.)</option>
+            <option value="MR">{t.titleMr}</option><option value="MRS">{t.titleMrs}</option><option value="MS">{t.titleMs}</option>
           </select>
         </div>
-        <div><label className={labelCls}>Nama Depan (Sesuai KTP/Paspor)</label>
-          <input value={pax.first_name} onChange={e=>onChange(index,'first_name',e.target.value)} className={inputCls} placeholder="Contoh: BUDI"/>
+        <div><label className={labelCls}>{t.firstName} (Sesuai {t.ktp}/{t.passport})</label>
+          <input id={k('pax_first')} value={pax.first_name} onChange={e=>onChange(index,'first_name',e.target.value)} className={fieldCls(errFirst)} placeholder="Contoh: BUDI"/>
+          {errFirst && <p className="text-[11px] text-red-600 mt-1">{errFirst}</p>}
         </div>
-        <div><label className={labelCls}>Nama Belakang</label>
-          <input value={pax.last_name} onChange={e=>onChange(index,'last_name',e.target.value)} className={inputCls} placeholder="Contoh: SANTOSO"/>
+        <div><label className={labelCls}>{t.lastName}</label>
+          <input id={k('pax_last')} value={pax.last_name} onChange={e=>onChange(index,'last_name',e.target.value)} className={fieldCls(errLast)} placeholder="Contoh: SANTOSO"/>
+          {errLast && <p className="text-[11px] text-red-600 mt-1">{errLast}</p>}
         </div>
-        <div><label className={labelCls}>Kewarganegaraan</label>
+        <div><label className={labelCls}>{t.nationality}</label>
           <select value={pax.nationality_code} onChange={e=>onChange(index,'nationality_code',e.target.value)} className={selectCls}>
             <option value="ID">Indonesia</option><option value="SG">Singapura</option><option value="MY">Malaysia</option><option value="US">Amerika Serikat</option><option value="GB">Inggris</option><option value="AU">Australia</option>
           </select>
         </div>
-        <div><label className={labelCls}>Tanggal Lahir</label>
-          <input type="date" value={pax.birth_date} onChange={e=>onChange(index,'birth_date',e.target.value)} className={inputCls}/>
+        <div><label className={labelCls}>{t.birthDate}</label>
+          <input id={k('pax_birth')} type="date" value={pax.birth_date} onChange={e=>onChange(index,'birth_date',e.target.value)} className={fieldCls(errBirth)}/>
+          {errBirth && <p className="text-[11px] text-red-600 mt-1">{errBirth}</p>}
         </div>
-        <div><label className={labelCls}>Jenis Identitas</label>
+        <div><label className={labelCls}>{t.idType}</label>
           <select value={pax.identity.identity_type} onChange={e=>onChange(index,'identity',{...pax.identity,identity_type:e.target.value})} className={selectCls}>
-            <option value="ktp">KTP</option><option value="passport">Paspor</option>
+            <option value="ktp">{t.ktp}</option><option value="passport">{t.passport}</option>
           </select>
         </div>
-        <div className="sm:col-span-2"><label className={labelCls}>Nomor {pax.identity.identity_type==='passport'?'Paspor':'KTP'}</label>
-          <input value={pax.identity.identity_number} onChange={e=>onChange(index,'identity',{...pax.identity,identity_number:e.target.value})} className={inputCls} placeholder={pax.identity.identity_type==='passport'?'A1234567':'1234567890123456'}/>
+        <div className="sm:col-span-2"><label className={labelCls}>{t.idNumber} {pax.identity.identity_type==='passport'?t.passport:t.ktp}</label>
+          <input id={k('pax_id')} value={pax.identity.identity_number} onChange={e=>onChange(index,'identity',{...pax.identity,identity_number:e.target.value})} className={fieldCls(errId)} placeholder={pax.identity.identity_type==='passport'?'A1234567':'1234567890123456'}/>
+          {errId && <p className="text-[11px] text-red-600 mt-1">{errId}</p>}
         </div>
         {pax.identity.identity_type==='passport'&&(
           <>
-            <div><label className={labelCls}>Berlaku Hingga</label>
-              <input type="date" value={pax.identity.identity_expdate} onChange={e=>onChange(index,'identity',{...pax.identity,identity_expdate:e.target.value})} className={inputCls}/>
+            <div><label className={labelCls}>{t.idExpiry}</label>
+              <input type="date" value={pax.identity.identity_expdate} onChange={e=>onChange(index,'identity',{...pax.identity,identity_expdate:e.target.value})} className={fieldCls()}/>
             </div>
-            <div><label className={labelCls}>Negara Penerbit</label>
+            <div><label className={labelCls}>{t.idCountry}</label>
               <select value={pax.identity.identity_country_of_issued_code} onChange={e=>onChange(index,'identity',{...pax.identity,identity_country_of_issued_code:e.target.value})} className={selectCls}>
                 <option value="ID">Indonesia</option><option value="SG">Singapura</option><option value="MY">Malaysia</option><option value="US">Amerika Serikat</option>
               </select>
@@ -292,54 +225,18 @@ function PassengerForm({ pax, index, inputCls, labelCls, selectCls, onChange }: 
   );
 }
 
-// ─── Price Detail Panel ───────────────────────────────────────────────────────
-function PriceDetailPanel({ breakdown, addons, totalFinal }: { breakdown: PriceBreakdown|null; addons: {label:string;value:number}[]; totalFinal: number; }) {
-  return (
-    <div className="space-y-2 text-xs">
-      {breakdown && breakdown.adultCount>0 && (
-        <div className="flex justify-between text-slate-600">
-          <span>Tiket Dewasa ×{breakdown.adultCount}</span>
-          <span className="font-semibold">{fmtIDR((breakdown.adultFare+breakdown.adultTax)*breakdown.adultCount)}</span>
-        </div>
-      )}
-      {breakdown && breakdown.childCount>0 && (
-        <div className="flex justify-between text-slate-600">
-          <span>Tiket Anak ×{breakdown.childCount}</span>
-          <span className="font-semibold">{fmtIDR((breakdown.childFare+breakdown.childTax)*breakdown.childCount)}</span>
-        </div>
-      )}
-      {breakdown && breakdown.infantCount>0 && (
-        <div className="flex justify-between text-slate-600">
-          <span>Tiket Bayi ×{breakdown.infantCount}</span>
-          <span className="font-semibold">{fmtIDR((breakdown.infantFare+breakdown.infantTax)*breakdown.infantCount)}</span>
-        </div>
-      )}
-      {addons.filter(a=>a.value>0).map((a,i)=>(
-        <div key={i} className="flex justify-between text-slate-600">
-          <span className="flex items-center gap-1"><i className="fa-solid fa-plus text-orange-400 text-[9px]"></i>{a.label}</span>
-          <span className="font-semibold text-orange-600">{fmtIDR(a.value)}</span>
-        </div>
-      ))}
-      <div className="border-t border-slate-100 pt-2 mt-2 flex justify-between font-black text-slate-900">
-        <span>Total Harga Anda Bayar</span>
-        <span className="text-orange-600 text-base">{fmtIDR(totalFinal)}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Checkout ────────────────────────────────────────────────────────────
 function FlightCheckoutContent() {
+  const { language } = useLanguage();
+  const t = i18n.flightCheckout[language];
+  const tc = i18n.common[language];
   const router = useRouter();
   const { data: session, status } = useSession();
   const isGuest = status !== 'authenticated';
   const isSubmittingRef = useRef(false);
 
   const [flightData, setFlightData] = useState<any>(null);
-  const [booker, setBooker] = useState({ title: 'MR', first_name: '', last_name: '', email: '', mobile: '', phoneCode: '+62', nationality_code: 'ID' });
+  const [booker, setBooker] = useState({ title: 'MR', first_name: '', last_name: '', email: '', mobile: '', calling_code: '62', nationality_code: 'ID' });
   const [passengers, setPassengers] = useState<Passenger[]>([]);
-
-  // Seat states
   const [selectedSeats, setSelectedSeats] = useState<Record<string,SelectedSeat>>({});
   const [segmentSeats, setSegmentSeats] = useState<SegmentSeatData[]>([]);
   const [seatsLoading, setSeatsLoading] = useState(false);
@@ -347,44 +244,36 @@ function FlightCheckoutContent() {
   const [isLocked, setIsLocked] = useState(false);
   const [showSeatMap, setShowSeatMap] = useState(false);
   const [skipSeats, setSkipSeats] = useState(false);
-
-  // SSR Baggage — dari API
   const [baggageSsrs, setBaggageSsrs] = useState<BaggageSsr[]>([]);
   const [ssrLoading, setSsrLoading] = useState(false);
-  const [selectedBaggage, setSelectedBaggage] = useState<BaggageSsr | null>(null); // null = tidak tambah
-
-  // Addons — harga dari API insurance (statis fallback jika API gagal)
+  const [selectedBaggage, setSelectedBaggage] = useState<BaggageSsr | null>(null);
   const [addInsurance, setAddInsurance] = useState(false);
   const [addResched, setAddResched] = useState(false);
   const [addRefund, setAddRefund] = useState(false);
   const [addDelay, setAddDelay] = useState(false);
   const [addLostBag, setAddLostBag] = useState(false);
-
-  // Submitting
   const [submitting, setSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState('');
+  const [markup, setMarkup] = useState<MarkupSettings>({ flight: 50000, hotel: 10, train: 15000, insurance: 5 });
+  const [formErrors, setFormErrors] = useState<Record<string,string>>({});
+const [checkoutDone, setCheckoutDone] = useState(false);
 
-  // Harga addon per orang (dalam IDR) — akan di-update dari API jika tersedia
-  const ADDON_PRICES = {
-    insurance: 110000,
-    resched: 70000,
-    refund: 100000,
-    delay: 50000,
-    lostBag: 34000,
-  };
+  const ADDON_PRICES = { insurance: 110000, resched: 70000, refund: 100000, delay: 50000, lostBag: 34000 };
 
   const adultCount = parseInt(flightData?.priceBody?.adult || flightData?.searchMeta?.adult || '1');
   const childCount = parseInt(flightData?.priceBody?.child || flightData?.searchMeta?.child || '0');
   const paxCount = adultCount + childCount;
 
-  // Load flight data from session storage
+  useEffect(() => {
+    fetch('/api/markup').then(r=>r.json()).then(d=>{ if(d?.flight!==undefined) setMarkup(d); }).catch(()=>{});
+  }, []);
+
   useEffect(() => {
     const raw = sessionStorage.getItem('flight_priced_data');
     if (!raw) { router.push('/flight/search'); return; }
     try {
       const parsed = JSON.parse(raw);
       setFlightData(parsed);
-
       const adult = parseInt(parsed.priceBody?.adult || parsed.searchMeta?.adult || '1');
       const child = parseInt(parsed.priceBody?.child || parsed.searchMeta?.child || '0');
       const infant = parseInt(parsed.priceBody?.infant || parsed.searchMeta?.infant || '0');
@@ -395,44 +284,32 @@ function FlightCheckoutContent() {
       for (let i=0;i<child;i++) paxList.push({...defaultPax, pax_type:'CHD'});
       for (let i=0;i<infant;i++) paxList.push({...defaultPax, pax_type:'INF'});
       setPassengers(paxList);
-
       if (session?.user?.name) {
         const parts = (session.user.name||'').split(' ');
         setBooker(b=>({...b, first_name:parts[0]||'', last_name:parts.slice(1).join(' ')||'', email:session.user?.email||''}));
       }
+      if (session?.user?.phone) {
+        const parsed = parsePhoneWithCode(session.user.phone);
+        setBooker(b=>({...b, calling_code:'+'+parsed.code, mobile: parsed.number}));
+      }
     } catch { router.push('/flight/search'); }
   }, [session]);
 
-  // Fetch SSR baggage prices dari API
   const fetchSsr = useCallback(async () => {
     if (ssrLoading || baggageSsrs.length > 0) return;
     setSsrLoading(true);
     try {
-      const res  = await fetch('/api/flight/ssr', { method: 'POST' });
+      const res = await fetch('/api/flight/ssr', { method: 'POST' });
       const data = await res.json();
-
-      // unavailable = maskapai tidak support SSR — bukan error, gunakan fallback statis
-      if (data.unavailable) {
-        console.log('[SSR] Maskapai tidak support SSR, gunakan opsi bagasi statis.');
-        return;
-      }
-
+      if (data.unavailable) return;
       if (data.success && data.data) {
         const payload = data.data?.response || data.data;
-        const bags    = parseBaggageSsr(payload);
-        if (bags.length > 0) {
-          setBaggageSsrs(bags);
-          console.log('[SSR] Baggage options dari API:', bags.length, 'opsi');
-        }
+        const bags = parseBaggageSsr(payload);
+        if (bags.length > 0) setBaggageSsrs(bags);
       }
-    } catch (err) {
-      console.warn('[SSR] Gagal fetch SSR, gunakan opsi statis');
-    } finally {
-      setSsrLoading(false);
-    }
+    } catch {} finally { setSsrLoading(false); }
   }, [ssrLoading, baggageSsrs.length]);
 
-  // Fetch seats
   const fetchSeats = useCallback(async () => {
     if (seatsLoading) return;
     setSeatsLoading(true); setSeatsError('');
@@ -444,36 +321,17 @@ function FlightCheckoutContent() {
         });
         if (!lockRes.ok) { setSeatsError('Gagal mengunci sesi. Coba lagi.'); return; }
         setIsLocked(true);
-        // Setelah lock, fetch SSR juga
         fetchSsr();
       }
-      const res  = await fetch('/api/flight/seats', { method:'POST' });
+      const res = await fetch('/api/flight/seats', { method:'POST' });
       const data = await res.json();
-
-      // unavailable = maskapai tidak expose seat map — bukan error fatal
-      if (data.unavailable) {
-        setSeatsError('Peta kursi tidak tersedia untuk penerbangan ini.\nBeberapa maskapai tidak menyediakan pilihan kursi online.');
-        return;
-      }
-
+      if (data.unavailable) { setSeatsError('Peta kursi tidak tersedia untuk penerbangan ini.'); return; }
       if (!res.ok || !data.success) {
-        if (data.error === 'SESSION_EXPIRED') {
-          setSeatsError('Sesi habis. Silakan kembali dan cari ulang penerbangan.');
-          return;
-        }
-        setSeatsError(data.error || 'Gagal memuat peta kursi.');
-        return;
+        if (data.error === 'SESSION_EXPIRED') { setSeatsError('Sesi habis. Silakan kembali dan cari ulang.'); return; }
+        setSeatsError(data.error || 'Gagal memuat peta kursi.'); return;
       }
-
-      const providers: any[] = data.data?.seat_availability_provider
-        || data.data?.response?.seat_availability_provider
-        || [];
-
-      if (!providers.length) {
-        setSeatsError('Peta kursi tidak tersedia untuk penerbangan ini.');
-        return;
-      }
-
+      const providers: any[] = data.data?.seat_availability_provider || data.data?.response?.seat_availability_provider || [];
+      if (!providers.length) { setSeatsError('Peta kursi tidak tersedia untuk penerbangan ini.'); return; }
       const allSegments: SegmentSeatData[] = [];
       providers.forEach((provider: any) => {
         (provider.segments||[]).forEach((seg: any) => {
@@ -482,33 +340,24 @@ function FlightCheckoutContent() {
             seat_rows: (cabin.seat_rows||[]).map((row: any) => ({
               row_number: String(row.row_number),
               seats: (row.seats||[]).map((s: any) => ({
-                seat_code:   s.seat_code||'', column: s.column||'',
-                row_number:  String(row.row_number), availability: s.availability??-1,
-                base_price:  s.base_price||(s.service_charges?.[0]?.amount>0?s.service_charges[0].amount:0)||0,
-                seat_name:   s.seat_name||'', description: s.description||[],
+                seat_code: s.seat_code||'', column: s.column||'',
+                row_number: String(row.row_number), availability: s.availability??-1,
+                base_price: s.base_price||(s.service_charges?.[0]?.amount>0?s.service_charges[0].amount:0)||0,
+                seat_name: s.seat_name||'', description: s.description||[],
               })),
             })),
           }));
-          allSegments.push({
-            segment_code: seg.segment_code,
-            origin:       seg.origin,
-            destination:  seg.destination,
-            carrier_name: seg.carrier_name||`${seg.carrier_code} ${seg.carrier_number}`,
-            provider:     provider.provider||seg.provider||'',
-            cabins,
-          });
+          allSegments.push({ segment_code: seg.segment_code, origin: seg.origin, destination: seg.destination, carrier_name: seg.carrier_name||`${seg.carrier_code} ${seg.carrier_number}`, provider: provider.provider||seg.provider||'', cabins });
         });
       });
       setSegmentSeats(allSegments);
-    } catch (e: any) {
-      setSeatsError(e.message||'Gagal memuat kursi.');
-    } finally {
-      setSeatsLoading(false);
-    }
+    } catch (e: any) { setSeatsError(e.message||'Gagal memuat kursi.'); } finally { setSeatsLoading(false); }
   }, [flightData, isLocked, seatsLoading, fetchSsr]);
 
   const updatePassenger = (idx: number, field: string, value: any) =>
     setPassengers(prev => prev.map((p,i) => i===idx ? {...p,[field]:value} : p));
+
+  const clearErr = (key: string) => setFormErrors(f => { if (!f[key]) return f; const n={...f}; delete n[key]; return n; });
 
   const handleSeatSelect = (segCode: string, paxIdx: number, seat: SeatInfo) => {
     const key = `${segCode}__${paxIdx}`;
@@ -518,7 +367,6 @@ function FlightCheckoutContent() {
     });
   };
 
-  // Compute costs
   const seatFee = skipSeats ? 0 : Object.values(selectedSeats).reduce((sum,s)=>sum+(s.base_price||0),0);
   const baggageFee = selectedBaggage ? selectedBaggage.base_price * adultCount : 0;
   const insuranceFee = addInsurance ? ADDON_PRICES.insurance * paxCount : 0;
@@ -535,15 +383,38 @@ function FlightCheckoutContent() {
     return flightData.display?.basePrice || 0;
   })();
 
-  const grandTotal = flightBase + seatFee + baggageFee + insuranceFee + reschedFee + refundFee + delayFee + lostBagFee;
+  const adminFee = markup.flight * paxCount;
+  const pricingAmount = flightBase + seatFee + baggageFee + insuranceFee + reschedFee + refundFee + delayFee + lostBagFee;
+  const grandTotal = pricingAmount + adminFee;
 
-  const isFormValid = () => {
-    if (!booker.first_name.trim() || !booker.email.trim() || !booker.mobile.trim()) return false;
-    return passengers.every(p => p.first_name.trim() && p.last_name.trim() && p.birth_date && p.identity?.identity_number?.trim());
+  const validate = (): Record<string,string> => {
+    const errs: Record<string,string> = {};
+    if (!isValidName(booker.first_name)) errs.booker_name = 'Nama pemesan wajib diisi.';
+    if (!isValidEmail(booker.email)) errs.booker_email = 'Format email tidak valid.';
+    if (!isValidPhone(booker.mobile)) errs.booker_phone = 'Nomor HP minimal 8 digit angka.';
+    passengers.forEach((p, i) => {
+      if (!isValidName(p.first_name)) errs[`pax_first_${i}`] = 'Nama depan wajib diisi.';
+      if (!isValidName(p.last_name)) errs[`pax_last_${i}`] = 'Nama belakang wajib diisi.';
+      if (!isValidBirthDate(p.birth_date)) errs[`pax_birth_${i}`] = 'Tanggal lahir wajib diisi.';
+      if (!isValidIdentityNumber(p.identity?.identity_number || '', p.identity?.identity_type || 'ktp')) {
+        errs[`pax_id_${i}`] = p.identity?.identity_type === 'passport'
+          ? 'No. paspor harus alfanumerik minimal 6 karakter.'
+          : 'NIK harus 16 digit angka.';
+      }
+    });
+    return errs;
   };
 
   const handleSubmit = async () => {
-    if (!flightData || isSubmittingRef.current) return;
+    if (!flightData || isSubmittingRef.current || checkoutDone) return;
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setFormErrors(errs);
+      const ids = ['booker_name','booker_phone','booker_email', ...passengers.flatMap((_,i)=>[`pax_first_${i}`,`pax_last_${i}`,`pax_birth_${i}`,`pax_id_${i}`])];
+      scrollToFirstError(ids);
+      return;
+    }
+    setFormErrors({});
     isSubmittingRef.current = true;
     setSubmitting(true); setBookingError('');
     try {
@@ -558,67 +429,68 @@ function FlightCheckoutContent() {
         });
       }
       const display = flightData.display || {};
+      const baggagePayload = (selectedBaggage && selectedBaggage.ssr_code !== 'NOBAG')
+        ? { ssr_code: selectedBaggage.ssr_code, journey_code: selectedBaggage.journey_code || '', kg: selectedBaggage.kg || 0, name: selectedBaggage.name || '' }
+        : undefined;
+      const contactPayload = {
+        title: booker.title || 'MR',
+        first_name: booker.first_name,
+        last_name: booker.last_name || '',
+        email: booker.email,
+        calling_code: booker.calling_code || '62',
+        mobile: booker.mobile || '',
+        nationality_code: booker.nationality_code || 'ID',
+      };
+      const bookerPayload = {
+        ...contactPayload,
+        is_also_booker: true,
+      };
+      const payload = {
+        passengers,
+        booker: bookerPayload,
+        contacts: [contactPayload],
+        schedules: flightData.priceBody?.schedules || [],
+        is_combo_price: !!flightData.priceBody?.is_combo_price,
+        cabin_class: flightData.priceBody?.cabin_class || 'Y',
+        adult: Number(flightData.priceBody?.adult) || 1,
+        child: Number(flightData.priceBody?.child) || 0,
+        infant: Number(flightData.priceBody?.infant) || 0,
+        total_amount: pricingAmount,
+        route_label: `${display.origin||''}→${display.destination||''}`,
+        origin: display.origin || '',
+        destination: display.destination || '',
+        departure_date: display.departure || '',
+        arrival_date: display.arrival || '',
+        flight_number: display.flight_num || '',
+        airline_name: display.carrier || '',
+        selectedSeats: Object.values(seatRequestBySegment),
+        ...(baggagePayload && { selectedBaggage: baggagePayload }),
+        addOns: { insurance: addInsurance, reschedule: addResched, refund: addRefund, delay: addDelay, lostBag: addLostBag },
+        is_locked_before: isLocked,
+      };
       const res = await fetch('/api/flight/book', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({
-          passengers, booker, contacts:[booker],
-          schedules: flightData.priceBody?.schedules,
-          is_combo_price: flightData.priceBody?.is_combo_price,
-          adult: flightData.priceBody?.adult, child: flightData.priceBody?.child, infant: flightData.priceBody?.infant,
-          total_amount: grandTotal,
-          route_label:`${display.origin||''}→${display.destination||''}`,
-          origin:display.origin||'', destination:display.destination||'',
-          departure_date:display.departure, flight_number:display.flight_num||'', airline_name:display.carrier||'',
-          selectedSeats:Object.values(seatRequestBySegment),
-          selectedBaggage: selectedBaggage || null,
-          addOns: {
-            insurance:  addInsurance,
-            reschedule: addResched,
-            refund:     addRefund,
-            delay:      addDelay,
-            lostBag:    addLostBag,
-          },
-          is_locked_before: isLocked,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        if (data.error==='SESSION_EXPIRED') {
-          sessionStorage.removeItem('flight_priced_data');
-          setBookingError('Sesi penerbangan telah berakhir. Silakan cari ulang.');
-          setTimeout(()=>router.push('/flight/search'),2500); return;
-        }
-        throw new Error(data.error||'Pemesanan gagal.');
+        if (data.error==='SESSION_EXPIRED') { sessionStorage.removeItem('flight_priced_data'); setBookingError('Sesi penerbangan telah berakhir. Silakan cari ulang.'); setTimeout(()=>router.push('/flight/search'),2500); return; }
+        const details = data.details ? Object.entries(data.details).map(([k,v])=>`${k}: ${(v as string[]).join(', ')}`).join('; ') : '';
+        throw new Error(data.error + (details ? ` (${details})` : '') || 'Pemesanan gagal.');
       }
       sessionStorage.removeItem('flight_priced_data');
-
-      // Redirect ke Midtrans payment jika ada snapToken / redirectUrl
-      if (data.redirectUrl) { window.location.href=data.redirectUrl; return; }
-      if (data.snapToken) {
-        const sandbox = process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION!=='true';
-        window.location.href = sandbox
-          ? `https://app.sandbox.midtrans.com/snap/v2/vtweb/${data.snapToken}`
-          : `https://app.midtrans.com/snap/v2/vtweb/${data.snapToken}`;
-        return;
-      }
-
-      // Jika tidak ada payment gateway → redirect berdasarkan status login
-      const orderNo = data.orderNumber || '';
-      if (!isGuest) {
-        // Sudah login → ke halaman riwayat booking
-        router.push(orderNo ? `/booking?order=${orderNo}` : '/booking');
-      } else {
-        // Belum login → ke halaman cari booking (pakai order number)
-        router.push(orderNo ? `/find-booking?order=${orderNo}` : '/find-booking');
-      }
-    } catch (e: any) { setBookingError(e.message||'Terjadi kesalahan.'); }
+      setCheckoutDone(true);
+      const bookingId = data.orderId || '';
+      if (bookingId) router.push(`/payment/${bookingId}`);
+      else router.push('/bookings');
+    } catch (e: any) { setBookingError(e.message||`${tc.error}.`); }
     finally { setSubmitting(false); isSubmittingRef.current=false; }
   };
 
   if (!flightData) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="text-center space-y-3">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"/>
+        <div className="w-8 h-8 border-[3px] border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto"/>
         <p className="text-slate-400 text-sm">Memuat data penerbangan...</p>
       </div>
     </div>
@@ -626,11 +498,12 @@ function FlightCheckoutContent() {
 
   const display = flightData.display || {};
   const priceBreakdown = parsePriceBreakdown(flightData.priceResponse);
-  const inputCls = 'w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-slate-800 text-sm outline-none focus:border-orange-400 focus:bg-white transition-all';
-  const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5';
-  const selectCls = inputCls + ' cursor-pointer';
+  const baseInputCls = 'w-full px-4 py-2.5 bg-white border rounded-lg text-slate-800 text-sm outline-none transition-colors';
+  const fieldCls = (err?: string) => baseInputCls + (err ? ' border-red-400 focus:border-red-400' : ' border-slate-200 focus:border-slate-400');
+  const inputCls = fieldCls();
+  const labelCls = 'block text-[11px] font-semibold text-slate-500 mb-1.5';
+  const selectCls = inputCls + ' cursor-pointer appearance-none';
 
-  // Baggage options: gunakan dari API jika tersedia, fallback ke statis
   const staticBaggageOpts: BaggageSsr[] = [
     { ssr_code:'NOBAG',  name:'Tidak',   kg:0,  base_price:0,      journey_code:'' },
     { ssr_code:'BAG05',  name:'+5 KG',   kg:5,  base_price:150000, journey_code:'' },
@@ -638,11 +511,10 @@ function FlightCheckoutContent() {
     { ssr_code:'BAG20',  name:'+20 KG',  kg:20, base_price:450000, journey_code:'' },
   ];
   const noBagOption: BaggageSsr = { ssr_code:'NOBAG', name:'Tidak', kg:0, base_price:0, journey_code:'' };
-  const bagOpts: BaggageSsr[] = baggageSsrs.length > 0
-    ? [noBagOption, ...baggageSsrs.slice(0,5)]
-    : staticBaggageOpts;
+  const bagOpts: BaggageSsr[] = baggageSsrs.length > 0 ? [noBagOption, ...baggageSsrs.slice(0,5)] : staticBaggageOpts;
 
   const addonRows = [
+    { label:'Biaya Admin', value: adminFee },
     { label:'Kursi Dipilih', value: seatFee },
     { label:'Bagasi Tambahan', value: baggageFee },
     { label:'Asuransi Perjalanan', value: insuranceFee },
@@ -653,221 +525,170 @@ function FlightCheckoutContent() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <CheckoutNavbar />
-      {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 sticky top-[73px] z-10 shadow-sm">
-        <div className="container mx-auto max-w-[1280px] px-4 py-3 flex items-center justify-between">
-          <button onClick={()=>router.push('/flight/search')} className="flex items-center gap-2 text-slate-500 hover:text-orange-600 text-sm font-semibold transition-colors">
-            <i className="fa-solid fa-arrow-left text-xs"></i> Kembali
+      <LeaveGuard active={!checkoutDone} />
+
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 sticky top-[73px] z-10">
+        <div className="max-w-[1280px] mx-auto flex items-center justify-between px-4 py-3">
+          <button onClick={()=>router.push('/flight/search')} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
+            ← {tc.back}
           </button>
-          <div className="flex items-center gap-2 text-xs font-bold">
-            <div className="flex items-center gap-1.5 text-orange-600">
-              <div className="w-5 h-5 bg-orange-600 text-white rounded-full flex items-center justify-center text-[9px]">1</div>
-              <span className="hidden sm:block">Detail Perjalanan</span>
-            </div>
-            <i className="fa-solid fa-chevron-right text-slate-300 text-[10px]"></i>
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <div className="w-5 h-5 bg-slate-200 text-slate-400 rounded-full flex items-center justify-center text-[9px]">2</div>
-              <span className="hidden sm:block">Pembayaran Penerbangan</span>
-            </div>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="font-semibold text-slate-800">1. Data Diri</span>
+            <span className="text-slate-300">→</span>
+            <span className="text-slate-400">2. Pembayaran</span>
           </div>
-          <div className="text-right hidden sm:block">
-            <p className="text-xs font-black text-slate-600">{display.carrier}</p>
-            <p className="text-xs text-slate-400">{display.origin} → {display.destination}</p>
-          </div>
+          <div className="w-16"/>
         </div>
       </div>
 
-      <div className="container mx-auto max-w-[1280px] px-4 py-6">
+      <div className="max-w-[1280px] mx-auto px-4 py-6">
+        {/* Guest banner */}
         {isGuest && (
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-5 flex items-start gap-3">
-            <i className="fa-solid fa-circle-info text-blue-500 mt-0.5 shrink-0"></i>
-            <div className="text-sm"><p className="font-bold text-blue-800">Memesan sebagai tamu</p>
-              <p className="text-blue-600"><Link href="/login" className="underline font-semibold">Masuk</Link> atau <Link href="/register" className="underline font-semibold">daftar</Link> untuk lacak riwayat pesanan.</p>
+          <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
+                <p className="text-xs text-slate-400"><Link href="/login" className="text-slate-600 underline">Masuk</Link> atau <Link href="/register" className="text-slate-600 underline">daftar</Link> untuk melihat riwayat pesanan.</p>
+              </div>
             </div>
           </div>
         )}
+
         {bookingError && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 mb-5 flex items-start gap-3 text-red-700">
-            <i className="fa-solid fa-circle-exclamation text-lg mt-0.5 shrink-0"></i>
-            <div><p className="font-bold mb-1 text-sm">Pemesanan Gagal</p><p className="text-sm">{bookingError}</p></div>
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5 text-sm text-red-700">
+            <p className="font-semibold mb-1">Pemesanan Gagal</p>
+            <p>{bookingError}</p>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
-
-          {/* ─── LEFT ──────────────────────────────────────────────────────── */}
+          {/* LEFT */}
           <div className="space-y-5">
-
             {/* Data Pemesan */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-8 h-8 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
-                  <i className="fa-solid fa-envelope text-orange-600 text-sm"></i>
-                </div>
-                <div>
-                  <h2 className="font-black text-slate-800 text-sm">Data Pemesan (Untuk E-Tiket/Voucher)</h2>
-                  <p className="text-xs text-orange-600 font-semibold">Rapikan pesanan dan dapatkan bantuan lebih.{' '}
-                    <Link href="/login" className="underline">Masuk atau Daftar</Link>
-                  </p>
-                </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-6 h-6 rounded-full bg-slate-800 text-white text-[11px] font-bold flex items-center justify-center"><i className="fa-solid fa-user text-[9px]"></i></div>
+                <h2 className="text-sm font-bold text-slate-800">Data Pemesan</h2>
               </div>
-
+              {isGuest ? (
+                <p className="text-xs text-slate-400 mt-1 mb-4">E-tiket akan dikirim ke email dan nomor HP di bawah ini.</p>
+              ) : (
+                <p className="text-xs text-slate-400 mt-1 mb-4">Data diisi otomatis dari akun Anda. Silakan lengkapi jika diperlukan.</p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <label className={labelCls}>Nama Lengkap</label>
                   <input
+                    id="booker_name"
                     value={`${booker.first_name}${booker.last_name?' '+booker.last_name:''}`.trim()}
-                    onChange={e=>{const p=e.target.value.split(' '); setBooker(b=>({...b,first_name:p[0]||'',last_name:p.slice(1).join(' ')||''}));}}
-                    className={inputCls} placeholder="Nama sesuai KTP/Paspor (tanpa gelar)"
+                    onChange={e=>{const p=e.target.value.split(' '); setBooker(b=>({...b,first_name:p[0]||'',last_name:p.slice(1).join(' ')||''})); clearErr('booker_name');}}
+                    className={fieldCls(formErrors.booker_name)} placeholder="Nama sesuai KTP/Paspor"
                   />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Nomor KTP/SIM</label>
-                  <input className={inputCls} placeholder="Contoh: 3171XXXXXXXXXXX"/>
+                  {formErrors.booker_name && <p className="text-[11px] text-red-600 mt-1">{formErrors.booker_name}</p>}
                 </div>
                 <div>
-                  <label className={labelCls}>No. Handphone</label>
+                  <label className={labelCls}>{t.contactPhone}</label>
                   <div className="flex gap-2">
-                    {/* ✅ FIX: gunakan state phoneCode, bukan value hardcoded */}
-                    <select
-                      value={booker.phoneCode}
-                      onChange={e=>setBooker(b=>({...b,phoneCode:e.target.value}))}
-                      className="w-20 px-2 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-slate-600 text-sm outline-none focus:border-orange-400 cursor-pointer"
-                    >
-                      <option value="+62">+62</option>
-                      <option value="+65">+65</option>
-                      <option value="+60">+60</option>
-                      <option value="+1">+1</option>
-                      <option value="+44">+44</option>
+                    <select value={booker.calling_code} onChange={e=>setBooker(b=>({...b,calling_code:e.target.value}))} className="w-20 px-2 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm outline-none focus:border-slate-400 cursor-pointer">
+                      <option value="+62">+62</option><option value="+65">+65</option><option value="+60">+60</option><option value="+1">+1</option><option value="+44">+44</option>
                     </select>
-                    <input value={booker.mobile} onChange={e=>setBooker(b=>({...b,mobile:e.target.value.replace(/\D/g,'')}))} className={inputCls} placeholder="8xxxxxxxxxx"/>
+                    <input id="booker_phone" value={booker.mobile} onChange={e=>{setBooker(b=>({...b,mobile:e.target.value.replace(/\D/g,'')})); clearErr('booker_phone');}} className={fieldCls(formErrors.booker_phone)} placeholder="8xxxxxxxxxx"/>
                   </div>
+                  {formErrors.booker_phone && <p className="text-[11px] text-red-600 mt-1">{formErrors.booker_phone}</p>}
+                  {!formErrors.booker_phone && booker.mobile && (
+                    <p className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1"><i className="fa-solid fa-circle-check text-[9px]"></i>Nomor terisi otomatis dari akun</p>
+                  )}
                 </div>
                 <div>
-                  <label className={labelCls}>Email</label>
-                  <input type="email" value={booker.email} onChange={e=>setBooker(b=>({...b,email:e.target.value}))} className={inputCls} placeholder="email@contoh.com"/>
+                  <label className={labelCls}>{t.contactEmail}</label>
+                  <input id="booker_email" type="email" value={booker.email} onChange={e=>{setBooker(b=>({...b,email:e.target.value})); clearErr('booker_email');}} className={fieldCls(formErrors.booker_email)} placeholder="email@contoh.com"/>
+                  {formErrors.booker_email && <p className="text-[11px] text-red-600 mt-1">{formErrors.booker_email}</p>}
                 </div>
               </div>
             </div>
 
-            {/* Detail Traveler */}
+            {/* Penumpang */}
             {passengers.map((pax,i) => (
-              <PassengerForm key={i} pax={pax} index={i} inputCls={inputCls} labelCls={labelCls} selectCls={selectCls} onChange={updatePassenger}/>
+              <PassengerForm key={i} pax={pax} index={i} fieldCls={fieldCls} labelCls={labelCls} selectCls={selectCls} errors={formErrors} onChange={updatePassenger}/>
             ))}
 
             {/* Pelengkap Penerbangan */}
             <div>
-              <h2 className="font-black text-slate-800 text-sm mb-3 flex items-center gap-2">
-                <i className="fa-solid fa-puzzle-piece text-orange-500"></i>
-                Pelengkap Penerbangan
-              </h2>
+              <h2 className="text-sm font-bold text-slate-800 mb-3">Pelengkap Penerbangan</h2>
               <div className="space-y-3">
 
-                {/* ── BAGASI — Harga dari API ── */}
-                <div className="bg-white rounded-2xl border-2 border-slate-200 p-4">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
-                      <i className="fa-solid fa-suitcase-rolling text-blue-600 text-base"></i>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-bold text-slate-800 text-sm">Bagasi</p>
-                        <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full uppercase">Rekomendasi</span>
-                        {ssrLoading && <span className="text-[10px] text-slate-400 animate-pulse">Memuat harga real...</span>}
-                        {baggageSsrs.length > 0 && <span className="text-[10px] text-emerald-600 font-bold">✓ Harga dari maskapai</span>}
-                      </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Bawaan gratis hingga 20 kg/orang. Tambahkan bagasi ekstra jika perlu.
-                      </p>
-                    </div>
-                  </div>
+                {/* Bagasi */}
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <p className="font-semibold text-slate-800 text-sm mb-1">{t.baggage}</p>
+                  <p className="text-xs text-slate-400 mb-3">Bawaan gratis hingga 20 kg/orang.</p>
+                  {ssrLoading && <p className="text-xs text-slate-400 animate-pulse mb-2">Memuat harga bagasi...</p>}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {bagOpts.map(opt => (
                       <button key={opt.ssr_code}
                         onClick={()=>setSelectedBaggage(opt.kg===0?null:opt)}
-                        className={`py-2.5 px-2 text-xs font-bold rounded-xl border-2 transition-all text-center ${
+                        className={`py-2.5 px-2 text-xs font-semibold rounded-lg border transition-all text-center ${
                           (opt.kg===0&&selectedBaggage===null)||(selectedBaggage?.ssr_code===opt.ssr_code)
-                            ?'border-blue-500 bg-blue-50 text-blue-700'
-                            :'border-slate-200 text-slate-500 hover:border-blue-300'
+                            ?'border-slate-800 bg-slate-800 text-white'
+                            :'border-slate-200 text-slate-500 hover:border-slate-400'
                         }`}>
-                        <div>{opt.kg===0?'Tidak Tambah':opt.name}</div>
-                        <div className="text-[10px] font-semibold mt-0.5">{opt.kg===0?'Gratis':fmtIDR(opt.base_price)+'/org'}</div>
+                        <div>{opt.kg===0?tc.no:opt.name}</div>
+                        <div className="text-[10px] font-normal mt-0.5 opacity-70">{opt.kg===0?'Gratis':fmtIDR(opt.base_price)+'/org'}</div>
                       </button>
                     ))}
                   </div>
                   {selectedBaggage && baggageFee > 0 && (
-                    <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
-                      <span className="text-xs text-slate-500">+{selectedBaggage.kg} KG × {adultCount} org</span>
-                      <span className="text-sm font-black text-orange-600">+ {fmtIDR(baggageFee)}</span>
+                    <div className="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
+                      <span className="text-slate-500">+{selectedBaggage.kg} KG × {adultCount} orang</span>
+                      <span className="font-semibold text-slate-800">{fmtIDR(baggageFee)}</span>
                     </div>
                   )}
                 </div>
 
-                {/* ── NOMOR KURSI ── */}
-                <div className={`bg-white rounded-2xl border-2 transition-all ${showSeatMap?'border-orange-400':'border-slate-200'}`}>
+                {/* Kursi */}
+                <div className={`bg-white rounded-xl border transition-all ${showSeatMap?'border-slate-800':'border-slate-200'}`}>
                   <div className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
-                        <i className="fa-solid fa-chair text-orange-600 text-base"></i>
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-bold text-slate-800 text-sm">Nomor Kursi</p>
-                        <p className="text-xs text-slate-500">Pilih kursi untuk kenyamanan perjalanan.</p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">{t.seatSelection}</p>
+                        <p className="text-xs text-slate-400">{t.seatOptional}</p>
                         {Object.keys(selectedSeats).length > 0 && (
-                          <p className="text-xs text-orange-600 font-semibold mt-0.5">
-                            {Object.keys(selectedSeats).length} kursi dipilih · {fmtIDR(seatFee)}
+                          <p className="text-xs text-slate-600 font-semibold mt-1">
+                            {Object.keys(selectedSeats).length} kursi · {fmtIDR(seatFee)}
                           </p>
                         )}
                       </div>
-                      <div className={`relative inline-flex items-center w-10 h-6 rounded-full transition-colors cursor-pointer shrink-0 ${showSeatMap?'bg-orange-500':'bg-slate-200'}`}
+                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${showSeatMap?'bg-slate-800':'bg-slate-200'}`}
                         onClick={()=>{ if(!showSeatMap){setShowSeatMap(true);fetchSeats();}else{setShowSeatMap(false);} }}>
-                        <div className={`absolute w-4 h-4 bg-white rounded-full shadow transition-transform ${showSeatMap?'translate-x-5':'translate-x-1'}`}/>
+                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${showSeatMap?'translate-x-[22px]':'translate-x-[3px]'}`}/>
                       </div>
                     </div>
-
                     {showSeatMap && (
                       <div className="mt-4">
-                        {seatsLoading && <div className="py-6 text-center"><div className="w-8 h-8 border-4 border-orange-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"/><p className="text-xs text-slate-400">Memuat peta kursi...</p></div>}
+                        {seatsLoading && <div className="py-6 text-center"><div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-2"/><p className="text-xs text-slate-400">Memuat peta kursi...</p></div>}
                         {seatsError && !seatsLoading && (
-                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-600 text-xs">
-                            <div className="flex items-start gap-3">
-                              <i className="fa-solid fa-circle-info text-slate-400 mt-0.5 shrink-0"></i>
-                              <div>
-                                <p className="font-bold text-slate-700 mb-1">Pilih Kursi Tidak Tersedia</p>
-                                <p className="whitespace-pre-line">{seatsError}</p>
-                                {!seatsError.includes('tidak tersedia') && (
-                                  <button onClick={fetchSeats} className="mt-2 px-3 py-1.5 bg-slate-600 text-white rounded-lg font-bold text-[11px]">Coba Lagi</button>
-                                )}
-                              </div>
-                            </div>
+                          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-600">
+                            <p className="font-semibold mb-1">{seatsError}</p>
+                            {!seatsError.includes('tidak tersedia') && <button onClick={fetchSeats} className="mt-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg font-semibold text-[11px]">{tc.retry}</button>}
                           </div>
                         )}
                         {!seatsLoading && !seatsError && segmentSeats.length>0 && (
-                          <div className="space-y-5">
-                            {/* Legenda */}
-                            <div className="flex items-center gap-3 text-[10px] text-slate-500 flex-wrap">
-                              <div className="flex items-center gap-1"><div className="w-3.5 h-3.5 bg-emerald-100 border border-emerald-300 rounded-sm"></div>Gratis</div>
-                              <div className="flex items-center gap-1"><div className="w-3.5 h-3.5 bg-amber-100 border border-amber-300 rounded-sm"></div>Berbayar</div>
-                              <div className="flex items-center gap-1"><div className="w-3.5 h-3.5 bg-orange-500 rounded-sm"></div>Dipilih</div>
-                              <div className="flex items-center gap-1"><div className="w-3.5 h-3.5 bg-slate-100 border border-slate-200 rounded-sm"></div>Tidak Tersedia</div>
+                          <div className="space-y-5 mt-2">
+                            <div className="flex items-center gap-3 text-[10px] text-slate-400 flex-wrap">
+                              <div className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-50 border border-emerald-300 rounded-sm"></div>Gratis</div>
+                              <div className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-50 border border-amber-300 rounded-sm"></div>Berbayar</div>
+                              <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-800 rounded-sm"></div>Dipilih</div>
+                              <div className="flex items-center gap-1"><div className="w-3 h-3 bg-slate-100 border border-slate-200 rounded-sm"></div>Tidak Tersedia</div>
                             </div>
                             {segmentSeats.map(seg => (
                               <div key={seg.segment_code}>
-                                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-slate-100">
-                                  <i className="fa-solid fa-plane text-orange-400 text-xs"></i>
-                                  <p className="font-black text-slate-700 text-xs">{seg.origin} → {seg.destination} · {seg.carrier_name}</p>
-                                </div>
+                                <p className="text-xs font-semibold text-slate-600 mb-2">{seg.origin} → {seg.destination} · {seg.carrier_name}</p>
                                 <SeatMap segment={seg} passengerCount={passengers.filter(p=>p.pax_type!=='INF').length} selectedSeats={selectedSeats} onSelectSeat={handleSeatSelect}/>
                               </div>
                             ))}
-                          </div>
-                        )}
-                        {seatFee>0 && (
-                          <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
-                            <span className="text-xs text-slate-500">{Object.keys(selectedSeats).length} kursi dipilih</span>
-                            <span className="text-sm font-black text-orange-600">+ {fmtIDR(seatFee)}</span>
                           </div>
                         )}
                       </div>
@@ -875,182 +696,192 @@ function FlightCheckoutContent() {
                   </div>
                 </div>
 
-                {/* ── JAMINAN REFUND ── */}
-                <AddonCard icon="fa-shield-check" bgIcon="bg-emerald-100" title="Jaminan Refund 100%"
-                  subtitle="Batalkan pesanan kapan saja dan dapatkan pengembalian dana penuh."
-                  badge="Terlindungi" badgeColor="bg-emerald-100 text-emerald-700"
-                  isChecked={addRefund} onToggle={()=>setAddRefund(!addRefund)}
-                  price={refundFee} expandable>
-                  <ul className="space-y-1 text-xs text-slate-500">
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-emerald-500 text-[10px]"></i>Batalkan dengan alasan apapun hingga 2 jam sebelum keberangkatan</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-emerald-500 text-[10px]"></i>Refund penuh diproses dalam 7 hari kerja</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-emerald-500 text-[10px]"></i>{fmtIDR(ADDON_PRICES.refund)}/penumpang</li>
-                  </ul>
-                </AddonCard>
+                {/* Addons */}
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Perlindungan & Asuransi</p>
 
-                {/* ── RESCHEDULE ── */}
-                <AddonCard icon="fa-calendar-xmark" bgIcon="bg-purple-100" title="Perlindungan Reschedule Maskapai"
-                  subtitle="Dilindungi jika maskapai membatalkan atau mengubah jadwal penerbangan."
-                  isChecked={addResched} onToggle={()=>setAddResched(!addResched)}
-                  price={reschedFee} expandable>
-                  <ul className="space-y-1 text-xs text-slate-500">
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-purple-500 text-[10px]"></i>Reschedule gratis jika maskapai yang ubah jadwal</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-purple-500 text-[10px]"></i>Berlaku untuk semua kelas penerbangan</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-purple-500 text-[10px]"></i>{fmtIDR(ADDON_PRICES.resched)}/penumpang</li>
-                  </ul>
-                </AddonCard>
+                  <div className={`bg-white rounded-xl border p-4 transition-all ${addRefund?'border-slate-800':'border-slate-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">Jaminan Refund 100%</p>
+                        <p className="text-xs text-slate-400">Batalkan kapan saja, pengembalian dana penuh.</p>
+                      </div>
+                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addRefund?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddRefund(!addRefund)}>
+                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addRefund?'translate-x-[22px]':'translate-x-[3px]'}`}/>
+                      </div>
+                    </div>
+                    {addRefund && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(refundFee)}</p>}
+                  </div>
 
-                {/* ── ASURANSI PERJALANAN ── */}
-                <AddonCard icon="fa-umbrella" bgIcon="bg-orange-100" title="Asuransi Perjalanan"
-                  badge="Sudah Dipilih" badgeColor="bg-red-100 text-red-700"
-                  subtitle="Perlindungan jiwa, bagasi, dan biaya medis selama perjalanan."
-                  isChecked={addInsurance} onToggle={()=>setAddInsurance(!addInsurance)}
-                  price={insuranceFee} expandable>
-                  <ul className="space-y-1 text-xs text-slate-500">
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-orange-500 text-[10px]"></i>Perlindungan jiwa penumpang maks. Rp 500.000.000</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-orange-500 text-[10px]"></i>Perlindungan bagasi maks. Rp 20.000.000</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-orange-500 text-[10px]"></i>Biaya medis darurat maks. Rp 200.000.000</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-orange-500 text-[10px]"></i>{fmtIDR(ADDON_PRICES.insurance)}/penumpang</li>
-                  </ul>
-                </AddonCard>
+                  <div className={`bg-white rounded-xl border p-4 transition-all ${addResched?'border-slate-800':'border-slate-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">Perlindungan Reschedule</p>
+                        <p className="text-xs text-slate-400">Dilindungi jika maskapai ubah jadwal.</p>
+                      </div>
+                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addResched?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddResched(!addResched)}>
+                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addResched?'translate-x-[22px]':'translate-x-[3px]'}`}/>
+                      </div>
+                    </div>
+                    {addResched && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(reschedFee)}</p>}
+                  </div>
 
-                {/* ── ASURANSI KETERLAMBATAN ── */}
-                <AddonCard icon="fa-clock" bgIcon="bg-blue-100" title="Asuransi Keterlambatan"
-                  subtitle={`Dapat kompensasi ${fmtIDR(300000)} jika penerbangan delay lebih dari 2 jam.`}
-                  isChecked={addDelay} onToggle={()=>setAddDelay(!addDelay)}
-                  price={delayFee} expandable>
-                  <ul className="space-y-1 text-xs text-slate-500">
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-blue-500 text-[10px]"></i>Kompensasi otomatis tanpa klaim manual</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-blue-500 text-[10px]"></i>Berlaku untuk delay 2 jam atau lebih</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-blue-500 text-[10px]"></i>{fmtIDR(ADDON_PRICES.delay)}/penumpang</li>
-                  </ul>
-                </AddonCard>
+                  <div className={`bg-white rounded-xl border p-4 transition-all ${addInsurance?'border-slate-800':'border-slate-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">Asuransi Perjalanan</p>
+                        <p className="text-xs text-slate-400">Perlindungan jiwa, bagasi, biaya medis.</p>
+                      </div>
+                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addInsurance?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddInsurance(!addInsurance)}>
+                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addInsurance?'translate-x-[22px]':'translate-x-[3px]'}`}/>
+                      </div>
+                    </div>
+                    {addInsurance && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(insuranceFee)}</p>}
+                  </div>
 
-                {/* ── PERLINDUNGAN BAGASI HILANG ── */}
-                <AddonCard icon="fa-suitcase" bgIcon="bg-slate-100" title="Perlindungan Bagasi Hilang"
-                  subtitle={`Mulai ${fmtIDR(ADDON_PRICES.lostBag)}/orang. Ganti rugi hingga Rp 2 juta jika bagasi hilang.`}
-                  isChecked={addLostBag} onToggle={()=>setAddLostBag(!addLostBag)}
-                  price={lostBagFee} expandable>
-                  <ul className="space-y-1 text-xs text-slate-500">
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-slate-500 text-[10px]"></i>Klaim mudah lewat aplikasi</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-slate-500 text-[10px]"></i>Proses penggantian dalam 14 hari kerja</li>
-                    <li className="flex items-center gap-2"><i className="fa-solid fa-check text-slate-500 text-[10px]"></i>{fmtIDR(ADDON_PRICES.lostBag)}/penumpang</li>
-                  </ul>
-                </AddonCard>
+                  <div className={`bg-white rounded-xl border p-4 transition-all ${addDelay?'border-slate-800':'border-slate-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">Asuransi Keterlambatan</p>
+                        <p className="text-xs text-slate-400">Kompensasi jika delay lebih dari 2 jam.</p>
+                      </div>
+                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addDelay?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddDelay(!addDelay)}>
+                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addDelay?'translate-x-[22px]':'translate-x-[3px]'}`}/>
+                      </div>
+                    </div>
+                    {addDelay && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(delayFee)}</p>}
+                  </div>
+
+                  <div className={`bg-white rounded-xl border p-4 transition-all ${addLostBag?'border-slate-800':'border-slate-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-800 text-sm">Perlindungan Bagasi Hilang</p>
+                        <p className="text-xs text-slate-400">Ganti rugi hingga Rp 2 juta jika bagasi hilang.</p>
+                      </div>
+                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addLostBag?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddLostBag(!addLostBag)}>
+                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addLostBag?'translate-x-[22px]':'translate-x-[3px]'}`}/>
+                      </div>
+                    </div>
+                    {addLostBag && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(lostBagFee)}</p>}
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Warning */}
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-700 text-xs space-y-1.5">
-              <p className="font-bold text-sm flex items-center gap-2"><i className="fa-solid fa-triangle-exclamation"></i>Informasi Penting</p>
-              <p>Pastikan data penumpang <strong>sesuai persis</strong> dengan KTP/Paspor.</p>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-700 text-xs space-y-1">
+              <p className="font-semibold text-sm">Informasi Penting</p>
+              <p>Pastikan data penumpang sesuai persis dengan KTP/Paspor.</p>
               <p>E-tiket dikirim ke email pemesan dalam 1×60 menit setelah pembayaran.</p>
             </div>
           </div>
 
-          {/* ─── RIGHT: Sidebar Summary ─────────────────────────────────────── */}
-          <div className="space-y-4 sticky top-32">
-            {/* Flight info card — mendukung Single / RT / Multi-Kota */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="bg-blue-800 px-4 py-3 flex items-center justify-between">
-                <span className="text-white text-xs font-bold">Ringkasan Penerbangan</span>
-                <span className="text-blue-200 text-xs">
-                  {flightData?.searchMeta?.direction === 'RT'
-                    ? 'Pulang Pergi'
-                    : flightData?.searchMeta?.direction === 'Multi'
-                    ? 'Multi-Kota'
-                    : display.carrier}
-                </span>
+          {/* RIGHT: Sidebar */}
+          <div className="space-y-4 sticky top-28">
+            {/* Flight info */}
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-800">{t.flightDetails}</span>
               </div>
-
-              {/* Jika multi-leg: tampilkan tiap leg */}
               {flightData?.allLegsDisplay && flightData.allLegsDisplay.length > 1 ? (
                 <div className="divide-y divide-slate-100">
                   {(flightData.allLegsDisplay as any[]).filter(Boolean).map((leg: any, i: number) => {
-                    const legLabels = flightData?.searchMeta?.direction === 'RT'
-                      ? ['Pergi', 'Pulang']
-                      : (flightData?.searchMeta?.routes || []).map((_: any, j: number) => `Kota ${j + 1}`);
-                    const BADGE_COLORS = ['bg-orange-600', 'bg-blue-600', 'bg-emerald-600', 'bg-purple-600'];
+                    const legLabels = flightData?.searchMeta?.direction === 'RT' ? ['Pergi', 'Pulang'] : (flightData?.searchMeta?.routes || []).map((_: any, j: number) => `Kota ${j + 1}`);
                     return (
                       <div key={i} className="p-4 space-y-2">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-[10px] font-black text-white px-2 py-0.5 rounded-full ${BADGE_COLORS[i % BADGE_COLORS.length]}`}>
-                            {legLabels[i] || `Leg ${i + 1}`}
-                          </span>
-                          <span className="text-[10px] text-slate-400">{leg.carrier}</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{legLabels[i] || `Leg ${i + 1}`}</span>
+                        <div className="flex items-center justify-between">
+                          <p className="text-lg font-bold text-slate-900">{fmtTime(leg.departure)}</p>
+                          <p className="text-[10px] text-slate-400">{t.direct}</p>
+                          <p className="text-lg font-bold text-slate-900">{fmtTime(leg.arrival)}</p>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold uppercase tracking-wider">
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
                           <span>{leg.origin}</span>
-                          <div className="flex items-center gap-1 flex-1 px-1">
-                            <div className="flex-1 h-px bg-slate-200"></div>
-                            <i className="fa-solid fa-plane text-orange-400 text-[10px]"></i>
-                            <div className="flex-1 h-px bg-slate-200"></div>
-                          </div>
+                          <span className="flex-1 h-px bg-slate-200"></span>
                           <span>{leg.destination}</span>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <p className="text-xl font-black text-slate-900">{fmtTime(leg.departure)}</p>
-                          <p className="text-[10px] text-slate-400">Langsung</p>
-                          <p className="text-xl font-black text-slate-900">{fmtTime(leg.arrival)}</p>
-                        </div>
-                        <p className="text-xs text-slate-400">{fmtDate(leg.departure)}</p>
+                        <p className="text-[11px] text-slate-400">{fmtDate(leg.departure)} · {leg.carrier}</p>
                       </div>
                     );
                   })}
-                  <div className="px-4 py-3">
-                    <div className="flex gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">
-                        <i className="fa-solid fa-suitcase-rolling text-orange-400 text-[10px]"></i>20 KG Gratis
-                      </span>
-                      {selectedBaggage && <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">+{selectedBaggage.kg} KG</span>}
-                    </div>
-                  </div>
                 </div>
               ) : (
-                /* Single flight */
-                <div className="p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold uppercase tracking-wider">
+                <div className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xl font-bold text-slate-900">{fmtTime(display.departure)}</p>
+                    <p className="text-xs text-slate-400">{t.direct}</p>
+                    <p className="text-xl font-bold text-slate-900">{fmtTime(display.arrival)}</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
                     <span>{display.origin}</span>
-                    <div className="flex items-center gap-1 flex-1 px-2">
-                      <div className="flex-1 h-px bg-slate-200"></div>
-                      <i className="fa-solid fa-plane text-orange-400 text-[10px]"></i>
-                      <div className="flex-1 h-px bg-slate-200"></div>
-                    </div>
+                    <span className="flex-1 h-px bg-slate-200"></span>
                     <span>{display.destination}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div><p className="text-2xl font-black text-slate-900">{fmtTime(display.departure)}</p></div>
-                    <div className="text-center text-xs text-slate-400">Langsung</div>
-                    <div className="text-right"><p className="text-2xl font-black text-slate-900">{fmtTime(display.arrival)}</p></div>
-                  </div>
-                  <p className="text-xs text-slate-400">{fmtDate(display.departure)}</p>
-                  <div className="flex gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">
-                      <i className="fa-solid fa-suitcase-rolling text-orange-400 text-[10px]"></i>20 KG Gratis
-                    </span>
-                    {selectedBaggage && <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">+{selectedBaggage.kg} KG</span>}
+                  <p className="text-xs text-slate-400">{fmtDate(display.departure)} · {display.carrier}</p>
+                  <div className="flex gap-2 flex-wrap pt-1">
+                    <span className="text-[11px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">20 KG Gratis</span>
+                    {selectedBaggage && <span className="text-[11px] font-semibold bg-slate-800 text-white px-2 py-0.5 rounded">+{selectedBaggage.kg} KG</span>}
                   </div>
                 </div>
               )}
             </div>
 
             {/* Price Breakdown */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-              <h3 className="font-black text-slate-800 text-sm mb-3">Rincian Harga</h3>
-              <PriceDetailPanel breakdown={priceBreakdown} addons={addonRows} totalFinal={grandTotal}/>
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <h3 className="text-sm font-bold text-slate-800 mb-3">{t.priceDetails}</h3>
+              <div className="space-y-2 text-xs">
+                {priceBreakdown && priceBreakdown.adultCount>0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tiket {t.adult} ×{priceBreakdown.adultCount}</span>
+                    <span className="font-semibold">{fmtIDR((priceBreakdown.adultFare+priceBreakdown.adultTax)*priceBreakdown.adultCount)}</span>
+                  </div>
+                )}
+                {priceBreakdown && priceBreakdown.childCount>0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tiket {t.child} ×{priceBreakdown.childCount}</span>
+                    <span className="font-semibold">{fmtIDR((priceBreakdown.childFare+priceBreakdown.childTax)*priceBreakdown.childCount)}</span>
+                  </div>
+                )}
+                {priceBreakdown && priceBreakdown.infantCount>0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tiket {t.infant} ×{priceBreakdown.infantCount}</span>
+                    <span className="font-semibold">{fmtIDR((priceBreakdown.infantFare+priceBreakdown.infantTax)*priceBreakdown.infantCount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-slate-600">
+                  <span>Biaya Admin</span>
+                  <span className="font-semibold">{fmtIDR(adminFee)}</span>
+                </div>
+                {addonRows.filter(a=>a.value>0 && a.label!=='Biaya Admin').map((a,i)=>(
+                  <div key={i} className="flex justify-between text-slate-600">
+                    <span>{a.label}</span>
+                    <span className="font-semibold">{fmtIDR(a.value)}</span>
+                  </div>
+                ))}
+                <div className="border-t border-slate-200 pt-3 mt-3 flex justify-between items-center">
+                  <span className="font-bold text-slate-800">{t.total}</span>
+                  <span className="font-bold text-slate-900 text-base">{fmtIDR(grandTotal)}</span>
+                </div>
+              </div>
 
+              {Object.keys(formErrors).length > 0 && !submitting && (
+                <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 flex items-start gap-2">
+                  <i className="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                  <span>Masih ada {Object.keys(formErrors).length} data yang belum lengkap. Periksa kembali kolom bertanda merah.</span>
+                </div>
+              )}
               <button
                 onClick={handleSubmit}
-                disabled={submitting || !isFormValid()}
-                className="mt-4 w-full py-4 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black rounded-2xl transition-all text-base active:scale-95 shadow-lg shadow-orange-600/20"
+                disabled={submitting}
+                className="mt-4 w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all text-sm active:scale-[0.98]"
               >
                 {submitting
-                  ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>Memproses...</span>
+                  ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>{t.processing}</span>
                   : `Bayar ${fmtIDR(grandTotal)}`
                 }
               </button>
               <p className="text-[10px] text-slate-400 text-center mt-2">
-                Dengan menekan tombol, Anda menyetujui <span className="underline cursor-pointer">Syarat & Ketentuan</span> kami.
+                Dengan menekan tombol, Anda menyetujui Syarat & Ketentuan kami.
               </p>
             </div>
           </div>
@@ -1063,8 +894,8 @@ function FlightCheckoutContent() {
 export default function FlightCheckoutPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"/>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-8 h-8 border-[3px] border-slate-200 border-t-slate-600 rounded-full animate-spin"/>
       </div>
     }>
       <FlightCheckoutContent/>

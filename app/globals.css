@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
+@config "../tailwind.config.ts";
 
 :root {
   --orange: #F97316;
@@ -39,6 +40,22 @@ body {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes popIn {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastProgress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(40px); }
@@ -52,6 +69,9 @@ body {
 .fade-up { animation: fadeInUp 0.9s ease forwards; }
 .animate-fade-up { animation: fadeInUp 0.5s ease forwards; }
 .animate-fade-in { animation: fadeIn 0.4s ease forwards; }
+.animate-pop-in { animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+.animate-slide-in-right { animation: slideInRight 0.35s cubic-bezier(0.21,1.02,0.73,1) forwards; }
+.animate-toast-progress { animation: toastProgress 5s linear forwards; }
 
 .skeleton {
   background: linear-gradient(90deg, #F3F4F6 25%, #E5E7EB 50%, #F3F4F6 75%);
@@ -88,4 +108,41 @@ html {
 
 body {
   overflow-x: hidden;
+}
+
+/* DatePicker: kalender tidak boleh tertimpa konten di bawah (sidebar sticky / kartu) */
+.react-datepicker-popper {
+  z-index: 3000 !important;
+}
+
+/* DatePicker dark theme */
+.react-datepicker {
+  background-color: #0f172a;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 1.5rem;
+  font-family: inherit;
+  color: white;
+}
+.react-datepicker__header {
+  background-color: #1e293b;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.react-datepicker__current-month,
+.react-datepicker__day-name {
+  color: white;
+}
+.react-datepicker__day {
+  color: rgba(255,255,255,0.8);
+}
+.react-datepicker__day:hover {
+  background-color: #ea580c;
+  border-radius: 0.5rem;
+}
+.react-datepicker__day--selected,
+.react-datepicker__day--in-range {
+  background-color: #ea580c !important;
+  color: white !important;
+}
+.react-datepicker__day--disabled {
+  color: rgba(255,255,255,0.2) !important;
 }

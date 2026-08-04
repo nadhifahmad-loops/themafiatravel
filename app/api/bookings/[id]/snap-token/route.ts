@@ -1,0 +1,149 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { createSnapTransaction } from '@/lib/midtrans';
+import { bookingStore } from '@/lib/store';
+
+const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+// Refresh token Snap Midtrans untuk booking yang masih pending_payment.
+// Token Snap hanya berlaku ±5 menit, sedangkan window pembayaran 24 jam —
+// jadi token perlu dibuat ulang saat embed gagal / token kedaluwarsa.
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    const resolvedParams = await params;
+    const id = resolvedParams.id;
+
+    const booking = await prisma.booking.findFirst({
+      where: { OR: [{ id }, { orderNumber: id }] },
+      include: { user: { select: { name: true, email: true } } },
+    });
+
+    if (!booking) {
+      return NextResponse.json(
+        { success: false, message: 'Pesanan tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    // ── Ownership (sama seperti GET /api/bookings/[id]) ─────────────────────
+    if (booking.userId) {
+      if (!session?.user?.email) {
+        return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
+      }
+      const requester = await prisma.user.findUnique({ where: { email: session.user.email } });
+      if (!requester) {
+        return NextResponse.json({ success: false, message: 'User tidak ditemukan' }, { status: 401 });
+      }
+      const isAdmin = requester.role === 'admin';
+      if (!isAdmin && booking.userId !== requester.id) {
+        return NextResponse.json(
+          { success: false, message: 'Akses ditolak: bukan pesanan Anda' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // ── Hanya pending_payment & belum lewat batas waktu ─────────────────────
+    if (booking.status !== 'pending_payment') {
+      return NextResponse.json(
+        { success: false, message: 'Pesanan tidak dalam status menunggu pembayaran' },
+        { status: 409 }
+      );
+    }
+
+    if (Date.now() - booking.createdAt.getTime() > PAYMENT_TIMEOUT_MS) {
+      return NextResponse.json(
+        { success: false, message: 'Waktu pembayaran telah berakhir' },
+        { status: 410 }
+      );
+    }
+
+    // ── Derive data customer + label dari data booking ──────────────────────
+    const bd: any = booking.bookingData ?? {};
+    const contacts: any[] = Array.isArray(bd.contacts) ? bd.contacts : [];
+    const contact = contacts[0] ?? null;
+    const pax: any = Array.isArray(booking.passengerData) ? booking.passengerData[0] : null;
+
+    const customerName =
+      (contact?.first_name ? `${contact.first_name} ${contact.last_name || ''}`.trim() : '') ||
+      (pax?.first_name ? `${pax.first_name} ${pax.last_name || ''}`.trim() : '') ||
+      booking.user?.name ||
+      '';
+
+    const customerEmail = contact?.email || pax?.email || booking.user?.email || '';
+
+    const rawPhone = contact?.mobile || contact?.phone || pax?.mobile || '';
+    const customerPhone = rawPhone
+      ? `${contact?.calling_code || pax?.calling_code || '62'}${rawPhone}`
+      : '';
+
+    let itemName = `The Mafia Travel - ${booking.bookingType}`;
+    if (booking.bookingType === 'flight') itemName = `Tiket Pesawat: ${booking.routeLabel || booking.airlineName || 'Flight'}`;
+    else if (booking.bookingType === 'train') itemName = `Tiket Kereta: ${booking.routeLabel || booking.airlineName || 'Train'}`;
+    else if (booking.bookingType === 'hotel') itemName = `Hotel: ${booking.hotelName || 'Hotel'}`;
+    else if (booking.bookingType === 'insurance') itemName = `Asuransi Perjalanan`;
+
+    const snap = await createSnapTransaction({
+      orderId: booking.id,
+      amount: Math.round(booking.totalAmount),
+      customerName,
+      customerEmail,
+      customerPhone: customerPhone || undefined,
+      itemDetails: [{
+        id: booking.id,
+        price: Math.round(booking.totalAmount),
+        quantity: 1,
+        name: itemName,
+      }],
+    });
+
+    // ── Update booking + Payment record (orderId sama agar webhook cocok) ───
+    const updated = await prisma.booking.update({
+      where: { id: booking.id },
+      data: { snapToken: snap.token, snapRedirectUrl: snap.redirect_url },
+    });
+
+    const existingPayment = await prisma.payment.findFirst({
+      where: { bookingId: booking.id, orderId: booking.id },
+    });
+    if (existingPayment) {
+      await prisma.payment.update({
+        where: { id: existingPayment.id },
+        data: { snapToken: snap.token, snapRedirectUrl: snap.redirect_url, status: 'pending' },
+      });
+    } else {
+      await bookingStore.logPayment({
+        bookingId: booking.id,
+        orderId: booking.id,
+        amount: Math.round(booking.totalAmount),
+        snapToken: snap.token,
+        snapRedirectUrl: snap.redirect_url,
+        status: 'pending',
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      snapToken: snap.token,
+      redirectUrl: snap.redirect_url,
+      data: {
+        id: updated.id,
+        snapToken: updated.snapToken,
+        snapRedirectUrl: updated.snapRedirectUrl,
+      },
+    });
+
+  } catch (error: any) {
+    console.error('Error Refresh Snap Token:', error?.message || error);
+    return NextResponse.json(
+      { success: false, message: 'Gagal membuat ulang token pembayaran. Silakan coba lagi.' },
+      { status: 500 }
+    );
+  }
+}

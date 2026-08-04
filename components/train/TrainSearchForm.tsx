@@ -1,10 +1,13 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { registerLocale } from "react-datepicker";
-import { id } from 'date-fns/locale/id';
-registerLocale('id', id);
+import { id as localeId } from 'date-fns/locale';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useLocation } from '@/contexts/LocationContext';
+import { i18n } from '@/lib/i18n';
+registerLocale('id', localeId);
 
 interface Station {
   code: string;
@@ -151,6 +154,9 @@ function StationInput({ label, value, onChange, stations, icon }: { label: strin
 }
 
 export default function TrainSearchForm({ onSearch, loading, initialData }: { onSearch: (p: any) => void; loading: boolean; initialData?: any; }) {
+  const { language } = useLanguage();
+  const { nearestStation } = useLocation();
+  const t = i18n.searchForm[language].train;
   const [tripType, setTripType] = useState(initialData?.direction || 'OW');
   const [stations, setStations] = useState<Station[]>(POPULAR_STATIONS); // Pakai populer sebagai awalan
   
@@ -164,6 +170,15 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
 
   const [origin, setOrigin] = useState(initialData?.origin || 'GMR');
   const [destination, setDestination] = useState(initialData?.destination || 'BD');
+  const originTouched = useRef(false);
+
+  // Prefill asal dari GPS (hanya jika user belum memilih sendiri)
+  useEffect(() => {
+    if (originTouched.current) return;
+    if (initialData?.origin) return;
+    if (nearestStation?.code && origin !== nearestStation.code) setOrigin(nearestStation.code);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearestStation?.code]);
   
   const [startDate, setStartDate] = useState<Date | null>(() => {
     if (initialData?.departure_date) return new Date(initialData.departure_date);
@@ -173,6 +188,8 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
     if (initialData?.return_date) return new Date(initialData.return_date);
     return null;
   });
+
+  const minDateToday = useMemo(() => new Date(), []);
 
   // Ambil Data Stasiun API
   useEffect(() => {
@@ -210,7 +227,7 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
     }
 
     // Payload KAI API Format
-    let payload: any = { 
+    const payload: any = { 
       direction: tripType, 
       adult: pax.adult, 
       infant: pax.infant,
@@ -249,22 +266,22 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
       <div className="flex flex-col gap-4">
         {/* ROW ASAL & TUJUAN */}
         <div className="flex flex-col md:flex-row gap-3 relative w-full">
-          <StationInput label="Asal" value={origin} onChange={setOrigin} stations={stations} icon="fa-train" />
-          <button type="button" onClick={() => { const tmp = origin; setOrigin(destination); setDestination(tmp); }}
+          <StationInput label={t.from} value={origin} onChange={(v) => { originTouched.current = true; setOrigin(v); }} stations={stations} icon="fa-train" />
+          <button type="button" onClick={() => { originTouched.current = true; const tmp = origin; setOrigin(destination); setDestination(tmp); }}
             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-slate-900 border border-white/20 text-orange-500 rounded-full z-10 flex items-center justify-center hover:scale-110 active:rotate-180 transition-all shadow-xl"
           ><i className="fa-solid fa-right-left text-xs"></i></button>
-          <StationInput label="Tujuan" value={destination} onChange={setDestination} stations={stations} icon="fa-train" />
+          <StationInput label={t.to} value={destination} onChange={setDestination} stations={stations} icon="fa-train" />
         </div>
 
         {/* ROW TANGGAL & PENUMPANG & TOMBOL */}
         <div className="flex flex-col lg:flex-row items-stretch gap-4 border-t border-white/10 pt-4">
           
           <div className="flex-1 min-w-[150px] px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all">
-            <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">Tanggal Berangkat</span>
+            <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">{t.departure}</span>
             <div className="flex items-center gap-3">
               <i className="fa-regular fa-calendar text-orange-500 text-base"></i>
               <DatePicker selected={startDate} onChange={(d: Date | null) => setStartDate(d)}
-                minDate={new Date(Date.now())}
+                minDate={minDateToday}
                 className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" placeholderText="Pilih tanggal" />
             </div>
           </div>
@@ -275,7 +292,7 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
               <div className="flex items-center gap-3">
                 <i className="fa-regular fa-calendar-check text-orange-500 text-base"></i>
                 <DatePicker selected={endDate} onChange={(d: Date | null) => setEndDate(d)}
-                  minDate={startDate || new Date(Date.now())}
+                  minDate={startDate || minDateToday}
                   className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" placeholderText="Pilih tanggal" />
               </div>
             </div>
@@ -287,12 +304,12 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
               onClick={() => setOpenPax(!openPax)}
               className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all h-full"
             >
-              <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">Penumpang</span>
+              <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">{t.passengers}</span>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <i className="fa-solid fa-users text-orange-500 text-sm"></i>
                   <div className="text-white font-black text-sm truncate">
-                    {pax.adult} Dewasa, {pax.infant} Bayi
+                    {pax.adult} {t.adult}, {pax.infant} {t.infant}
                   </div>
                 </div>
                 <i className={`fa-solid fa-chevron-down text-white/30 text-xs transition-transform ${openPax ? 'rotate-180' : ''}`}></i>
@@ -302,8 +319,8 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
             {openPax && (
               <div className="absolute top-full left-0 mt-2 w-full lg:w-[320px] bg-slate-900 border border-white/10 shadow-2xl rounded-2xl z-[100] p-4 flex flex-col gap-4 animate-fade-in">
                 {[ 
-                  { k: 'adult', l: 'Dewasa', desc: '≥ 3 tahun', i: 'fa-user' }, 
-                  { k: 'infant', l: 'Bayi', desc: '< 3 tahun', i: 'fa-baby' } 
+                  { k: 'adult', l: t.adult, desc: '≥ 3 tahun', i: 'fa-user' }, 
+                  { k: 'infant', l: t.infant, desc: '< 3 tahun', i: 'fa-baby' } 
                 ].map(({ k, l, desc, i }) => (
                   <div key={k} className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
@@ -340,22 +357,13 @@ export default function TrainSearchForm({ onSearch, loading, initialData }: { on
             ) : (
               <div className="flex items-center gap-2 lg:gap-0">
                 <i className="fa-solid fa-magnifying-glass text-sm"></i>
-                <span className="text-sm font-bold lg:hidden">Cari Kereta</span>
+                <span className="text-sm font-bold lg:hidden">{t.search}</span>
               </div>
             )}
           </button>
         </div>
       </div>
 
-      <style jsx global>{`
-        .react-datepicker { background-color: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; font-family: inherit; color: white; }
-        .react-datepicker__header { background-color: #1e293b; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .react-datepicker__current-month, .react-datepicker__day-name { color: white; }
-        .react-datepicker__day { color: rgba(255,255,255,0.8); }
-        .react-datepicker__day:hover { background-color: #ea580c; border-radius: 0.5rem; }
-        .react-datepicker__day--selected, .react-datepicker__day--in-range { background-color: #ea580c !important; color: white !important; }
-        .react-datepicker__day--disabled { color: rgba(255,255,255,0.2) !important; }
-      `}</style>
     </form>
   );
 }

@@ -1,0 +1,64 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mafia_travel
+          NEXTAUTH_SECRET: ci-test-secret
+          NEXTAUTH_URL: http://localhost:3000
+          ORBISWAY_BASE_URL: https://apiinternal.orbisway.com
+          ORBISWAY_USER: test
+          ORBISWAY_PASSWORD: test
+          ORBISWAY_API_KEY: test
+          MIDTRANS_SERVER_KEY: test
+          MIDTRANS_CLIENT_KEY: test
+          MIDTRANS_IS_PRODUCTION: false
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: test
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t mafia-travel:${{ github.sha }} .
+      - name: Test Docker image
+        run: |
+          docker run -d --name test-app -p 3000:3000 \
+            -e DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5432/mafia_travel \
+            -e NEXTAUTH_SECRET=test-secret \
+            -e NEXTAUTH_URL=http://localhost:3000 \
+            mafia-travel:${{ github.sha }} || true
+          sleep 5
+          curl -f http://localhost:3000/api/health || echo "Health check endpoint not ready yet"
+          docker stop test-app

@@ -3,16 +3,61 @@ import { useState, useRef, useEffect } from 'react';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { registerLocale } from "react-datepicker";
-import { id } from 'date-fns/locale/id';
-registerLocale('id', id);
+import { id as localeId } from 'date-fns/locale';
+registerLocale('id', localeId);
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useLocation } from '@/contexts/LocationContext';
+import { loadAirportGeo, GeoAirport } from '@/lib/geo';
+import { i18n } from '@/lib/i18n';
 
-interface Props { 
-  onSearch: (p: any) => void; 
-  loading: boolean; 
-  initialData?: any;
+type Airport = {
+  code: string;
+  label: string;
+  city: string;
+};
+
+type SearchRoute = {
+  origin: string;
+  destination: string;
+  departure_date: string;
+};
+
+type CabinClassValue = 'Y' | 'W' | 'C' | 'F';
+
+type SearchPayload = {
+  direction: 'OW' | 'RT' | 'Multi';
+  cabin_class: CabinClassValue;
+  adult: number;
+  child: number;
+  infant: number;
+  origin?: string;
+  destination?: string;
+  departure_date?: string;
+  return_date?: string;
+  routes?: SearchRoute[];
+};
+
+interface FlightSearchFormProps {
+  onSearch: (payload: SearchPayload) => void;
+  loading: boolean;
+  initialData?: Partial<SearchPayload> & { routes?: SearchRoute[] };
 }
 
-const POPULAR_AIRPORTS = [
+type PaxKey = 'adult' | 'child' | 'infant';
+
+type Leg = {
+  origin: string;
+  destination: string;
+  date: Date;
+};
+
+declare global {
+  interface Window {
+    mafiaAirports?: Airport[];
+  }
+}
+
+const POPULAR_AIRPORTS: Airport[] = [
   { code: 'CGK', label: 'Soekarno-Hatta (CGK)', city: 'Jakarta' },
   { code: 'DPS', label: 'Ngurah Rai (DPS)', city: 'Bali' },
   { code: 'SUB', label: 'Juanda (SUB)', city: 'Surabaya' },
@@ -21,7 +66,7 @@ const POPULAR_AIRPORTS = [
   { code: 'NRT', label: 'Narita (NRT)', city: 'Tokyo' },
 ];
 
-const CABIN_CLASSES = [
+const CABIN_CLASSES: { value: CabinClassValue; label: string }[] = [
   { value: 'Y', label: 'Ekonomi' },
   { value: 'W', label: 'Eko. Premium' },
   { value: 'C', label: 'Bisnis' },
@@ -29,35 +74,51 @@ const CABIN_CLASSES = [
 ];
 
 /* ─── AIRPORT SELECTOR (AUTO-LOAD WORLDWIDE AIRPORTS + RECENT SEARCH) ─── */
-function AirportInput({ label, value, onChange, icon }: { label: string; value: string; onChange: (v: string) => void; icon: string }) {
+function AirportInput({ label, value, onChange, icon, dropUp = false }: { label: string; value: string; onChange: (v: string) => void; icon: string; dropUp?: boolean }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [airports, setAirports] = useState<any[]>(POPULAR_AIRPORTS);
-  const [recent, setRecent] = useState<any[]>([]);
-  const [loadingDb, setLoadingDb] = useState(false);
+  const [airports, setAirports] = useState<Airport[]>(() => {
+    if (typeof window === 'undefined') return POPULAR_AIRPORTS;
+    return window.mafiaAirports ?? POPULAR_AIRPORTS;
+  });
+  const [recent, setRecent] = useState<Airport[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const saved = localStorage.getItem('mafia_recent_airports');
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loadingDb, setLoadingDb] = useState<boolean>(() => typeof window !== 'undefined' && !window.mafiaAirports);
+  const [geoAirports, setGeoAirports] = useState<GeoAirport[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('mafia_recent_airports');
-    if (saved) setRecent(JSON.parse(saved));
+    loadAirportGeo().then(setGeoAirports);
+  }, []);
 
-    if ((window as any).mafiaAirports) {
-      setAirports((window as any).mafiaAirports);
+  useEffect(() => {
+    const win = window as Window;
+    if (win.mafiaAirports) {
       return;
     }
 
-    setLoadingDb(true);
     fetch('https://raw.githubusercontent.com/algolia/datasets/master/airports/airports.json')
       .then(res => res.json())
-      .then(data => {
-        const formatted = data
-          .filter((a: any) => a.iata_code)
-          .map((a: any) => ({
-            code: a.iata_code,
-            city: a.city || a.country,
-            label: `${a.name} (${a.iata_code})`
+      .then((data: unknown) => {
+        type RawAirport = { iata_code?: string; city?: string; country?: string; name?: string };
+        const records = Array.isArray(data) ? data as RawAirport[] : [];
+        const formatted = records
+          .filter((a) => a.iata_code)
+          .map((a) => ({
+            code: a.iata_code as string,
+            city: a.city || a.country || 'Unknown',
+            label: `${a.name || 'Bandara'} (${a.iata_code})`
           }));
-        (window as any).mafiaAirports = formatted;
+        win.mafiaAirports = formatted;
         setAirports(formatted);
       })
       .catch(() => {})
@@ -72,7 +133,7 @@ function AirportInput({ label, value, onChange, icon }: { label: string; value: 
     return () => document.removeEventListener("mousedown", clickOutside);
   }, []);
 
-  const handleSelect = (item: any) => {
+  const handleSelect = (item: Airport) => {
     onChange(item.code);
     setOpen(false);
     setSearch('');
@@ -81,12 +142,20 @@ function AirportInput({ label, value, onChange, icon }: { label: string; value: 
     localStorage.setItem('mafia_recent_airports', JSON.stringify(newRecent));
   };
 
-  const selected = airports.find(a => a.code === value) || POPULAR_AIRPORTS.find(a => a.code === value);
-  const filtered = airports.filter(a => 
-    a.city.toLowerCase().includes(search.toLowerCase()) || 
-    a.code.toLowerCase().includes(search.toLowerCase()) ||
-    a.label.toLowerCase().includes(search.toLowerCase())
-  ).slice(0, 20);
+  const selected = airports.find(a => a.code === value) || POPULAR_AIRPORTS.find(a => a.code === value) || geoAirports.find(a => a.code === value);
+  const filtered = airports
+    .filter(a =>
+      a.city.toLowerCase().includes(search.toLowerCase()) ||
+      a.code.toLowerCase().includes(search.toLowerCase()) ||
+      a.label.toLowerCase().includes(search.toLowerCase())
+    )
+    .slice(0, 20);
+
+  const displayValue = selected
+    ? 'city' in selected
+      ? `${selected.city} (${selected.code})`
+      : (selected.name || selected.code)
+    : value;
 
   return (
     <div className="relative flex-1 w-full" ref={ref}>
@@ -98,13 +167,13 @@ function AirportInput({ label, value, onChange, icon }: { label: string; value: 
         <div className="flex items-center gap-3">
           <i className={`fa-solid ${icon} text-orange-500 text-base`}></i>
           <div className="font-black text-white text-base truncate">
-            {selected ? `${selected.city} (${selected.code})` : (value || 'Pilih Bandara')}
+            {displayValue || 'Pilih Bandara'}
           </div>
         </div>
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 mt-2 w-full md:w-[380px] bg-slate-900 border border-white/10 shadow-2xl rounded-2xl z-[100] overflow-hidden animate-fade-in">
+        <div className={`absolute left-0 w-full md:w-[380px] bg-slate-900 border border-white/10 shadow-2xl rounded-2xl z-[100] overflow-hidden animate-fade-in ${dropUp ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
           <div className="p-3 bg-white/5 border-b border-white/5">
             <input 
               autoFocus value={search} onChange={e => setSearch(e.target.value)} 
@@ -170,15 +239,26 @@ function AirportInput({ label, value, onChange, icon }: { label: string; value: 
   );
 }
 
-export default function FlightSearchForm({ onSearch, loading, initialData }: Props) {
-  const [tripType, setTripType] = useState(initialData?.direction || 'OW');
-  const [cabinClass, setCabinClass] = useState(initialData?.cabin_class || 'Y');
+export default function FlightSearchForm({ onSearch, loading, initialData }: FlightSearchFormProps) {
+  const { language } = useLanguage();
+  const { nearestAirport } = useLocation();
+  const tf = i18n.searchForm[language].flight;
+  const initialDirection = (initialData?.direction as SearchPayload['direction']) ?? 'OW';
+  const cabinLabel = (c: { value: CabinClassValue; label: string }) =>
+    c.value === 'Y' ? tf.economy : c.value === 'C' ? tf.business : c.value === 'F' ? tf.first : c.label;
+  const paxShort = {
+    adult:  tf.adult.replace(/\s*\(.*\)/, '').trim(),
+    child:  tf.child.replace(/\s*\(.*\)/, '').trim(),
+    infant: tf.infant.replace(/\s*\(.*\)/, '').trim(),
+  };
+  const [tripType, setTripType] = useState<SearchPayload['direction']>(initialDirection);
+  const [cabinClass, setCabinClass] = useState<CabinClassValue>(initialData?.cabin_class || 'Y');
   
   // Passenger State
   const [pax, setPax] = useState({ 
-    adult: parseInt(initialData?.adult || '1'), 
-    child: parseInt(initialData?.child || '0'), 
-    infant: parseInt(initialData?.infant || '0') 
+    adult: Number(initialData?.adult ?? 1), 
+    child: Number(initialData?.child ?? 0), 
+    infant: Number(initialData?.infant ?? 0),
   });
   const [openPax, setOpenPax] = useState(false);
   const paxRef = useRef<HTMLDivElement>(null);
@@ -189,29 +269,44 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
 
   const [origin, setOrigin] = useState(initialData?.origin || 'CGK');
   const [destination, setDestination] = useState(initialData?.destination || 'DPS');
+  const originTouched = useRef(false);
+
+  // Prefill asal dari GPS (hanya jika user belum memilih sendiri)
+  useEffect(() => {
+    if (originTouched.current) return;
+    if (initialData?.origin) return;
+    if (nearestAirport?.code && origin !== nearestAirport.code) setOrigin(nearestAirport.code);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearestAirport?.code]);
   
   // Date State
   const [startDate, setStartDate] = useState<Date | null>(() => {
     if (initialData?.departure_date) return new Date(initialData.departure_date);
-    return new Date(Date.now() + 86400000);
+    return new Date(new Date().setDate(new Date().getDate() + 1));
   });
   const [endDate, setEndDate] = useState<Date | null>(() => {
     if (initialData?.return_date) return new Date(initialData.return_date);
     return null;
   });
 
-  type Leg = { origin: string; destination: string; departure_date?: string; date: Date };
+  const [tomorrow] = useState(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + 1);
+    return date;
+  });
+
   const [legs, setLegs] = useState<Leg[]>(() => {
     if (initialData?.routes && Array.isArray(initialData.routes) && initialData.routes.length >= 2) {
-      return initialData.routes.map((r: any) => ({
+      return initialData.routes.map(r => ({
         origin:      r.origin || 'CGK',
         destination: r.destination || 'DPS',
-        date:        r.departure_date ? new Date(r.departure_date) : new Date(Date.now() + 86400000),
+        date:        r.departure_date ? new Date(r.departure_date) : new Date(new Date().setDate(new Date().getDate() + 1)),
       }));
     }
     return [
-      { origin: 'CGK', destination: 'DPS', date: new Date(Date.now() + 86400000) },
-      { origin: 'DPS', destination: 'SIN', date: new Date(Date.now() + 86400000 * 3) },
+      { origin: 'CGK', destination: 'DPS', date: new Date(new Date().setDate(new Date().getDate() + 1)) },
+      { origin: 'DPS', destination: 'SIN', date: new Date(new Date().setDate(new Date().getDate() + 3)) },
     ];
   });
 
@@ -227,21 +322,29 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
   const addLeg = () => {
     if (legs.length < 5) {
       const last = legs[legs.length - 1];
-      setLegs([...legs, { origin: last.destination || '', destination: '', date: new Date(last.date.getTime() + 86400000) }]);
+      setLegs(prev => [...prev, { origin: last.destination || '', destination: '', date: new Date(last.date.getTime() + 86400000) }]);
     }
   };
 
   const removeLeg = (idx: number) => {
-    if (legs.length > 2) setLegs(legs.filter((_: any, i: number) => i !== idx));
+    if (legs.length > 2) setLegs(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handlePaxChange = (key: PaxKey, delta: number) => {
+    setPax(prev => {
+      const minimum = key === 'adult' ? 1 : 0;
+      return { ...prev, [key]: Math.max(minimum, prev[key] + delta) };
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    let payload: any = { direction: tripType, ...pax, cabin_class: cabinClass };
+    const payload: SearchPayload = { direction: tripType, ...pax, cabin_class: cabinClass };
     if (tripType === 'Multi') {
-      payload.routes = legs.map((l : any) => ({ origin: l.origin, destination: l.destination, departure_date: l.date.toISOString().split('T')[0] }));
+      payload.routes = legs.map(l => ({ origin: l.origin, destination: l.destination, departure_date: l.date.toISOString().split('T')[0] }));
     } else {
-      payload.origin = origin; payload.destination = destination;
+      payload.origin = origin;
+      payload.destination = destination;
       payload.departure_date = startDate?.toISOString().split('T')[0];
       if (tripType === 'RT' && endDate) payload.return_date = endDate.toISOString().split('T')[0];
     }
@@ -255,12 +358,12 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
         onClick={() => { setOpenPax(!openPax); setOpenCabin(false); }}
         className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all h-full"
       >
-        <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">Penumpang</span>
+        <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">{tf.passengers}</span>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <i className="fa-solid fa-users text-orange-500 text-sm"></i>
-            <div className="text-white font-black text-sm truncate">
-              {pax.adult} Dewasa, {pax.child} Anak, {pax.infant} Bayi
+            <div className="text-white font-black text-sm truncate min-w-0">
+              {pax.adult} {paxShort.adult}, {pax.child} {paxShort.child}, {pax.infant} {paxShort.infant}
             </div>
           </div>
           <i className={`fa-solid fa-chevron-down text-white/30 text-xs transition-transform ${openPax ? 'rotate-180' : ''}`}></i>
@@ -270,9 +373,9 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
       {openPax && (
         <div className="absolute top-full left-0 mt-2 w-full lg:w-[320px] bg-slate-900 border border-white/10 shadow-2xl rounded-2xl z-[100] p-4 flex flex-col gap-4 animate-fade-in">
           {[ 
-            { k: 'adult', l: 'Dewasa', desc: '≥ 12 tahun', i: 'fa-user' }, 
-            { k: 'child', l: 'Anak', desc: '2 - 11 tahun', i: 'fa-child' }, 
-            { k: 'infant', l: 'Bayi', desc: '< 2 tahun', i: 'fa-baby' } 
+            { k: 'adult', l: tf.adult, desc: '≥ 12 tahun', i: 'fa-user' }, 
+            { k: 'child', l: tf.child, desc: '2 - 11 tahun', i: 'fa-child' }, 
+            { k: 'infant', l: tf.infant, desc: '< 2 tahun', i: 'fa-baby' } 
           ].map(({ k, l, desc, i }) => (
             <div key={k} className="flex justify-between items-center">
               <div className="flex items-center gap-3">
@@ -285,11 +388,11 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
                 </div>
               </div>
               <div className="flex items-center gap-3 bg-white/5 px-2 py-1 rounded-xl border border-white/5">
-                <button type="button" onClick={() => setPax(p => ({ ...p, [k]: Math.max(k === 'adult' ? 1 : 0, (p as any)[k] - 1) }))} className="w-7 h-7 rounded-lg hover:bg-orange-600 text-white transition-colors flex items-center justify-center">
+                <button type="button" title={`Kurangi ${l}`} onClick={() => handlePaxChange(k as PaxKey, -1)} className="w-7 h-7 rounded-lg hover:bg-orange-600 text-white transition-colors flex items-center justify-center">
                   <i className="fa-solid fa-minus text-xs"></i>
                 </button>
-                <span className="text-white font-black text-sm w-4 text-center">{(pax as any)[k]}</span>
-                <button type="button" onClick={() => setPax(p => ({ ...p, [k]: (p as any)[k] + 1 }))} className="w-7 h-7 rounded-lg hover:bg-orange-600 text-white transition-colors flex items-center justify-center">
+                <span className="text-white font-black text-sm w-4 text-center">{pax[k as PaxKey]}</span>
+                <button type="button" title={`Tambah ${l}`} onClick={() => handlePaxChange(k as PaxKey, 1)} className="w-7 h-7 rounded-lg hover:bg-orange-600 text-white transition-colors flex items-center justify-center">
                   <i className="fa-solid fa-plus text-xs"></i>
                 </button>
               </div>
@@ -306,11 +409,11 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
         onClick={() => { setOpenCabin(!openCabin); setOpenPax(false); }}
         className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all h-full"
       >
-        <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">Kelas Kabin</span>
+        <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">{tf.class}</span>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <i className="fa-solid fa-couch text-orange-500 text-sm"></i>
-            <div className="text-white font-black text-sm">{CABIN_CLASSES.find(c => c.value === cabinClass)?.label}</div>
+            <div className="text-white font-black text-sm">{cabinLabel(CABIN_CLASSES.find(c => c.value === cabinClass) || CABIN_CLASSES[0])}</div>
           </div>
           <i className={`fa-solid fa-chevron-down text-white/30 text-xs transition-transform ${openCabin ? 'rotate-180' : ''}`}></i>
         </div>
@@ -330,7 +433,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isSelected ? 'bg-orange-500 text-white' : 'bg-white/5 text-white/50'}`}>
                     <i className="fa-solid fa-couch text-xs"></i>
                   </div>
-                  <span className={`font-bold text-sm ${isSelected ? 'text-orange-500' : 'text-white'}`}>{c.label}</span>
+                  <span className={`font-bold text-sm ${isSelected ? 'text-orange-500' : 'text-white'}`}>{cabinLabel(c)}</span>
                 </div>
                 {isSelected && <i className="fa-solid fa-check text-orange-500 text-sm"></i>}
               </div>
@@ -368,7 +471,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
 
           {/* Text hanya muncul di mobile */}
           <span className="text-sm font-bold lg:hidden">
-            Cari Tiket
+            {tf.search}
           </span>
         </div>
       )}
@@ -379,7 +482,11 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
     <form onSubmit={handleSubmit} className="flex flex-col gap-5 animate-fade-up">
       {/* TRIP TYPE */}
       <div className="flex gap-1.5 p-1 bg-white/5 rounded-2xl w-fit border border-white/5">
-        {[ {id:'OW', l:'Sekali Jalan'}, {id:'RT', l:'Pulang Pergi'}, {id:'Multi', l:'Multi-Kota'} ].map(t => (
+        {([
+          { id: 'OW', l: tf.oneWay },
+          { id: 'RT', l: tf.roundTrip },
+          { id: 'Multi', l: tf.multiCity },
+        ] as Array<{ id: SearchPayload['direction']; l: string }>).map(t => (
           <button key={t.id} type="button" onClick={() => setTripType(t.id)}
             className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${tripType === t.id ? 'bg-orange-600 text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
           >{t.l}</button>
@@ -392,20 +499,20 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
           <div className="space-y-3">
             {legs.map((leg, i) => (
               <div key={i} className="flex flex-col md:flex-row gap-3 items-stretch animate-fade-in relative">
-                <AirportInput label={`Asal (${i+1})`} value={leg.origin} onChange={(v) => { const n = [...legs]; n[i].origin = v; setLegs(n); }} icon="fa-plane-departure" />
-                <AirportInput label={`Tujuan (${i+1})`} value={leg.destination} onChange={(v) => { const n = [...legs]; n[i].destination = v; setLegs(n); }} icon="fa-plane-arrival" />
+                <AirportInput label={`${tf.from} (${i+1})`} value={leg.origin} onChange={(v) => { const n = [...legs]; n[i].origin = v; setLegs(n); }} icon="fa-plane-departure" dropUp />
+                <AirportInput label={`${tf.to} (${i+1})`} value={leg.destination} onChange={(v) => { const n = [...legs]; n[i].destination = v; setLegs(n); }} icon="fa-plane-arrival" dropUp />
                 <div className="flex-[0.6] min-w-[180px] px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all">
-                  <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">Tanggal</span>
+                  <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">{tf.departure}</span>
                   <div className="flex items-center gap-3">
                     <i className="fa-regular fa-calendar text-orange-500"></i>
                     <DatePicker selected={leg.date} onChange={(d: Date | null) => { const n = [...legs]; n[i].date = d as Date; setLegs(n); }}
-                      minDate={new Date(Date.now() + 86400000)} className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" />
+                      minDate={tomorrow} className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" />
                   </div>
                 </div>
-                {legs.length > 2 && <button type="button" onClick={() => removeLeg(i)} className="px-3 text-red-400 hover:text-red-500 transition-colors"><i className="fa-solid fa-trash-can"></i></button>}
+                {legs.length > 2 && <button type="button" aria-label={tf.removeFlight} title={tf.removeFlight} onClick={() => removeLeg(i)} className="px-3 text-red-400 hover:text-red-500 transition-colors"><i className="fa-solid fa-trash-can"></i></button>}
               </div>
             ))}
-            <button type="button" onClick={addLeg} className="px-6 py-3 bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-orange-500 font-bold text-sm rounded-2xl flex items-center gap-2 transition-all"><i className="fa-solid fa-plus-circle"></i> Tambah Kota</button>
+            <button type="button" title={tf.addFlight} onClick={addLeg} className="px-6 py-3 bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-orange-500 font-bold text-sm rounded-2xl flex items-center gap-2 transition-all"><i className="fa-solid fa-plus-circle"></i> {tf.addFlight}</button>
           </div>
 
           {/* BOTTOM ROW FOR MULTI CITY */}
@@ -419,11 +526,11 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
         <div className="flex flex-col gap-4">
           {/* ROW 2: ASAL & TUJUAN (FULL WIDTH) */}
           <div className="flex flex-col md:flex-row gap-3 relative w-full">
-            <AirportInput label="Asal" value={origin} onChange={setOrigin} icon="fa-plane-departure" />
-            <button type="button" onClick={() => { const tmp = origin; setOrigin(destination); setDestination(tmp); }}
+            <AirportInput label={tf.from} value={origin} onChange={(v) => { originTouched.current = true; setOrigin(v); }} icon="fa-plane-departure" />
+            <button type="button" title={tf.swapBtn} onClick={() => { originTouched.current = true; const tmp = origin; setOrigin(destination); setDestination(tmp); }}
               className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-slate-900 border border-white/20 text-orange-500 rounded-full z-10 flex items-center justify-center hover:scale-110 active:rotate-180 transition-all shadow-xl"
             ><i className="fa-solid fa-right-left text-xs"></i></button>
-            <AirportInput label="Tujuan" value={destination} onChange={setDestination} icon="fa-plane-arrival" />
+            <AirportInput label={tf.to} value={destination} onChange={setDestination} icon="fa-plane-arrival" />
           </div>
 
           {/* ROW 3: TANGGAL, PENUMPANG & KABIN & BUTTON */}
@@ -431,11 +538,11 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
             
             {/* TANGGAL PERGI */}
             <div className="flex-1 min-w-[150px] px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all">
-              <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">Tanggal Pergi</span>
+              <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">{tf.departure}</span>
               <div className="flex items-center gap-3">
                 <i className="fa-regular fa-calendar text-orange-500 text-base"></i>
                 <DatePicker selected={startDate} onChange={(d: Date | null) => setStartDate(d)}
-                  minDate={new Date(Date.now() + 86400000)}
+                  minDate={tomorrow}
                   className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" placeholderText="Pilih tanggal" />
               </div>
             </div>
@@ -443,11 +550,11 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
             {/* TANGGAL PULANG (HANYA MUNCUL JIKA RT) */}
             {tripType === 'RT' && (
               <div className="flex-1 min-w-[150px] px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all animate-fade-in">
-                <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">Tanggal Pulang</span>
+                <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">{tf.return}</span>
                 <div className="flex items-center gap-3">
                   <i className="fa-regular fa-calendar-check text-orange-500 text-base"></i>
                   <DatePicker selected={endDate} onChange={(d: Date | null) => setEndDate(d)}
-                    minDate={startDate || new Date(Date.now() + 86400000)}
+                    minDate={startDate || tomorrow}
                     className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer" dateFormat="dd MMM yyyy" placeholderText="Pilih tanggal" />
                 </div>
               </div>
@@ -460,15 +567,6 @@ export default function FlightSearchForm({ onSearch, loading, initialData }: Pro
         </div>
       )}
 
-      <style jsx global>{`
-        .react-datepicker { background-color: #0f172a; border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; font-family: inherit; color: white; }
-        .react-datepicker__header { background-color: #1e293b; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        .react-datepicker__current-month, .react-datepicker__day-name { color: white; }
-        .react-datepicker__day { color: rgba(255,255,255,0.8); }
-        .react-datepicker__day:hover { background-color: #ea580c; border-radius: 0.5rem; }
-        .react-datepicker__day--selected, .react-datepicker__day--in-range { background-color: #ea580c !important; color: white !important; }
-        .react-datepicker__day--disabled { color: rgba(255,255,255,0.2) !important; }
-      `}</style>
     </form>
   );
 }

@@ -1,5 +1,7 @@
 'use client';
 import { memo, useMemo, useState, useCallback } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 const CABIN_LABELS: Record<string, string> = {
   E: 'Eksekutif', B: 'Bisnis', K: 'Ekonomi', P: 'Prioritas',
@@ -26,7 +28,9 @@ function fmtIDR(n: number) {
   return 'Rp ' + Math.round(n).toLocaleString('id-ID');
 }
 
-function TrainCard({ journey, onSelect, adultCount }: { journey: any; onSelect: (journey: any, fare: any) => void; adultCount: number; }) {
+function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { journey: any; onSelect: (journey: any, fare: any) => void; adultCount: number; isCheapest?: boolean; }) {
+  const { language } = useLanguage();
+  const t = i18n.trainSearch[language];
   const [showFares, setShowFares] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
 
@@ -55,7 +59,7 @@ function TrainCard({ journey, onSelect, adultCount }: { journey: any; onSelect: 
   }, [journey, onSelect, isSelecting]);
 
   const seatAvail = journey.available_count ?? 0;
-  const cabinLabel = CABIN_LABELS[journey.cabin_class] || `Kelas ${journey.cabin_class}`;
+  const cabinLabel = CABIN_LABELS[journey.cabin_class] || `${t.class} ${journey.cabin_class}`;
 
   return (
     <>
@@ -80,7 +84,16 @@ function TrainCard({ journey, onSelect, adultCount }: { journey: any; onSelect: 
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-md hover:border-orange-200 transition-all duration-200">
+      <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-200 hover:border-orange-200'}`}>
+        <div className="h-1.5 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600" />
+        {isCheapest && (
+          <div className="px-5 pt-3 pb-0">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white px-2.5 py-1 rounded-full shadow-sm">
+              <i className="fa-solid fa-tags text-[9px]"></i>
+              Harga Termurah
+            </span>
+          </div>
+        )}
         <div className="p-4 md:p-5 flex flex-col md:flex-row items-stretch gap-4">
           
           {/* Bagian Kiri: Operator / KAI */}
@@ -123,10 +136,10 @@ function TrainCard({ journey, onSelect, adultCount }: { journey: any; onSelect: 
           {/* Bagian Kanan: Harga & Tombol */}
           <div className="md:w-52 shrink-0 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-5 flex flex-col gap-2">
             
-            <div className="flex items-center gap-1.5 text-xs">
+            <div className="flex items-center gap-1.5 text-xs bg-slate-50 rounded-full px-2.5 py-1 self-start">
                <i className="fa-solid fa-couch text-slate-400"></i>
                {seatAvail > 20 ? (
-                 <span className="font-semibold text-emerald-600">Tersedia {seatAvail} kursi</span>
+                 <span className="font-semibold text-emerald-600">{t.available} {seatAvail} {t.seat}</span>
                ) : seatAvail > 0 ? (
                  <span className="font-semibold text-amber-600">Sisa {seatAvail} kursi</span>
                ) : (
@@ -146,7 +159,7 @@ function TrainCard({ journey, onSelect, adultCount }: { journey: any; onSelect: 
                 disabled={isSelecting || !fares.length || seatAvail === 0}
                 className="flex-1 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-sm transition-all disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed active:scale-95"
               >
-                {seatAvail === 0 ? 'Habis' : 'Pilih'}
+                {seatAvail === 0 ? 'Habis' : t.selectTrain}
               </button>
               {fares.length > 1 && (
                 <button

@@ -21,12 +21,17 @@ model User {
   phone         String?
   image         String?
   role          String    @default("user")
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret String?
+  twoFactorBackupCodes Json?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  accounts      Account[]
-  sessions      Session[]
-  bookings      Booking[]
-}
+    accounts      Account[]
+    sessions      Session[]
+    bookings      Booking[]
+    passwordResets PasswordReset[]
+    adminNotificationReads AdminNotificationRead[]
+  }
 
 model Account {
   id                String  @id @default(cuid())
@@ -127,7 +132,12 @@ model Booking {
   // ── Relations ─────────────────────────────────────────────────────────────
   
   // ✅ PERBAIKAN: User diberi tanda tanya (?)
-  user            User?    @relation(fields: [userId], references: [id])
+  // FIX (Bug #5): sebelumnya relasi ini tidak punya `onDelete`, padahal komentar di
+  // app/api/user/delete/route.ts mengasumsikan cascade delete akan terjadi otomatis.
+  // Karena `userId` opsional, hapus user seharusnya melepas kepemilikan booking
+  // (bukan menghapus booking-nya — riwayat transaksi harus tetap ada untuk audit/pajak),
+  // jadi dipakai SetNull, bukan Cascade.
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   payments        Payment[]
 
   // ── Indexes ───────────────────────────────────────────────────────────────
@@ -161,4 +171,115 @@ model Payment {
   booking          Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKUP SETTING — Pengaturan margin keuntungan per tipe booking
+// Hanya ada 1 record (singleton pattern via key)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MarkupSetting {
+  key              String   @id                    // e.g. "default"
+  flight           Int      @default(50000)        // Rp flat per pax
+  hotel            Float    @default(10)           // % dari harga kamar
+  train            Int      @default(15000)        // Rp flat per tiket
+  insurance        Float    @default(5)            // % dari premi
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OTP VERIFICATION — Kode verifikasi untuk perubahan nomor telepon
+// ─────────────────────────────────────────────────────────────────────────────
+
+model OtpVerification {
+  id           String   @id @default(cuid())
+  userId       String
+  phone        String                            // Nomor telepon yang akan diverifikasi
+  code         String                            // Kode OTP 6 digit
+  purpose      String   @default("phone_change") // phone_change, dll
+  attempts     Int      @default(0)              // Jumlah percobaan verifikasi
+  maxAttempts  Int      @default(5)
+  verified     Boolean  @default(false)
+  expiresAt    DateTime                          // OTP expired (5 menit)
+  createdAt    DateTime @default(now())
+
+  @@index([userId, purpose])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EMAIL VERIFICATION — Token verifikasi untuk perubahan email
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EmailVerification {
+  id           String   @id @default(cuid())
+  userId       String
+  newEmail     String                            // Email baru yang akan diverifikasi
+  token        String   @unique                  // Token unik untuk link verifikasi
+  verified     Boolean  @default(false)
+  expiresAt    DateTime                          // Token expired (1 jam)
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PASSWORD RESET — Token reset password (lupa password)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique                      // Token unik untuk link reset
+  used      Boolean  @default(false)              // Sudah dipakai / dinonaktifkan
+  expiresAt DateTime                              // Token expired (1 jam)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN NOTIFICATION READ — Status "sudah dibaca" untuk notifikasi admin
+// key mengikuti format notifikasi: wd-<txId> | pay-<paymentId> | bk-<bookingId>
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AdminNotificationRead {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String                                // key notifikasi yang sudah dibaca
+  readAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@index([key])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG — Jejak aksi admin (ubah role, hapus user, ubah markup, dll)
+// adminEmail disimpan sebagai snapshot agar tetap terbaca walau admin dihapus
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String                             // ID admin yang melakukan aksi
+  adminEmail String                             // Snapshot email admin (tahan hapus)
+  action     String                             // user.role.update | user.delete | markup.update | ...
+  entityType String                             // user | markupSetting | ...
+  entityId   String?
+  before     Json?                              // Snapshot data sebelum aksi
+  after      Json?                              // Snapshot data sesudah aksi
+  metadata   Json?                              // Info tambahan (nama target, dll)
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
 }

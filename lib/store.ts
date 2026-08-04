@@ -2,15 +2,16 @@
 // Aligned dengan schema.prisma terbaru — semua field nama-namanya 1:1 dengan Prisma model
 
 import { prisma } from './prisma';
+import type { Prisma } from '@prisma/client';
 
 export const bookingStore = {
 
-  // ── CREATE ─────────────────────────────────────────────────────────────────
+  // ── CREATE ───────────────────────────────────────────────────────────────
   // Menyimpan pesanan baru ke database.
   // Semua field opsional — Prisma akan ignore field undefined.
   create: async (data: {
     id: string;
-    userId: string;
+    userId?: string;
     orderNumber: string;
     bookingType: string;
     status?: string;
@@ -34,8 +35,8 @@ export const bookingStore = {
     pnr?: string;
     provider?: string;
     // JSON blobs
-    passengerData?: any;
-    bookingData?: any;
+    passengerData?: Prisma.InputJsonValue;
+    bookingData?: Prisma.InputJsonValue;
   }) => {
     return await prisma.booking.create({
       data: {
@@ -99,7 +100,7 @@ export const bookingStore = {
   // ── FIND MANY (filter bebas) ───────────────────────────────────────────────
   findMany: async (args: {
     where?: { userId?: string; bookingType?: string; status?: string };
-    orderBy?: any;
+    orderBy?: Prisma.BookingOrderByWithRelationInput | Prisma.BookingOrderByWithRelationInput[];
     take?: number;
     skip?: number;
   }) => {
@@ -108,6 +109,33 @@ export const bookingStore = {
       orderBy: args.orderBy || { createdAt: 'desc' },
       take: args.take,
       skip: args.skip,
+    });
+  },
+
+  // ── MERGE BOOKING DATA ───────────────────────────────────────────────────
+  // Read-modify-write pada kolom JSON dijalankan dalam transaksi supaya dua
+  // penulis bersamaan (webhook + remider/expiry) tidak saling menimpa data.
+  mergeBookingData: async (id: string, data: Record<string, unknown>) => {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.booking.findUnique({ where: { id } });
+      if (!existing) return null;
+
+      const nextBookingData = {
+        ...(existing.bookingData as Record<string, unknown> | null),
+        ...(data.bookingData as Record<string, unknown> | undefined),
+      };
+
+      return await tx.booking.update({
+        where: { id },
+        data: {
+          ...(data.status ? { status: data.status } : {}),
+          ...(data.paymentId ? { paymentId: data.paymentId } : {}),
+          ...(data.paymentStatus ? { paymentStatus: data.paymentStatus } : {}),
+          ...(data.paymentType ? { paymentType: data.paymentType } : {}),
+          ...(data.paidAt ? { paidAt: data.paidAt } : {}),
+          ...(data.bookingData ? { bookingData: nextBookingData as Prisma.InputJsonValue } : {}),
+        },
+      });
     });
   },
 
@@ -155,6 +183,117 @@ export const bookingStore = {
     });
   },
 
+  // ── REQUEST REFUND (manual queue) ──────────────────────────────────────────
+  // Booking dibatalkan di vendor, tapi dana belum dikembalikan — menunggu
+  // review admin di /admin/refund-queue. Guard status memastikan booking yang
+  // sudah diproses refund tidak bisa dimasukkan antrian dua kali.
+  requestRefund: async (id: string, opts: { amount: number; reason?: string }) => {
+    const eligible = ['paid', 'issued', 'pending_payment'];
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.booking.findUnique({ where: { id } });
+      if (!existing) return null;
+      if (!eligible.includes(existing.status)) {
+        console.warn(`[store.requestRefund] status ${existing.status} tidak eligible; dilewati.`);
+        return null;
+      }
+      const currentData = (existing.bookingData as Record<string, unknown>) || {};
+      const updated = await tx.booking.updateMany({
+        where: { id, status: { in: eligible } },
+        data: {
+          status: 'refund_requested',
+          cancelType: 'refund',
+          cancelledAt: new Date(),
+          ...(opts.reason ? { cancelReason: opts.reason } : {}),
+          bookingData: {
+            ...currentData,
+            refundRequest: {
+              amount: Math.round(opts.amount),
+              reason: opts.reason || '',
+              requestedAt: new Date().toISOString(),
+              mode: 'manual',
+            },
+          } as Prisma.InputJsonValue,
+        },
+      });
+      if (updated.count === 0) return null;
+      return await tx.booking.findUnique({ where: { id } });
+    });
+  },
+
+  // ── AUTO REFUND ────────────────────────────────────────────────────────────
+  // Refund diproses otomatis (tanpa review): langsung cancelled + catat hasilnya.
+  autoRefund: async (id: string, opts: { amount: number; reason?: string; midtrans?: unknown }) => {
+    const eligible = ['paid', 'issued', 'pending_payment'];
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.booking.findUnique({ where: { id } });
+      if (!existing) return null;
+      if (!eligible.includes(existing.status)) {
+        console.warn(`[store.autoRefund] status ${existing.status} tidak eligible; dilewati.`);
+        return null;
+      }
+      const currentData = (existing.bookingData as Record<string, unknown>) || {};
+      const now = new Date().toISOString();
+      const updated = await tx.booking.updateMany({
+        where: { id, status: { in: eligible } },
+        data: {
+          status: 'cancelled',
+          cancelType: 'refund',
+          cancelledAt: new Date(),
+          ...(opts.reason ? { cancelReason: opts.reason } : {}),
+          bookingData: {
+            ...currentData,
+            refundRequest: {
+              amount: Math.round(opts.amount),
+              reason: opts.reason || '',
+              requestedAt: now,
+              mode: 'auto',
+            },
+            refundResult: {
+              amount: Math.round(opts.amount),
+              refundedAt: now,
+              processedBy: 'auto',
+              midtrans: (opts.midtrans as Prisma.InputJsonValue) ?? null,
+            },
+          } as Prisma.InputJsonValue,
+        },
+      });
+      if (updated.count === 0) return null;
+      return await tx.booking.findUnique({ where: { id } });
+    });
+  },
+
+  // ── COMPLETE REFUND (admin mengeksekusi dari queue) ─────────────────────
+  completeRefund: async (id: string, opts: { amount: number; reason?: string; midtrans?: unknown; processedBy: string }) => {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.booking.findUnique({ where: { id } });
+      if (!existing) return null;
+      if (existing.status !== 'refund_requested') {
+        console.warn(`[store.completeRefund] status ${existing.status} bukan refund_requested; dilewati.`);
+        return null;
+      }
+      const currentData = (existing.bookingData as Record<string, unknown>) || {};
+      const updated = await tx.booking.updateMany({
+        where: { id, status: 'refund_requested' },
+        data: {
+          status: 'cancelled',
+          cancelledAt: existing.cancelledAt || new Date(),
+          ...(opts.reason ? { cancelReason: opts.reason } : {}),
+          bookingData: {
+            ...currentData,
+            refundResult: {
+              amount: Math.round(opts.amount),
+              refundedAt: new Date().toISOString(),
+              processedBy: opts.processedBy,
+              midtrans: (opts.midtrans as Prisma.InputJsonValue) ?? null,
+            },
+          } as Prisma.InputJsonValue,
+        },
+      });
+      if (updated.count === 0) return null;
+      return await tx.booking.findUnique({ where: { id } });
+    });
+  },
+
   // ── LOG PAYMENT ────────────────────────────────────────────────────────────
   // Simpan record Payment terpisah (untuk audit trail).
   logPayment: async (data: {
@@ -184,7 +323,7 @@ export const bookingStore = {
     data: {
       status: string;
       paymentType?: string;
-      midtransResponse?: any;
+      midtransResponse?: unknown;
       paidAt?: Date;
     }
   ) => {
@@ -193,7 +332,7 @@ export const bookingStore = {
       data: {
         status: data.status,
         ...(data.paymentType && { paymentType: data.paymentType }),
-        ...(data.midtransResponse && { midtransResponse: data.midtransResponse }),
+        ...(data.midtransResponse ? { midtransResponse: data.midtransResponse as Prisma.InputJsonValue } : {}),
         ...(data.paidAt && { paidAt: data.paidAt }),
         ...(data.status === 'settlement' && { paidAt: new Date() }),
       },

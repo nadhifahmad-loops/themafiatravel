@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const userId = (session.user as any).id;
+    const userId = session.user.id!;
 
     // Gunakan getUserBookingsByType untuk filter per tipe
     const bookings = await bookingStore.getUserBookingsByType(userId, 'flight');

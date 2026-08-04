@@ -4,7 +4,7 @@ import { flightAPI, OrbisSchedule } from '@/lib/orbis';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { adult, child, infant, schedules, is_combo_price } = body;
+    const { adult, child, infant, cabin_class, schedules, is_combo_price } = body;
 
     // 1. Validasi data jadwal
     if (!schedules || !Array.isArray(schedules) || schedules.length === 0) {
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
       adult: Number(adult) || 1,
       child: Number(child) || 0,
       infant: Number(infant) || 0,
+      cabin_class: cabin_class || 'Y',
       schedules: schedules as OrbisSchedule[],
       is_combo_price: !!is_combo_price,
       promo_codes: [],

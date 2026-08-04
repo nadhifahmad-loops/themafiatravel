@@ -2,9 +2,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { signIn } from 'next-auth/react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 export default function RegisterPage() {
+  const { language } = useLanguage();
+  const t = i18n.register[language];
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirm: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,11 +20,11 @@ export default function RegisterPage() {
     setError('');
     
     if (form.password !== form.confirm) { 
-      setError('Password dan Konfirmasi Password tidak cocok'); 
+      setError(t.errorPasswordMismatch); 
       return; 
     }
-    if (form.password.length < 6) { 
-      setError('Password minimal 6 karakter'); 
+    if (form.password.length < 8) { 
+      setError(t.errorPasswordShort); 
       return; 
     }
     
@@ -35,7 +40,7 @@ export default function RegisterPage() {
       const data = await res.json();
       
       if (!res.ok) { 
-        setError(data.error || 'Terjadi kesalahan saat mendaftar'); 
+        setError(data.error || t.errorServer); 
         setLoading(false); 
         return; 
       }
@@ -48,13 +53,13 @@ export default function RegisterPage() {
       });
 
       if (signInResult?.error) {
-        setError('Gagal masuk otomatis, silakan login manual.');
+        setError(t.errorAutoLogin);
         setLoading(false);
       } else {
         router.push('/dashboard');
       }
     } catch (err) {
-      setError('Terjadi kesalahan pada server.');
+      setError(t.errorServer);
       setLoading(false);
     }
   };
@@ -109,8 +114,8 @@ export default function RegisterPage() {
             </div>
 
             <div className="mb-8">
-              <h2 className="text-3xl font-black text-slate-900 mb-2 font-display tracking-tight">Buat Akun Baru</h2>
-              <p className="text-slate-500 text-sm">Daftar sekarang untuk menikmati fitur eksklusif perjalananmu.</p>
+              <h2 className="text-3xl font-black text-slate-900 mb-2 font-display tracking-tight">{t.title}</h2>
+              <p className="text-slate-500 text-sm">{t.subtitle}</p>
             </div>
 
             {/* Error Alert */}
@@ -128,14 +133,14 @@ export default function RegisterPage() {
                 onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
                 className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-slate-200 rounded-lg font-bold text-sm text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
               >
-                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5" />
-                Daftar dengan Google
+                <Image src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
+                {t.googleBtn}
               </button>
             </div>
 
             <div className="relative flex items-center mb-6">
               <div className="flex-grow border-t border-slate-200"></div>
-              <span className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white">Atau daftar dengan Email</span>
+              <span className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white">{t.orDivider}</span>
               <div className="flex-grow border-t border-slate-200"></div>
             </div>
 
@@ -155,7 +160,7 @@ export default function RegisterPage() {
                     placeholder=" "
                   />
                   <label htmlFor="name" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
-                    Nama Lengkap
+                    {t.nameLabel}
                   </label>
                 </div>
 
@@ -170,7 +175,7 @@ export default function RegisterPage() {
                     placeholder=" "
                   />
                   <label htmlFor="phone" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
-                    Nomor WhatsApp
+                    {t.phoneLabel}
                   </label>
                 </div>
               </div>
@@ -187,7 +192,7 @@ export default function RegisterPage() {
                   placeholder=" "
                 />
                 <label htmlFor="email" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
-                  Alamat Email
+                  {t.emailLabel}
                 </label>
               </div>
 
@@ -204,7 +209,7 @@ export default function RegisterPage() {
                     placeholder=" "
                   />
                   <label htmlFor="password" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
-                    Password
+                    {t.passwordLabel}
                   </label>
                 </div>
 
@@ -220,7 +225,7 @@ export default function RegisterPage() {
                     placeholder=" "
                   />
                   <label htmlFor="confirm" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
-                    Konfirmasi Password
+                    {t.confirmLabel}
                   </label>
                 </div>
               </div>
@@ -234,11 +239,11 @@ export default function RegisterPage() {
                 {loading ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Memproses...
+                    {t.submitting}
                   </>
                 ) : (
                   <>
-                    Daftar Sekarang
+                    {t.submitBtn}
                     <i className="fa-solid fa-arrow-right"></i>
                   </>
                 )}
@@ -247,9 +252,9 @@ export default function RegisterPage() {
 
             <div className="mt-8 text-center">
               <p className="text-sm text-slate-500 font-medium">
-                Sudah punya akun?{' '}
+                {t.hasAccount}{' '}
                 <Link href="/login" className="text-orange-600 font-bold hover:underline underline-offset-4">
-                  Masuk di sini
+                  {t.loginLink}
                 </Link>
               </p>
             </div>

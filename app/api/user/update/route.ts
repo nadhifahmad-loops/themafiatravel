@@ -19,11 +19,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Update data di database
+    // Phone hanya bisa diubah melalui flow OTP (/api/user/phone/verify-confirm)
     const updatedUser = await prisma.user.update({
       where: { email: session.user.email },
       data: {
         name,
-        phone: phone || null,
+        // phone tidak diupdate di sini — harus lewat OTP verification
       },
     });
 

@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { insuranceAPI } from '@/lib/orbis';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rateLimit = await checkRateLimit(`search:${ip}`, 'search');
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak percobaan. Silakan coba lagi nanti.', retryAfter: rateLimit.retryAfter },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await req.json();
 

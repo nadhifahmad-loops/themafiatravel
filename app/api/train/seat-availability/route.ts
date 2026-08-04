@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { trainAPI } from '@/lib/orbis';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const ip = getClientIp(req);
+  const rateLimit = await checkRateLimit(`search:${ip}`, 'search');
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Terlalu banyak percobaan. Silakan coba lagi nanti.', retryAfter: rateLimit.retryAfter },
+      { status: 429 }
+    );
+  }
 
   try {
     const body = await req.json();

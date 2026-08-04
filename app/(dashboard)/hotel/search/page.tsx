@@ -1,312 +1,720 @@
 'use client';
-import { useState, useMemo, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import HotelCard from '@/components/hotel/HotelCard';
 import HotelSearchForm from '@/components/hotel/HotelSearchForm';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
-// Komponen utama yang dibungkus Suspense
-export default function HotelSearchPage() {
+const POPULAR_HOTEL_DESTINATIONS = [
+  { destination_id: 'ID8731', name: 'Bali',        nameEN: 'Bali',        price: 750000,  img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600&q=80' },
+  { destination_id: 'ID339',  name: 'Jakarta',     nameEN: 'Jakarta',     price: 380000,  img: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=600&q=80' },
+  { destination_id: 'ID8735', name: 'Yogyakarta',  nameEN: 'Yogyakarta',  price: 450000,  img: 'https://images.unsplash.com/photo-1580981568153-81e4a20bf7ec?w=600&q=80' },
+  { destination_id: 'ID8734', name: 'Bandung',     nameEN: 'Bandung',     price: 400000,  img: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=600&q=80' },
+  { destination_id: 'ID8732', name: 'Surabaya',    nameEN: 'Surabaya',    price: 350000,  img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=600&q=80' },
+  { destination_id: 'SG7355', name: 'Singapura',   nameEN: 'Singapore',   price: 1500000, img: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=600&q=80' },
+];
+
+// ─── Loading skeleton ────────────────────────────────────────────────────────
+function SkeletonCard() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-bold text-slate-500">Memuat Halaman Pencarian...</div>}>
+    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden flex flex-col md:flex-row animate-pulse">
+      <div className="md:w-[280px] h-[200px] md:h-auto bg-slate-100 shrink-0" />
+      <div className="flex-1 p-5 flex flex-col gap-3">
+        <div className="h-5 bg-slate-100 rounded-xl w-3/4" />
+        <div className="h-3.5 bg-slate-100 rounded-xl w-1/3" />
+        <div className="h-3 bg-slate-100 rounded-xl w-1/2" />
+        <div className="flex gap-2 mt-1">
+          {[1,2,3].map(i => <div key={i} className="h-6 w-16 bg-slate-100 rounded-full" />)}
+        </div>
+        <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-end">
+          <div className="flex flex-col gap-1.5">
+            <div className="h-3 w-16 bg-slate-100 rounded" />
+            <div className="h-7 w-36 bg-orange-100 rounded-xl" />
+          </div>
+          <div className="h-10 w-28 bg-orange-100 rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Compact search bar ───────────────────────────────────────────────────────
+function CompactBar({ searchParams, onSearch, loading }: { searchParams: any; onSearch: (p: any) => void; loading: boolean }) {
+  const { language } = useLanguage();
+  const t = i18n.hotelSearch[language];
+  const tc = i18n.common[language];
+  const [open, setOpen] = useState(false);
+
+  const POPULAR: Record<string, string> = {
+    'SG7355': 'Singapura, SG', 'ID339': 'Jakarta, ID', 'ID8731': 'Bali, ID',
+    'ID8732': 'Surabaya, ID', 'MY5411': 'Kuala Lumpur, MY', 'TH3299': 'Bangkok, TH',
+    'ID8735': 'Yogyakarta, ID', 'ID8734': 'Bandung, ID',
+  };
+
+  const fmt = (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '—';
+  const destLabel = searchParams?.q || POPULAR[searchParams?.destination_id] || searchParams?.destination_id || '—';
+
+  const nights = searchParams?.checkin_date && searchParams?.checkout_date
+    ? Math.max(1, Math.round((new Date(searchParams.checkout_date).getTime() - new Date(searchParams.checkin_date).getTime()) / 86400000))
+    : 1;
+
+  return (
+    <div>
+      {/* Collapsed pill */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          className="w-full bg-white/10 hover:bg-white/15 border border-white/15 rounded-2xl px-5 py-3.5 flex items-center gap-4 transition-all text-left group"
+        >
+          <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center shrink-0">
+            <i className="fa-solid fa-bed text-white text-sm"></i>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-black text-white text-sm truncate">{destLabel}</p>
+            <p className="text-xs text-white/50 font-medium">
+              {fmt(searchParams?.checkin_date)} → {fmt(searchParams?.checkout_date)}
+              {' · '}              {searchParams?.adult || 2} tamu · {searchParams?.room || 1} {tc.room} · {nights} {tc.night}
+            </p>
+          </div>
+          <span className="shrink-0 bg-orange-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 group-hover:bg-orange-400 transition-colors">
+            <i className="fa-solid fa-pen text-[10px]"></i>
+            <span className="hidden sm:inline">Ubah</span>
+          </span>
+        </button>
+      )}
+
+      {/* Expanded form */}
+      {open && (
+        <div className="bg-white/5 border border-white/15 rounded-2xl p-5 relative z-50">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-black text-white text-sm flex items-center gap-2">
+              <i className="fa-solid fa-magnifying-glass text-orange-400 text-xs"></i>
+              Ubah Pencarian
+            </h3>
+            <button aria-label="Tutup pencarian" onClick={() => setOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors">
+              <i className="fa-solid fa-xmark text-sm"></i>
+            </button>
+          </div>
+          <HotelSearchForm onSearch={(p) => { onSearch(p); setOpen(false); }} loading={loading} initialData={searchParams} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sidebar filter ───────────────────────────────────────────────────────────
+type SearchParamsState = {
+  destination_id?: string;
+  q?: string;
+  checkin_date?: string;
+  checkout_date?: string;
+  adult?: number;
+  child?: number;
+  child_ages?: number[];
+  room?: number;
+  nationality?: string;
+};
+
+function SidebarFilter({ priceRange, setPriceRange, starFilters, onStarChange, onReset, hasActive, searchText, onSearchTextChange, facilityFilters, onFacilityChange }: any) {
+  const { language } = useLanguage();
+  const t = i18n.hotelSearch[language];
+  const tc = i18n.common[language];
+  const PRESETS = [
+    { label: '< 500rb', max: 500000 },
+    { label: '< 1jt', max: 1000000 },
+    { label: '< 2jt', max: 2000000 },
+    { label: '< 5jt', max: 5000000 },
+    { label: t.allStars, max: 10000000 },
+  ];
+
+  const FACILITIES = [
+    { key: 'wifi', label: 'Wi-Fi', icon: 'fa-wifi' },
+    { key: 'parking', label: 'Parkir', icon: 'fa-square-parking' },
+    { key: 'pool', label: 'Kolam Renang', icon: 'fa-person-swimming' },
+    { key: 'breakfast', label: 'Sarapan', icon: 'fa-mug-hot' },
+    { key: 'ac', label: 'AC', icon: 'fa-snowflake' },
+  ];
+
+  return (
+    <aside className="w-full lg:w-64 shrink-0 lg:sticky lg:top-24 lg:self-start">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+            <i className="fa-solid fa-sliders text-orange-500 text-xs"></i>
+            {tc.filter}
+          </h3>
+          {hasActive && (
+            <button onClick={onReset} className="text-xs font-bold text-orange-500 hover:text-orange-600 transition-colors flex items-center gap-1">
+              <i className="fa-solid fa-rotate-right text-[10px]"></i> Reset
+            </button>
+          )}
+        </div>
+
+        <div className="p-5 flex flex-col gap-6">
+          {/* Search by name */}
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Cari Nama Hotel</p>
+            <div className="relative">
+              <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+              <input
+                type="text"
+                value={searchText}
+                onChange={e => onSearchTextChange(e.target.value)}
+                placeholder="Ketik nama hotel..."
+                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 placeholder:text-slate-300 focus:outline-none focus:border-orange-400 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Price range with presets */}
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-3">Harga / Malam</p>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {PRESETS.map(p => (
+                <button
+                  key={p.max}
+                  onClick={() => setPriceRange({ min: 0, max: p.max })}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                    priceRange.max === p.max
+                      ? 'bg-orange-500 border-orange-500 text-white'
+                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-orange-300'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <input
+              type="range" min="0" max="10000000" step="500000"
+              value={priceRange.max}
+              onChange={e => setPriceRange({ min: 0, max: parseInt(e.target.value) })}
+              className="w-full accent-orange-500"
+            />
+            <div className="flex justify-between mt-2">
+              <span className="text-xs text-slate-400 font-semibold">IDR 0</span>
+              <span className="text-xs font-bold text-orange-600">
+                {priceRange.max >= 10000000 ? 'IDR 10jt+' : `IDR ${(priceRange.max / 1000000).toFixed(1).replace('.0','')}jt`}
+              </span>
+            </div>
+          </div>
+
+          {/* Stars */}
+          <div className="border-t border-slate-100 pt-5">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-3">{t.filterStars}</p>
+            <div className="flex flex-col gap-2">
+              {[5, 4, 3, 2, 1].map(star => (
+                <label key={star} className="flex items-center gap-3 cursor-pointer group">
+                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
+                    starFilters.includes(star)
+                      ? 'bg-orange-500 border-orange-500'
+                      : 'border-slate-300 group-hover:border-orange-400'
+                  }`} onClick={() => onStarChange(star)}>
+                    {starFilters.includes(star) && <i className="fa-solid fa-check text-white text-[8px]"></i>}
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    {Array.from({ length: 5 }, (_, i) => (
+                      <i key={i} className={`fa-solid fa-star text-[10px] ${i < star ? 'text-amber-400' : 'text-slate-200'}`} />
+                    ))}
+                  </div>
+                  <span className="text-xs text-slate-500 font-semibold">{star} {t.stars}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Facilities */}
+          <div className="border-t border-slate-100 pt-5">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-3">Fasilitas</p>
+            <div className="flex flex-wrap gap-1.5">
+              {FACILITIES.map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => onFacilityChange(f.key)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                    facilityFilters.includes(f.key)
+                      ? 'bg-orange-500 border-orange-500 text-white'
+                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-orange-300'
+                  }`}
+                >
+                  <i className={`fa-solid ${f.icon} text-[9px]`}></i>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Sort & result bar ────────────────────────────────────────────────────────
+function ResultBar({ count, loading, filtered, sortBy, onSort }: any) {
+  const { language } = useLanguage();
+  const t = i18n.hotelSearch[language];
+  return (
+    <div className="bg-white border-b border-slate-100">
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm min-w-0">
+          {loading ? (
+            <div className="flex items-center gap-2 text-slate-500">
+              <div className="w-3.5 h-3.5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              <span className="text-xs font-medium">{t.loading}</span>
+            </div>
+          ) : (
+            <span className="text-slate-600 text-sm">
+              <span className="font-black text-slate-900">{count}</span> {t.hotelsFound}
+              {filtered && <span className="text-orange-500 ml-1 text-xs">(difilter)</span>}
+            </span>
+          )}
+        </div>
+        {!loading && count > 0 && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-slate-400 hidden sm:block font-medium">{t.sortBy}</span>
+            <select
+              value={sortBy}
+              onChange={e => onSort(e.target.value)}
+              className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-orange-400 cursor-pointer"
+            >
+              <option value="price_asc">💰 {t.sortOptions.priceAsc}</option>
+              <option value="price_desc">💎 {t.sortOptions.priceDesc}</option>
+              <option value="rating">⭐ {t.sortOptions.rating}</option>
+            </select>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main page wrapper ────────────────────────────────────────────────────────
+export default function HotelSearchPage() {
+  const { language } = useLanguage();
+  const t = i18n.hotelSearch[language];
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#f4f6fb] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-slate-500 text-sm font-medium">{t.loadingPage}</span>
+        </div>
+      </div>
+    }>
       <HotelSearchContent />
     </Suspense>
   );
 }
 
+// ─── Main content ─────────────────────────────────────────────────────────────
 function HotelSearchContent() {
-  const searchParamsHook = useSearchParams(); // Mengambil query string dari URL
-  
-  const [results, setResults] = useState<any>(null);
+  const { language } = useLanguage();
+  const t = i18n.hotelSearch[language];
+  const tc = i18n.common[language];
+  const isEN = language === 'EN';
+  const searchParamsHook = useSearchParams();
+  const router = useRouter();
+
+  const [results, setResults] = useState<{ hotel_ids?: Array<Record<string, unknown>> } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [searchParams, setSearchParams] = useState<any>(null);
+  const [searchParams, setSearchParams] = useState<SearchParamsState | null>(null);
   const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | 'rating'>('price_asc');
-  
-  // State untuk Filter
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 5000000 });
+  const [priceRange, setPriceRange] = useState({ min: 0, max: 10000000 });
   const [starFilters, setStarFilters] = useState<number[]>([]);
-  
-  // State untuk Pagination
+  const [searchText, setSearchText] = useState('');
+  const [facilityFilters, setFacilityFilters] = useState<string[]>([]);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
-  const [hasAutoSearched, setHasAutoSearched] = useState(false); // Mencegah loop
+  const itemsPerPage = 6;
 
-  const handleSearch = async (params: any) => {
-    setLoading(true); 
-    setError(''); 
-    setResults(null); 
-    setCurrentPage(1);
+  // Guard supaya auto-search dari URL params hanya benar-benar dieksekusi
+  // SEKALI, walau effect di-invoke berkali-kali (mis. React StrictMode di dev).
+  const autoSearchDone = useRef(false);
+
+  // ── Auto-search from URL params on mount ──
+  useEffect(() => {
+    if (autoSearchDone.current) return;
+    autoSearchDone.current = true;
+
+    const destId = searchParamsHook.get('destination_id');
+    if (!destId) return;
+
+    const params = {
+      destination_id: destId,
+      q: searchParamsHook.get('q') || '',
+      checkin_date: searchParamsHook.get('checkin_date') || '',
+      checkout_date: searchParamsHook.get('checkout_date') || '',
+      adult: parseInt(searchParamsHook.get('adult') || '2'),
+      child: parseInt(searchParamsHook.get('child') || '0'),
+      child_ages: (() => {
+        try { return JSON.parse(searchParamsHook.get('child_ages') || '[]'); } catch { return []; }
+      })(),
+      room: parseInt(searchParamsHook.get('room') || '1'),
+      nationality: searchParamsHook.get('nationality') || 'ID',
+    };
+
     setSearchParams(params);
+    doSearch(params);
+  }, []);
+
+  const doSearch = async (params: SearchParamsState) => {
+    if (!params.destination_id || !params.checkin_date || !params.checkout_date) {
+      setError('Silakan pilih destinasi dan tanggal stay terlebih dahulu.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResults(null);
+    setCurrentPage(1);
     try {
       const res = await fetch('/api/hotel/search', {
-        method: 'POST', 
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Gagal mencari hotel');
       setResults(data.data);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (error) {
+      const msg = error instanceof TypeError
+        ? 'Koneksi internet terputus. Periksa sinyalmu lalu coba lagi.'
+        : error instanceof Error ? error.message : 'Gagal mencari hotel';
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  // ─── OTOMATIS SEARCH DARI PARAMETER URL ───
-  useEffect(() => {
-    const destination_id = searchParamsHook.get('destination_id');
-    if (destination_id && !hasAutoSearched) {
-      const params = {
-        destination_id: destination_id,
-        checkin_date: searchParamsHook.get('checkin_date') || '',
-        checkout_date: searchParamsHook.get('checkout_date') || '',
-        adult: parseInt(searchParamsHook.get('adult') || '2'),
-        child: parseInt(searchParamsHook.get('child') || '0'),
-        room: parseInt(searchParamsHook.get('room') || '1'),
-        nationality: searchParamsHook.get('nationality') || 'ID',
-        child_ages: []
-      };
-      setSearchParams(params);
-      handleSearch(params);
-      setHasAutoSearched(true);
-    }
-  }, [searchParamsHook, hasAutoSearched]);
+  const handleSearch = (params: SearchParamsState) => {
+    setSearchParams(params);
+    const urlParams = new URLSearchParams();
+    if (params.destination_id) urlParams.set('destination_id', params.destination_id);
+    urlParams.set('q', params.q || '');
+    if (params.checkin_date) urlParams.set('checkin_date', params.checkin_date);
+    if (params.checkout_date) urlParams.set('checkout_date', params.checkout_date);
+    urlParams.set('adult', String(params.adult ?? 2));
+    urlParams.set('child', String(params.child ?? 0));
+    urlParams.set('room', String(params.room ?? 1));
+    urlParams.set('nationality', params.nationality || 'ID');
+    if (params.child_ages?.length) urlParams.set('child_ages', JSON.stringify(params.child_ages));
+    router.replace(`/hotel/search?${urlParams.toString()}`, { scroll: false });
+    doSearch(params);
+  };
 
-  const getLowestPrice = (prices: any) => {
+  const quickHotel = (destination_id: string) => {
+    const checkin = new Date().toISOString().split('T')[0];
+    const checkout = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    handleSearch({ destination_id, q: '', checkin_date: checkin, checkout_date: checkout, adult: 2, child: 0, child_ages: [], room: 1, nationality: 'ID' });
+  };
+
+  const getLowestPrice = (prices?: Record<string, { price?: number }>) => {
     if (!prices) return 0;
-    return Math.min(...Object.values(prices).map((p: any) => p?.price || Infinity).filter(p => p !== Infinity));
-  };
-
-  const handleStarFilterChange = (star: number) => {
-    setCurrentPage(1);
-    setStarFilters(prev => prev.includes(star) ? prev.filter(s => s !== star) : [...prev, star]);
-  };
-
-  const clearFilters = () => {
-    setPriceRange({ min: 0, max: 5000000 });
-    setStarFilters([]);
-    setCurrentPage(1);
+    const values = Object.values(prices).map((item) => item?.price ?? Number.POSITIVE_INFINITY);
+    const valid = values.filter((value) => Number.isFinite(value));
+    if (valid.length === 0) return 0;
+    return Math.min(...valid);
   };
 
   const filteredAndSortedHotels = useMemo(() => {
-    let hotels = results?.hotel_ids || [];
-    if (hotels.length > 0) {
-      hotels = hotels.filter((hotel: any) => {
-        const price = getLowestPrice(hotel.prices);
-        const rating = parseInt(hotel.rating) || 0;
-        const isWithinPrice = price >= priceRange.min && (priceRange.max >= 5000000 ? true : price <= priceRange.max);
-        const isMatchingStar = starFilters.length === 0 || starFilters.includes(rating);
-        return isWithinPrice && isMatchingStar;
-      });
-    }
-    if (hotels.length > 0) {
-      hotels = [...hotels].sort((a: any, b: any) => {
-        if (sortBy === 'price_asc') return getLowestPrice(a.prices) - getLowestPrice(b.prices);
-        if (sortBy === 'price_desc') return getLowestPrice(b.prices) - getLowestPrice(a.prices);
-        if (sortBy === 'rating') return (parseInt(b.rating) || 0) - (parseInt(a.rating) || 0);
-        return 0;
-      });
-    }
-    return hotels;
-  }, [results, priceRange, starFilters, sortBy]);
+    const hotels = (results?.hotel_ids || []) as Array<Record<string, unknown>>;
+    const filtered = hotels.filter((hotel) => {
+      const prices = (hotel.prices as Record<string, { price?: number }> | undefined) ?? undefined;
+      const p = getLowestPrice(prices);
+      const ratingValue = Number((hotel.rating as string | number | undefined) ?? 0);
+      const hotelName = String(hotel.name || hotel.hotel_name || '').toLowerCase();
+      const priceOk = p >= priceRange.min && (priceRange.max >= 10000000 ? true : p <= priceRange.max);
+      const starOk = starFilters.length === 0 || starFilters.includes(Math.round(ratingValue));
+      const textOk = !searchText || hotelName.includes(searchText.toLowerCase());
+      return priceOk && starOk && textOk;
+    });
+
+    return [...filtered].sort((a, b) => {
+      const priceA = getLowestPrice((a.prices as Record<string, { price?: number }> | undefined) ?? undefined);
+      const priceB = getLowestPrice((b.prices as Record<string, { price?: number }> | undefined) ?? undefined);
+      const ratingA = Number((a.rating as string | number | undefined) ?? 0);
+      const ratingB = Number((b.rating as string | number | undefined) ?? 0);
+
+      if (sortBy === 'price_asc') return priceA - priceB;
+      if (sortBy === 'price_desc') return priceB - priceA;
+      if (sortBy === 'rating') return ratingB - ratingA;
+      return 0;
+    });
+  }, [results, priceRange, starFilters, sortBy, searchText]);
+
+  // ── Hotel termurah (badge Best Price) ──
+  const cheapestHotelId = useMemo(() => {
+    let bestId: string | number | null = null;
+    let bestPrice = Infinity;
+    filteredAndSortedHotels.forEach(hotel => {
+      const p = getLowestPrice(hotel.prices as Record<string, { price?: number }> | undefined);
+      if (p > 0 && p < bestPrice) {
+        bestPrice = p;
+        bestId = hotel.id as string | number;
+      }
+    });
+    return bestId;
+  }, [filteredAndSortedHotels]);
 
   const totalPages = Math.ceil(filteredAndSortedHotels.length / itemsPerPage);
   const currentHotels = filteredAndSortedHotels.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const nights = searchParams?.checkout_date && searchParams?.checkin_date ? Math.max(1, Math.round(
-    (new Date(searchParams.checkout_date).getTime() - new Date(searchParams.checkin_date).getTime()) / 86400000
-  )) : 1;
+  const nights = searchParams?.checkout_date && searchParams?.checkin_date
+    ? Math.max(1, Math.round(
+        (new Date(searchParams.checkout_date).getTime() - new Date(searchParams.checkin_date).getTime()) / 86400000
+      ))
+    : 1;
+
+  const hasActiveFilters = starFilters.length > 0 || priceRange.max < 10000000 || searchText.length > 0 || facilityFilters.length > 0;
+  const showInitialForm = !searchParams;
 
   return (
-    <div className="min-h-screen bg-[#f8f9ff] text-slate-900 font-sans pb-20">
-      {/* ── HEADER & SEARCH CONTEXT ── */}
-      <section className="bg-white border-b border-slate-200 pt-8 pb-12 shadow-sm relative z-20">
-        <div className="max-w-[1280px] mx-auto px-6 md:px-8">
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-2">
-              <h1 className="text-3xl md:text-4xl font-black text-slate-900 font-display tracking-tight">
-                {searchParams ? `Hotel di ${searchParams.q || 'Destinasi Pilihan'}` : 'Eksplorasi Penginapan'}
-              </h1>
-              <p className="text-slate-500 text-sm md:text-base">
-                {results 
-                  ? `Menampilkan ${filteredAndSortedHotels.length} properti • ${searchParams?.checkin_date} hingga ${searchParams?.checkout_date} • ${searchParams?.adult} Dewasa` 
-                  : 'Temukan hotel, vila, dan resort terbaik dengan harga eksklusif.'}
-              </p>
+    <div className="min-h-screen bg-[#f4f6fb] font-sans pb-24 pt-20">
+
+      {/* ── HERO HEADER ── */}
+      <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 pt-6 pb-6 border-b border-white/5">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
+          {showInitialForm ? (
+            <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="text-orange-400 text-[10px] font-black uppercase tracking-widest mb-1">🏨 Hotel Search</p>
+                  <h1 className="text-2xl font-black text-white">Temukan Penginapan Terbaik</h1>
+                  <p className="text-slate-400 text-sm mt-1">Ribuan pilihan hotel di seluruh dunia dengan harga terbaik</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-slate-300 backdrop-blur-sm">
+                  <span className="font-black text-white">Cocok untuk</span> staycation, business trip, dan liburan keluarga.
+                </div>
+              </div>
+              <HotelSearchForm onSearch={handleSearch} loading={loading} />
             </div>
-            
-            <HotelSearchForm onSearch={handleSearch} loading={loading} initialParams={searchParams} />
-          </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 text-xs text-white/40">
+                <i className="fa-solid fa-hotel text-orange-400"></i>
+                <span className="font-bold text-white/70">Hotel</span>
+                <span>·</span>
+                <span>{nights} {tc.night}</span>
+                <span>·</span>
+                <span>{searchParams?.adult} tamu</span>
+              </div>
+              <CompactBar searchParams={searchParams} onSearch={handleSearch} loading={loading} />
+            </div>
+          )}
         </div>
       </section>
 
-      {/* ── MAIN RESULTS GRID ── */}
-      <main className="max-w-[1280px] mx-auto px-6 md:px-8 py-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* ── SIDEBAR FILTERS (KIRI) ── */}
-        <aside className="hidden lg:flex lg:col-span-3 flex-col gap-8">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-6 sticky top-28">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-900">Filters</h3>
-              {(starFilters.length > 0 || priceRange.max < 5000000) && (
-                <button onClick={clearFilters} className="text-orange-600 text-sm font-bold hover:underline">Clear all</button>
-              )}
-            </div>
+      {/* ── RESULT BAR ── */}
+      {(results || loading) && (
+        <ResultBar
+          count={filteredAndSortedHotels.length}
+          loading={loading}
+          filtered={hasActiveFilters}
+          sortBy={sortBy}
+          onSort={(v: any) => { setSortBy(v); setCurrentPage(1); }}
+        />
+      )}
 
-            <div className="flex flex-col gap-4">
-              <span className="font-bold text-sm text-slate-900">Price Range (per night)</span>
-              <div className="space-y-4 px-1">
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="5000000" 
-                  step="500000"
-                  value={priceRange.max} 
-                  onChange={(e) => {
-                    setPriceRange({ min: 0, max: parseInt(e.target.value) });
+      {/* ── MAIN LAYOUT ── */}
+      <main className="max-w-[1280px] mx-auto px-4 md:px-8 py-6 flex flex-col lg:flex-row gap-6 items-start">
+
+        {/* Mobile filter toggle */}
+        {(results || loading) && (
+          <div className="lg:hidden w-full">
+            <button
+              onClick={() => setMobileFilterOpen(!mobileFilterOpen)}
+              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center justify-between text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <i className="fa-solid fa-sliders text-orange-500 text-xs"></i>
+                {tc.filter}
+                {hasActiveFilters && <span className="w-2 h-2 bg-orange-500 rounded-full"></span>}
+              </span>
+              <i className={`fa-solid fa-chevron-${mobileFilterOpen ? 'up' : 'down'} text-xs text-slate-400`}></i>
+            </button>
+            {mobileFilterOpen && (
+              <div className="mt-3">
+                <SidebarFilter
+                  priceRange={priceRange}
+                  setPriceRange={(v: any) => { setPriceRange(v); setCurrentPage(1); }}
+                  starFilters={starFilters}
+                  onStarChange={(s: number) => {
                     setCurrentPage(1);
+                    setStarFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
                   }}
-                  className="w-full accent-orange-500"
+                  onReset={() => { setPriceRange({ min: 0, max: 10000000 }); setStarFilters([]); setSearchText(''); setFacilityFilters([]); setCurrentPage(1); }}
+                  hasActive={hasActiveFilters}
+                  searchText={searchText}
+                  onSearchTextChange={setSearchText}
+                  facilityFilters={facilityFilters}
+                  onFacilityChange={(f: string) => {
+                    setCurrentPage(1);
+                    setFacilityFilters(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+                  }}
                 />
-                <div className="flex justify-between text-xs font-bold text-slate-500">
-                  <span>IDR 0</span>
-                  <span>{priceRange.max >= 5000000 ? 'IDR 5M+' : `IDR ${(priceRange.max / 1000000).toFixed(1)}M`}</span>
-                </div>
               </div>
-            </div>
-
-            <div className="flex flex-col gap-4 pt-4 border-t border-slate-100">
-              <span className="font-bold text-sm text-slate-900">Star Rating</span>
-              <div className="flex flex-col gap-3">
-                {[5, 4, 3, 2, 1].map(star => (
-                  <label key={star} className="flex items-center gap-3 cursor-pointer group">
-                    <input 
-                      type="checkbox" 
-                      checked={starFilters.includes(star)}
-                      onChange={() => handleStarFilterChange(star)}
-                      className="w-5 h-5 rounded border-slate-300 text-orange-600 focus:ring-orange-600" 
-                    />
-                    <span className="text-sm text-slate-700 flex items-center gap-1 font-medium">
-                      {star} Stars <i className="fa-solid fa-star text-orange-400 text-[10px]"></i>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
-        </aside>
+        )}
 
-        {/* ── HASIL PENCARIAN (KANAN) ── */}
-        <div className="lg:col-span-9 flex flex-col gap-6">
-          
+        {/* Desktop Sidebar */}
+        {(results || loading) && (
+          <div className="hidden lg:block">
+            <SidebarFilter
+              priceRange={priceRange}
+              setPriceRange={(v: any) => { setPriceRange(v); setCurrentPage(1); }}
+              starFilters={starFilters}
+              onStarChange={(s: number) => {
+                setCurrentPage(1);
+                setStarFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+              }}
+              onReset={() => { setPriceRange({ min: 0, max: 10000000 }); setStarFilters([]); setSearchText(''); setFacilityFilters([]); setCurrentPage(1); }}
+              hasActive={hasActiveFilters}
+              searchText={searchText}
+              onSearchTextChange={setSearchText}
+              facilityFilters={facilityFilters}
+              onFacilityChange={(f: string) => {
+                setCurrentPage(1);
+                setFacilityFilters(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Results */}
+        <div className="flex-1 min-w-0 flex flex-col gap-4">
+          {!loading && results && currentHotels.length > 0 && (
+            <div className="lg:hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-black text-slate-700">Hasil pencarian</span>
+                <span>{filteredAndSortedHotels.length} {t.hotelsFound}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Error */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3 text-red-600 text-sm font-medium shadow-sm">
-              <i className="fa-solid fa-triangle-exclamation"></i> {error}
-            </div>
-          )}
-
-          {results && !loading && (
-            <div className="flex items-center justify-between mb-2 bg-transparent">
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-500 font-medium">Sort by:</span>
-                <select 
-                  value={sortBy} 
-                  onChange={(e) => { setSortBy(e.target.value as any); setCurrentPage(1); }} 
-                  className="font-bold text-sm text-slate-900 bg-white border border-slate-200 rounded-lg px-4 py-2 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 cursor-pointer shadow-sm"
-                >
-                  <option value="price_asc">Harga Terendah</option>
-                  <option value="price_desc">Harga Tertinggi</option>
-                  <option value="rating">Rating Tertinggi</option>
-                </select>
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 text-red-600 text-sm">
+              <i className="fa-solid fa-wifi mt-0.5 shrink-0"></i>
+              <div className="flex-1">
+                <p className="font-bold">Gagal mencari hotel</p>
+                <p className="text-red-500 text-xs mt-0.5">{error}</p>
+                {searchParams && (
+                  <button
+                    onClick={() => doSearch(searchParams)}
+                    className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors"
+                  >
+                    <i className="fa-solid fa-rotate-right"></i> Coba Lagi
+                  </button>
+                )}
               </div>
             </div>
           )}
 
+          {/* Loading skeletons */}
           {loading && (
-            <div className="flex flex-col gap-6">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row h-auto md:h-[240px]">
-                  <div className="md:w-1/3 bg-slate-200 animate-pulse h-[200px] md:h-full shrink-0"></div>
-                  <div className="md:w-2/3 p-6 flex flex-col justify-between w-full">
-                    <div>
-                      <div className="h-6 w-3/4 bg-slate-200 animate-pulse rounded mb-3"></div>
-                      <div className="h-4 w-1/2 bg-slate-200 animate-pulse rounded"></div>
-                    </div>
-                    <div className="flex justify-end mt-6">
-                      <div className="h-10 w-32 bg-slate-200 animate-pulse rounded-lg"></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="flex flex-col gap-4">
+              {[1, 2, 3, 4].map(i => <SkeletonCard key={i} />)}
             </div>
           )}
 
+          {/* Hotel cards */}
           {!loading && currentHotels.length > 0 && (
-            <div className="flex flex-col gap-6">
-              {currentHotels.map((hotel: any, i: number) => (
-                <HotelCard key={i} hotel={hotel} nights={nights} searchParams={searchParams} />
+            <div className="flex flex-col gap-4">
+              {currentHotels.map((hotel: Record<string, unknown>, i: number) => (
+                <HotelCard key={String((hotel.id as string | number | undefined) ?? i)} hotel={hotel} nights={nights} searchParams={searchParams} isCheapest={hotel.id === cheapestHotelId} />
               ))}
             </div>
           )}
 
+          {/* Empty state after filter */}
           {!loading && results && currentHotels.length === 0 && (
-            <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center shadow-sm">
-              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 text-slate-300">
-                <i className="fa-solid fa-filter-circle-xmark"></i>
+            <div className="bg-white rounded-2xl border border-slate-100 p-16 text-center shadow-sm">
+              <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i className="fa-solid fa-filter-circle-xmark text-3xl text-orange-200"></i>
               </div>
-              <h3 className="font-black text-slate-900 text-xl mb-2">Hotel tidak ditemukan</h3>
-              <p className="text-slate-500 text-sm">Coba sesuaikan filter atau ubah pencarianmu.</p>
-              {(starFilters.length > 0 || priceRange.max < 5000000) && (
-                <button onClick={clearFilters} className="mt-6 px-6 py-2.5 bg-orange-100 text-orange-600 font-bold rounded-lg hover:bg-orange-200 transition-colors text-sm">
+              <h3 className="font-black text-slate-900 text-lg mb-1.5">{t.noResult}</h3>
+              <p className="text-slate-400 text-sm mb-5">{t.noResultSub}</p>
+              {hasActiveFilters && (
+                <button
+                  onClick={() => { setPriceRange({ min: 0, max: 10000000 }); setStarFilters([]); setSearchText(''); setFacilityFilters([]); }}
+                  className="px-5 py-2.5 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-colors text-sm"
+                >
                   Hapus Semua Filter
                 </button>
               )}
             </div>
           )}
 
-          {!loading && totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-10">
-              <button 
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className="w-10 h-10 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              >
-                <i className="fa-solid fa-chevron-left"></i>
-              </button>
-
-              {[...Array(totalPages)].map((_, i) => {
-                const pageNum = i + 1;
-                if (pageNum === 1 || pageNum === totalPages || (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)) {
-                  return (
-                    <button 
-                      key={i}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`w-10 h-10 rounded-lg border flex items-center justify-center font-bold text-sm transition-all ${
-                        currentPage === pageNum 
-                          ? 'bg-orange-600 border-orange-600 text-white shadow-md' 
-                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                }
-                if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
-                  return <span key={i} className="px-2 text-slate-400">...</span>;
-                }
-                return null;
-              })}
-
-              <button 
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="w-10 h-10 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              >
-                <i className="fa-solid fa-chevron-right"></i>
-              </button>
+          {/* Initial empty state */}
+          {!loading && !results && !error && showInitialForm && (
+            <div className="bg-white rounded-2xl border border-slate-100 p-6 md:p-8 shadow-sm">
+              <div className="mb-5">
+                <h3 className="font-black text-slate-900 text-lg">{t.landing.popularTitle}</h3>
+                <p className="text-slate-400 text-sm mt-1">{t.landing.popularSub}</p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4">
+                {POPULAR_HOTEL_DESTINATIONS.map(d => (
+                  <button key={d.destination_id} onClick={() => quickHotel(d.destination_id)}
+                    className="group relative overflow-hidden rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
+                    <div className="aspect-[16/10] relative">
+                      <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                      <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3">
+                        <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
+                        <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
+                          {t.landing.startingFrom} IDR {(d.price / 1000).toLocaleString('id-ID')}K
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
+          {/* Pagination */}
+          {!loading && totalPages > 1 && (
+            <div className="flex items-center justify-center gap-1.5 mt-4">
+              <button
+                onClick={() => { setCurrentPage(p => Math.max(p - 1, 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                disabled={currentPage === 1}
+                className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 bg-white disabled:opacity-30 transition-colors"
+              >
+                <i className="fa-solid fa-chevron-left text-xs"></i>
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => {
+                const p = i + 1;
+                if (p === 1 || p === totalPages || (p >= currentPage - 1 && p <= currentPage + 1)) {
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => { setCurrentPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      className={`w-9 h-9 rounded-xl border font-bold text-sm transition-all ${
+                        currentPage === p
+                          ? 'bg-orange-500 border-orange-500 text-white shadow-sm'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                }
+                if (p === currentPage - 2 || p === currentPage + 2) {
+                  return <span key={p} className="text-slate-300 text-sm px-1">···</span>;
+                }
+                return null;
+              })}
+              <button
+                onClick={() => { setCurrentPage(p => Math.min(p + 1, totalPages)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                disabled={currentPage === totalPages}
+                className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 bg-white disabled:opacity-30 transition-colors"
+              >
+                <i className="fa-solid fa-chevron-right text-xs"></i>
+              </button>
+            </div>
+          )}
         </div>
       </main>
     </div>
