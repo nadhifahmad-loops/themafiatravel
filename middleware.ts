@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import type { JWT } from 'next-auth/jwt';
-import { randomBytes } from 'node:crypto';
 
 type JWTWithRole = JWT & { role?: string };
 
@@ -41,7 +40,9 @@ export async function middleware(req: NextRequest) {
   }
 
   // Nonce CSP per-request: dipakai root layout untuk meta Content-Security-Policy.
-  const nonce = randomBytes(16).toString('base64');
+  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
   response.headers.set('x-nonce', nonce);
 
   return response;
