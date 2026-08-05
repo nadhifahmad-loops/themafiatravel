@@ -13,7 +13,7 @@ function FinishContent() {
 
   useEffect(() => {
     if (!orderId) {
-      router.replace('/bookings');
+      window.location.replace('/bookings');
       return;
     }
 
