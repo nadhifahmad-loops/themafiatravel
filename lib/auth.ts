@@ -41,17 +41,28 @@ export const authOptions: NextAuthOptions = {
         code: { label: 'Code', type: 'text' },
       },
       async authorize(credentials, req) {
-        if (!credentials?.email || !credentials?.password) return null;
+        console.log('[Auth] authorize called', { email: credentials?.email });
+        if (!credentials?.email || !credentials?.password) {
+          console.log('[Auth] missing credentials');
+          return null;
+        }
 
         const email = normalizeEmail(credentials.email);
         const ip = getRequestIp(req?.headers);
+        console.log('[Auth] ip:', ip);
 
-        // Rate limit percobaan login — cegah brute force.
-        // Kombinasi IP + email, plus batas global per IP.
         const perAccount = await checkRateLimit(`login:${ip}:${email}`, 'login');
-        if (!perAccount.allowed) return null;
+        console.log('[Auth] perAccount:', perAccount);
+        if (!perAccount.allowed) {
+          console.log('[Auth] rate limited (account)');
+          return null;
+        }
         const perIp = await checkRateLimit(`login-ip:${ip}`, 'loginIp');
-        if (!perIp.allowed) return null;
+        console.log('[Auth] perIp:', perIp);
+        if (!perIp.allowed) {
+          console.log('[Auth] rate limited (IP)');
+          return null;
+        }
 
         const user = await prisma.user.findUnique({
           where: { email },
@@ -66,10 +77,18 @@ export const authOptions: NextAuthOptions = {
             twoFactorBackupCodes: true,
           },
         });
-        if (!user || !user.password) return null;
+        console.log('[Auth] user found:', !!user, 'hasPassword:', !!user?.password);
+        if (!user || !user.password) {
+          console.log('[Auth] no user or no password');
+          return null;
+        }
 
         const valid = await bcrypt.compare(credentials.password, user.password);
-        if (!valid) return null;
+        console.log('[Auth] password valid:', valid);
+        if (!valid) {
+          console.log('[Auth] password mismatch');
+          return null;
+        }
 
         if (user.twoFactorEnabled && user.twoFactorSecret) {
           const code = typeof credentials.code === 'string' ? credentials.code : '';
