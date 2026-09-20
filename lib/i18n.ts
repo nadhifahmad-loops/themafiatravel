@@ -318,7 +318,7 @@ export const i18n = {
     },
   },
 
-  // ─── REGISTER PAGE ────────────────────────────────────────────────────────
+  // ─── REGISTER PAGE ────────────────────────────────────────
   register: {
     ID: {
       tagline: 'Bergabunglah bersama ribuan traveler yang telah mempercayai The Mafia Travel.',
