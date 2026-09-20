@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   }
 
   const testPassword = 'AdminMafia2026!';
-  const valid = await bcrypt.compare(testPassword, user.password);
+  const valid = user.password ? await bcrypt.compare(testPassword, user.password) : false;
 
   return NextResponse.json({
     found: true,
