@@ -15,6 +15,12 @@ function getRedisClient(): Redis | null {
       maxRetriesPerRequest: 1,
       enableReadyCheck: false,
     });
+    redisClient.on('error', () => {
+      redisClient = null;
+    });
+    redisClient.on('connect', () => {
+      console.log('[RateLimit] Redis connected');
+    });
   } catch {
     redisClient = null;
   }
