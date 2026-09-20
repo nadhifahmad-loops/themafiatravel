@@ -3,12 +3,14 @@
 import { useState, useCallback, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Menu, Bell, ChevronDown, LogOut, User, Settings, ChevronRight, CreditCard, Package } from 'lucide-react';
+import { Menu, Bell, ChevronDown, LogOut, User, Settings, ChevronRight, ChevronsLeft, ChevronsRight, CreditCard, Package } from 'lucide-react';
 import Image from 'next/image';
 import LogoutConfirmButton from '@/components/auth/LogoutConfirmButton';
 
 interface TopbarProps {
   onMenuClick: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   userName?: string | null;
   userEmail?: string | null;
   userImage?: string | null;
@@ -50,7 +52,7 @@ function timeAgo(iso: string) {
   return `${Math.floor(h / 24)} hari lalu`;
 }
 
-export default function Topbar({ onMenuClick, userName, userEmail, userImage, initialNotifications, initialUnreadCount }: TopbarProps) {
+export default function Topbar({ onMenuClick, collapsed, onToggleCollapse, userName, userEmail, userImage, initialNotifications, initialUnreadCount }: TopbarProps) {
   const pathname = usePathname();
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -70,9 +72,6 @@ export default function Topbar({ onMenuClick, userName, userEmail, userImage, in
     }
   }, []);
 
-  // Data awal sudah di-seed dari server (app/admin/layout.tsx).
-  // Di sini hanya subscribe refresh berkala tiap 30 detik agar
-  // booking/pembayaran baru langsung muncul.
   useEffect(() => {
     const id = setInterval(loadNotifications, 30000);
     return () => clearInterval(id);
@@ -89,9 +88,7 @@ export default function Topbar({ onMenuClick, userName, userEmail, userImage, in
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keys }),
-      }).catch(() => {
-        // Biarkan polling tiap 30 detik memperbaiki jika gagal
-      });
+      }).catch(() => {});
     },
     [notifs],
   );
@@ -116,9 +113,19 @@ export default function Topbar({ onMenuClick, userName, userEmail, userImage, in
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-6 sticky top-0 z-30">
       <div className="flex items-center gap-3">
+        {/* Mobile hamburger */}
         <button onClick={onMenuClick} className="lg:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
           <Menu className="w-5 h-5" />
         </button>
+        {/* Desktop collapse toggle — icon only */}
+        <button
+          onClick={onToggleCollapse}
+          className="hidden lg:flex p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+          title={collapsed ? 'Perluas sidebar' : 'Ciutkan sidebar'}
+        >
+          {collapsed ? <ChevronsRight className="w-5 h-5" /> : <ChevronsLeft className="w-5 h-5" />}
+        </button>
+        {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-sm">
           <span className="text-slate-400 hidden sm:block">Admin</span>
           {current.parent && (
@@ -214,24 +221,20 @@ export default function Topbar({ onMenuClick, userName, userEmail, userImage, in
                   <p className="text-slate-800 text-xs font-semibold truncate">{userName || 'Admin'}</p>
                   <p className="text-slate-400 text-[11px] mt-0.5 truncate">{userEmail || 'admin@mafia.travel'}</p>
                 </div>
-                
-                {/* 🔥 PERBAIKAN: Mengganti button dengan Link */}
-                <Link 
-                  href="/admin/profile" 
-                  onClick={() => setProfileOpen(false)} 
+                <Link
+                  href="/admin/profile"
+                  onClick={() => setProfileOpen(false)}
                   className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-slate-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
                 >
                   <User className="w-4 h-4" /> Profil
                 </Link>
-                
-                <Link 
-                  href="/admin/settings" 
-                  onClick={() => setProfileOpen(false)} 
+                <Link
+                  href="/admin/settings"
+                  onClick={() => setProfileOpen(false)}
                   className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-slate-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
                 >
                   <Settings className="w-4 h-4" /> Pengaturan
                 </Link>
-                
                 <div className="border-t border-slate-100 mt-1 pt-1">
                   <LogoutConfirmButton
                     callbackUrl="/login"

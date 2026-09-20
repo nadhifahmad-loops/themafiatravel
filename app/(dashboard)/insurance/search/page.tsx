@@ -2,20 +2,13 @@
 import { useState, useMemo, Suspense, useCallback, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import InsuranceCard from '@/components/insurance/InsuranceCard';
+import InsuranceSearchForm from '@/components/insurance/InsuranceSearchForm';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { sanitizeInsuranceHtml } from '@/lib/insurance-html';
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
-const PROVIDERS = [
-  { value: 'all',           label: 'Semua Provider',  icon: 'fa-globe' },
-  { value: 'assistcard',    label: 'Assist Card',     icon: 'fa-briefcase-medical' },
-  { value: 'bcainsurance',  label: 'BCA Insurance',   icon: 'fa-building-columns' },
-  { value: 'zurich',        label: 'Zurich',          icon: 'fa-shield-halved' },
-  { value: 'great_eastern', label: 'Great Eastern',   icon: 'fa-leaf' },
-  { value: 'oona',          label: 'Oona',            icon: 'fa-umbrella' },
-];
-
 const PROVIDER_AREAS: Record<string, { value: string; label: string; international: boolean }[]> = {
   assistcard:    [
     { value: 'Europe',                          label: 'Eropa',                      international: true  },
@@ -64,11 +57,11 @@ const PROVIDER_AREAS: Record<string, { value: string; label: string; internation
 };
 
 const PROVIDER_BADGE: Record<string, { label: string; bg: string; text: string }> = {
-  assistcard:    { label: '🩺 Assist Card',    bg: 'bg-blue-100',   text: 'text-blue-700'   },
-  bcainsurance:  { label: '🏦 BCA Insurance',  bg: 'bg-sky-100',    text: 'text-sky-700'    },
-  zurich:        { label: '🔵 Zurich',         bg: 'bg-indigo-100', text: 'text-indigo-700' },
-  great_eastern: { label: '🟢 Great Eastern',  bg: 'bg-emerald-100',text: 'text-emerald-700'},
-  oona:          { label: '🟠 Oona',           bg: 'bg-orange-100', text: 'text-orange-700' },
+  assistcard:    { label: 'Assist Card',    bg: 'bg-blue-100',   text: 'text-blue-700'   },
+  bcainsurance:  { label: 'BCA Insurance',  bg: 'bg-sky-100',    text: 'text-sky-700'    },
+  zurich:        { label: 'Zurich',         bg: 'bg-indigo-100', text: 'text-indigo-700' },
+  great_eastern: { label: 'Great Eastern',  bg: 'bg-emerald-100',text: 'text-emerald-700'},
+  oona:          { label: 'Oona',           bg: 'bg-orange-100', text: 'text-orange-700' },
 };
 
 function fmtIDR(n: number) {
@@ -78,14 +71,20 @@ function fmtDate(d: string) {
   if (!d) return '';
   return new Date(d).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 const POPULAR_INSURANCE_AREAS = [
-  { area: 'Asia',        label: 'Asia',        labelEN: 'Asia' },
-  { area: 'Asia Pacific', label: 'Asia Pasifik', labelEN: 'Asia Pacific' },
-  { area: 'Europe',      label: 'Eropa',       labelEN: 'Europe' },
-  { area: 'Worldwide',   label: 'Seluruh Dunia', labelEN: 'Worldwide' },
-  { area: 'ASEAN',       label: 'ASEAN',       labelEN: 'ASEAN' },
-  { area: 'Domestic',    label: 'Domestik',    labelEN: 'Domestic' },
+  { area: 'Asia',        label: 'Asia',        labelEN: 'Asia',         img: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=600&q=80', price: '150rb' },
+  { area: 'Asia Pacific', label: 'Asia Pasifik', labelEN: 'Asia Pacific', img: 'https://images.unsplash.com/photo-1506665531195-3566af2b4dfa?w=600&q=80', price: '180rb' },
+  { area: 'Europe',      label: 'Eropa',       labelEN: 'Europe',       img: 'https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=600&q=80', price: '250rb' },
+  { area: 'Worldwide',   label: 'Seluruh Dunia', labelEN: 'Worldwide',  img: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=600&q=80', price: '350rb' },
+  { area: 'ASEAN',       label: 'ASEAN',       labelEN: 'ASEAN',        img: 'https://images.unsplash.com/photo-1552733407-5d5c46c3bb3b?w=600&q=80', price: '120rb' },
+  { area: 'Domestic',    label: 'Domestik',    labelEN: 'Domestic',     img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600&q=80', price: '50rb' },
 ];
 
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
@@ -93,7 +92,7 @@ function SkeletonLoader() {
   return (
     <div className="space-y-3">
       {[1,2,3,4,5].map(i => (
-        <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col md:flex-row gap-4 animate-pulse">
+        <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 flex flex-col md:flex-row gap-4 animate-pulse">
           <div className="flex items-center gap-3 md:w-52">
             <div className="w-12 h-12 bg-blue-100 rounded-xl shrink-0"></div>
             <div className="space-y-2 flex-1">
@@ -114,6 +113,95 @@ function SkeletonLoader() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Filter Skeleton ────────────────────────────────────────────────────────
+function FilterSkeleton() {
+  return (
+    <div className="w-full lg:w-56 shrink-0 lg:sticky lg:top-24 lg:self-start">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden animate-pulse">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+          <div className="w-4 h-4 bg-slate-200 rounded"></div>
+          <div className="h-3 w-12 bg-slate-200 rounded"></div>
+        </div>
+        <div className="p-4 space-y-5">
+          <div>
+            <div className="h-2 w-20 bg-slate-200 rounded mb-3"></div>
+            <div className="space-y-2">
+              {[1,2,3,4].map(i => <div key={i} className="flex items-center gap-3"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-24 bg-slate-100 rounded"></div></div>)}
+            </div>
+          </div>
+          <div className="h-px bg-slate-100"></div>
+          <div>
+            <div className="h-2 w-16 bg-slate-200 rounded mb-3"></div>
+            <div className="space-y-2">
+              {[1,2].map(i => <div key={i} className="flex items-center gap-3"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-20 bg-slate-100 rounded"></div></div>)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── No Results with Alternatives ───────────────────────────────────────────
+function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMeta: any; onSearch: (p: any) => void; onRetry?: () => void }) {
+  const { language } = useLanguage();
+  const t = i18n.insuranceSearch[language];
+  const isEN = language === 'EN';
+
+  const quickInsurance = (area: typeof POPULAR_INSURANCE_AREAS[0]) => {
+    const today = formatLocalDate(new Date());
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = formatLocalDate(tomorrowDate);
+    onSearch({
+      area: area.area,
+      departure_date: today,
+      return_date: tomorrow,
+      pax: searchMeta?.pax || 1,
+    });
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+      {/* No results header */}
+      <div className="px-6 py-10 text-center">
+        <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <i className="fa-solid fa-shield-halved text-3xl text-orange-300"></i>
+        </div>
+        <h3 className="font-black text-slate-900 text-lg mb-1.5">{t.noResultTitle}</h3>
+        <p className="text-slate-400 text-sm max-w-md mx-auto">{t.noResultDesc}</p>
+        {onRetry && (
+          <button onClick={onRetry} className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-colors">
+            <i className="fa-solid fa-rotate-right"></i> Coba Lagi
+          </button>
+        )}
+      </div>
+
+      {/* Alternative destinations */}
+      <div className="border-t border-slate-100 bg-slate-50 px-6 py-6">
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">{t.alternativeTitle}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {POPULAR_INSURANCE_AREAS.filter(d => d.area !== searchMeta?.area).map(d => (
+            <button key={d.area} onClick={() => quickInsurance(d)}
+              className="group relative overflow-hidden rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
+              <div className="aspect-[16/10] relative">
+                <img src={d.img} alt={isEN ? d.labelEN : d.label} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-2.5">
+                  <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.labelEN : d.label}</p>
+                  <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
+                    Mulai dari {d.price}
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -200,7 +288,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, product, searchMeta, priceDat
               <div>
                 <p className="text-xs text-slate-400">Total Premi ({searchMeta?.pax || 1} orang)</p>
                 <p className="text-2xl font-black text-orange-600">{fmtIDR(price * (searchMeta?.pax || 1))}</p>
-                <p className="text-xs text-slate-400">Sudah termasuk biaya admin</p>
+                <p className="text-xs text-slate-400">Premi dasar provider; biaya admin ditampilkan di checkout</p>
               </div>
             </div>
           </div>
@@ -247,19 +335,49 @@ function ReviewPanel({ isOpen, onClose, onConfirm, product, searchMeta, priceDat
   );
 }
 
+// ─── Info Banner (after search) ─────────────────────────────────────────────
+function InfoBanner({ searchMeta, nights }: { searchMeta: any; nights: number }) {
+  const { language } = useLanguage();
+  const t = i18n.insuranceSearch[language];
+  const fmt = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '—';
+  const pv = PROVIDER_BADGE[searchMeta?.provider] || null;
+
+  return (
+    <div className="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white">
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-3 flex-1">
+          <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
+            <i className="fa-solid fa-shield-halved text-orange-400 text-sm"></i>
+          </div>
+          <div className="flex items-center gap-2 text-sm flex-wrap">
+            <span className="font-black">
+              {searchMeta?.destination_area || 'Semua Area'}
+              {pv && <span className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${pv.bg} ${pv.text}`}>{pv.label}</span>}
+            </span>
+            <span className="text-white/60">·</span>
+            <span className="text-white/60">{fmt(searchMeta?.date_start)} → {fmt(searchMeta?.date_end)}</span>
+            <span className="text-white/60">·</span>
+            <span className="text-white/60">{nights} {t.days} · {searchMeta?.pax || 1} peserta</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Compact Search Bar ───────────────────────────────────────────────────────
 function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; onSearch: (p: any) => void; loading: boolean }) {
   const { language } = useLanguage();
   const t = i18n.insuranceSearch[language];
   const [collapsed, setCollapsed] = useState(true);
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDate(new Date());
 
   if (collapsed) {
     const nights = searchMeta?.nights || 1;
     const pv = PROVIDER_BADGE[searchMeta?.provider] || null;
     return (
       <div
-        className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 cursor-pointer hover:border-orange-200 transition-colors"
+        className="bg-white rounded-2xl border border-slate-100 shadow-card p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 cursor-pointer hover:border-orange-200 transition-colors"
         onClick={() => setCollapsed(false)}
       >
         <div className="flex items-center gap-3 flex-1">
@@ -267,7 +385,7 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
             <i className="fa-solid fa-shield-halved text-orange-600"></i>
           </div>
           <div>
-            <p className="font-black text-slate-900 text-sm">
+            <p className="font-black text-brand-ink text-sm">
               {searchMeta?.destination_area || 'Semua Area'}
               {pv && <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${pv.bg} ${pv.text}`}>{pv.label}</span>}
             </p>
@@ -284,99 +402,19 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
   }
 
   return (
-    <InlineSearchForm
-      initialData={searchMeta}
-      onSearch={(p: any) => { onSearch(p); setCollapsed(true); }}
-      loading={loading}
-      onCancel={() => setCollapsed(true)}
-    />
-  );
-}
-
-// ─── Inline Search Form ───────────────────────────────────────────────────────
-function InlineSearchForm({ initialData, onSearch, loading, onCancel }: any) {
-  const { language } = useLanguage();
-  const t = i18n.insuranceSearch[language];
-  const sf = i18n.searchForm[language].insurance;
-  const today = new Date().toISOString().split('T')[0];
-  const [form, setForm] = useState({
-    provider:         initialData?.provider         || 'all',
-    destination_area: initialData?.destination_area || 'Asia',
-    date_start:       initialData?.date_start       || today,
-    date_end:         initialData?.date_end         || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-    pax:              initialData?.pax              || 1,
-    trip_type:        initialData?.trip_type        || 'single_trip',
-    is_senior:        initialData?.is_senior        || false,
-  });
-
-  const currentAreas = PROVIDER_AREAS[form.provider] || PROVIDER_AREAS.all;
-
-  const handleProviderChange = (val: string) => {
-    const areas = PROVIDER_AREAS[val] || PROVIDER_AREAS.all;
-    setForm(f => ({ ...f, provider: val, destination_area: areas[0].value }));
-  };
-
-  const inp = "w-full px-3.5 py-2.5 bg-slate-800 border border-slate-600 rounded-xl text-white text-sm outline-none focus:border-orange-500 transition-colors placeholder-slate-500 [color-scheme:dark]";
-  const lbl = "block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider";
-
-  const nights = Math.max(1, Math.round((new Date(form.date_end).getTime() - new Date(form.date_start).getTime()) / 86400000));
-
-  return (
-    <div className="bg-slate-900 rounded-2xl p-5 shadow-xl">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 relative z-50">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-black text-white text-sm">Ubah Pencarian</h3>
-        {onCancel && <button aria-label="Tutup pencarian" onClick={onCancel} className="text-white/50 hover:text-white transition-colors text-sm"><i className="fa-solid fa-xmark"></i></button>}
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-3">
-        <div>
-          <label className={lbl}>{t.provider}</label>
-          <select value={form.provider} onChange={e => handleProviderChange(e.target.value)} className={inp} style={{ background: '#1e293b' }}>
-            {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.value === 'all' ? t.allProviders : p.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={lbl}>Area Tujuan</label>
-          <select value={form.destination_area} onChange={e => setForm(f => ({ ...f, destination_area: e.target.value }))} className={inp} style={{ background: '#1e293b' }}>
-            {currentAreas.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={lbl}>{sf.departure}</label>
-          <input type="date" value={form.date_start} min={today} onChange={e => setForm(f => ({ ...f, date_start: e.target.value }))} className={inp} />
-        </div>
-        <div>
-          <label className={lbl}>Selesai ({nights}h)</label>
-          <input type="date" value={form.date_end} min={form.date_start} onChange={e => setForm(f => ({ ...f, date_end: e.target.value }))} className={inp} />
-        </div>
-        <div>
-          <label className={lbl}>{sf.type}</label>
-          <select value={form.trip_type} onChange={e => setForm(f => ({ ...f, trip_type: e.target.value }))} className={inp} style={{ background: '#1e293b' }}>
-            <option value="single_trip">Sekali Jalan</option>
-            <option value="annual_trip">Tahunan</option>
-          </select>
-        </div>
-        <div>
-          <label className={lbl}>{sf.passengers}</label>
-          <div className="flex items-center bg-slate-800 border border-slate-600 rounded-xl overflow-hidden h-10">
-            <button type="button" onClick={() => setForm(f => ({ ...f, pax: Math.max(1, f.pax - 1) }))} className="w-9 text-orange-400 text-lg font-bold bg-transparent border-none flex items-center justify-center hover:bg-slate-700 h-full transition-colors">−</button>
-            <span className="flex-1 text-center text-white text-sm font-bold">{form.pax}</span>
-            <button type="button" onClick={() => setForm(f => ({ ...f, pax: Math.min(9, f.pax + 1) }))} className="w-9 text-orange-400 text-lg font-bold bg-transparent border-none flex items-center justify-center hover:bg-slate-700 h-full transition-colors">+</button>
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center justify-between">
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input type="checkbox" checked={form.is_senior} onChange={e => setForm(f => ({ ...f, is_senior: e.target.checked }))} className="w-4 h-4 rounded accent-orange-500" />
-          <span className="text-sm text-slate-400">Senior (60+)</span>
-        </label>
-        <button
-          disabled={loading}
-          onClick={() => onSearch({ ...form, nights })}
-          className="px-6 py-2.5 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-600 text-white font-bold text-sm rounded-xl transition-colors flex items-center gap-2"
-        >
-          {loading ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Mencari...</> : <><i className="fa-solid fa-magnifying-glass"></i> {sf.search}</>}
+        <h3 className="font-black text-brand-ink text-sm">Ubah Pencarian</h3>
+        <button onClick={() => setCollapsed(true)} className="text-slate-400 hover:text-brand-ink transition-colors">
+          <i className="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
+      <InsuranceSearchForm
+        initialData={searchMeta}
+        onSearch={(p: any) => { onSearch(p); setCollapsed(true); }}
+        loading={loading}
+        variant="light"
+      />
     </div>
   );
 }
@@ -389,8 +427,18 @@ function InsuranceSearchContent() {
   const isEN = language === 'EN';
   const router      = useRouter();
   const searchParams = useSearchParams();
-  const today       = new Date().toISOString().split('T')[0];
-  const nextWeek    = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+
+  usePageTitle(
+    searchParams.get('destination_area')
+      ? `Asuransi Perjalanan: ${searchParams.get('destination_area')}`
+      : 'Asuransi Perjalanan'
+  );
+  const today       = formatLocalDate(new Date());
+  const [nextWeek]  = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return formatLocalDate(date);
+  });
 
   const [searchMeta, setSearchMeta] = useState<any>(() => {
     const p         = searchParams.get('provider')         || 'all';
@@ -411,6 +459,7 @@ function InsuranceSearchContent() {
   const [providerErrors, setProviderErrors] = useState<Record<string, string>>({});
   const [filterProvider, setFilterProvider] = useState('all');
   const [sortBy,         setSortBy]         = useState<'price_asc' | 'price_desc'>('price_asc');
+  const [showTimeout,    setShowTimeout]    = useState(false);
 
   // Review panel
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
@@ -418,6 +467,13 @@ function InsuranceSearchContent() {
   const [reviewOpen,       setReviewOpen]      = useState(false);
   const [loadingPrice,     setLoadingPrice]    = useState(false);
   const [selectingId,      setSelectingId]     = useState<string | null>(null);
+
+  // Timeout notification saat loading terlalu lama
+  useEffect(() => {
+    if (!loading) { setShowTimeout(false); return; }
+    const timer = setTimeout(() => setShowTimeout(true), 15000);
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   // ── Auto-search dari homepage ──
   const handleSearch = useCallback(async (params: any) => {
@@ -447,7 +503,7 @@ function InsuranceSearchContent() {
           date_end:         params.date_end,
           pax:              params.pax,
           is_senior:        params.is_senior,
-          international:    true,
+          international:    !/domestic|domestik/i.test(String(params.destination_area || '')),
           destination_area: params.destination_area,
           type:             params.trip_type,
           product_type:     'individual',
@@ -486,7 +542,7 @@ function InsuranceSearchContent() {
     try {
       const defaultBirth = new Date();
       defaultBirth.setFullYear(defaultBirth.getFullYear() - 30);
-      const bd = defaultBirth.toISOString().split('T')[0];
+      const bd = formatLocalDate(defaultBirth);
       const pax = searchMeta?.pax || 1;
 
       const res = await fetch('/api/insurance/price', {
@@ -494,6 +550,11 @@ function InsuranceSearchContent() {
         body: JSON.stringify({
           data: { product_code: product.product_code, provider: product.provider, carrier_code: product.carrier_code },
           pax, package: 1, age: Array(pax).fill(bd), age_type: 'birth_date', adult: pax,
+          date_start: searchMeta?.date_start, date_end: searchMeta?.date_end,
+          destination: searchMeta?.destination_area, destination_area: searchMeta?.destination_area,
+          is_senior: searchMeta?.is_senior,
+          international: !/domestic|domestik/i.test(String(searchMeta?.destination_area || '')),
+          type: searchMeta?.trip_type, product_type: product.product_type_code || 'individual',
         }),
       });
       const data = await res.json();
@@ -520,6 +581,7 @@ function InsuranceSearchContent() {
       const nights   = searchMeta?.nights || 1;
       const q = new URLSearchParams({
         product_code: selectedProduct.product_code,
+        package: String(selectedProduct.package ?? selectedProduct.package_id ?? selectedProduct.package_code ?? '1'),
         product_name: selectedProduct.product_name,
         provider:     selectedProduct.provider,
         carrier_code: selectedProduct.carrier_code || selectedProduct.provider,
@@ -527,7 +589,9 @@ function InsuranceSearchContent() {
         date_start:   searchMeta?.date_start || '',
         date_end:     searchMeta?.date_end   || '',
         pax:          String(searchMeta?.pax || 1),
+        is_senior:    String(searchMeta?.is_senior === true),
         destination:  searchMeta?.destination_area || '',
+        destination_area: searchMeta?.destination_area || '',
         total_amount: String(Math.round(price)),
         sector_type:  selectedProduct.sector_type || '',
         product_type: selectedProduct.product_type_code || 'individual',
@@ -553,6 +617,9 @@ function InsuranceSearchContent() {
     );
     return arr;
   }, [products, filterProvider, sortBy]);
+
+  const hasResults = products.length > 0;
+  const noResultsAfterSearch = !loading && searched && !hasResults;
 
   // ── Paket termurah (badge highlight) ──
   const cheapestKey = useMemo(() => {
@@ -583,109 +650,96 @@ function InsuranceSearchContent() {
   ));
 
   return (
-    <div className="bg-[#f4f6fb] min-h-screen pt-20">
+    <div className="bg-brand-bgLight min-h-screen pt-20">
       <style>{`
         @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
       `}</style>
 
-      {/* ── Banner Header ─────────────────────────────────────────────────── */}
-      <div className="bg-blue-800 text-white">
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3 flex items-center gap-3 flex-wrap">
-          <i className="fa-solid fa-shield-halved text-blue-300 text-lg"></i>
-          <div className="text-sm font-black">Asuransi Perjalanan</div>
-          <span className="text-blue-300">·</span>
-          <span className="text-sm text-blue-100">
-            {searchMeta.destination_area || 'Semua Area'}
-          </span>
-          {searched && (
-            <>
-              <span className="text-blue-300">·</span>
-              <span className="text-sm text-blue-100">{searchMeta.date_start} → {searchMeta.date_end}</span>
-              <span className="text-blue-300">·</span>
-              <span className="text-sm text-blue-100">{searchMeta.pax || 1} Peserta</span>
-            </>
-          )}
+      {/* ── HERO HEADER (landing) ── */}
+      {!searched ? (
+      <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
+          <div className="mb-6 md:mb-8">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-brand-ink leading-tight tracking-tight">
+              {t.landing.title}
+            </h1>
+            <p className="mt-2 text-sm md:text-base text-brand-neutral font-medium">{t.landing.subtitle}</p>
+          </div>
+
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-floating border border-slate-100/80 p-4 sm:p-6 transition-all">
+            <InsuranceSearchForm initialData={searchMeta} onSearch={handleSearch} loading={loading} variant="light" />
+          </div>
+        </div>
+      </section>
+      ) : (
+      <>
+      {/* ─── Info Banner ──────────────────────────────────────────────────────── */}
+      <InfoBanner searchMeta={searchMeta} nights={nights} />
+      </>
+      )}
+
+      {searched && (
+      <>
+      {/* ─── Sticky Compact Search Bar ─────────────────────────────────────── */}
+      <div data-compact-search className="sticky top-0 z-[900] bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3">
+          <CompactSearchBar searchMeta={{ ...searchMeta, nights }} onSearch={handleSearch} loading={loading} />
         </div>
       </div>
 
-      <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-5">
-
-        {/* Compact / Inline search bar */}
-        <div className="mb-5">
-          {searched ? (
-            <CompactSearchBar searchMeta={{ ...searchMeta, nights }} onSearch={handleSearch} loading={loading} />
-          ) : (
-            <InlineSearchForm initialData={searchMeta} onSearch={handleSearch} loading={loading} />
-          )}
-        </div>
-
-        {!loading && searched && displayed.length > 0 && (
-          <div className="mb-5 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-black text-slate-900">Paket asuransi yang paling sesuai</p>
-              <p className="text-xs text-slate-500 mt-1">Satu layar untuk membandingkan provider, jangka perjalanan, dan premi secara lebih jelas.</p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">
-              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">Cakupan lengkap</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1">Klik untuk lihat detail manfaat</span>
-            </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl flex items-start gap-3 mb-5">
-            <i className="fa-solid fa-wifi text-red-500 mt-0.5"></i>
-            <div className="flex-1">
-              <h3 className="font-bold text-red-800">{tc.error}</h3>
-              <p className="text-sm text-red-600 mt-1">{error}</p>
-              <button
-                onClick={() => handleSearch(searchMeta)}
-                className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors"
-              >
-                <i className="fa-solid fa-rotate-right"></i> Coba Lagi
-              </button>
-            </div>
-          </div>
-        )}
+      {/* ── MAIN LAYOUT ── */}
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 pt-5 pb-10">
 
         {/* Provider partial errors */}
-        {Object.keys(providerErrors).length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-start gap-2">
-            <i className="fa-solid fa-triangle-exclamation text-amber-500 mt-0.5 text-sm"></i>
-            <div className="text-xs text-amber-800">
+        {Object.keys(providerErrors).length > 0 && !loading && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center gap-2">
+            <div className="flex-1 text-xs text-amber-800">
               <span className="font-bold">Beberapa provider tidak merespons: </span>
               {Object.entries(providerErrors).map(([p, _], i) => (
                 <span key={p}>{i > 0 ? ', ' : ''}{PROVIDER_BADGE[p]?.label || p}</span>
               ))}
             </div>
+            <button onClick={() => setProviderErrors({})} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0">
+              <i className="fa-solid fa-xmark text-sm"></i>
+            </button>
           </div>
         )}
 
-        {/* Loading */}
+        {/* Loading with filter skeleton */}
         {loading && (
-          <div>
-            <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-4 flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
-              <div>
-                <p className="font-bold text-slate-700 text-sm">Mencari di semua provider...</p>
-                <p className="text-xs text-slate-400">Assist Card, BCA Insurance, Zurich, Great Eastern, Oona</p>
+          <div className="flex flex-col lg:flex-row gap-5 items-start">
+            <FilterSkeleton />
+            <div className="flex-1 min-w-0 space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3 shadow-card">
+                <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
+                <div>
+                  <p className="font-bold text-slate-700 text-sm">Mencari di semua provider...</p>
+                  <p className="text-xs text-slate-400">Assist Card, BCA Insurance, Zurich, Great Eastern, Oona</p>
+                </div>
               </div>
+              {showTimeout && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
+                  <i className="fa-solid fa-clock text-amber-500 mt-0.5"></i>
+                  <div>
+                    <p className="font-bold text-amber-800 text-sm">Masih memproses...</p>
+                    <p className="text-xs text-amber-600 mt-0.5">Beberapa provider mungkin lambat merespons. Mohon tunggu sebentar lagi.</p>
+                  </div>
+                </div>
+              )}
+              <SkeletonLoader />
             </div>
-            <SkeletonLoader />
           </div>
         )}
 
-        {/* Results */}
-        {!loading && searched && (
+        {!loading && searched && !error && !noResultsAfterSearch && products.length > 0 && (
           <div className="flex flex-col lg:flex-row gap-5 items-start">
             {/* ── Sidebar Filter ── */}
             <div className="w-full lg:w-56 shrink-0">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden sticky top-24">
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden sticky top-24">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <i className="fa-solid fa-sliders text-orange-500 text-sm"></i>
-                    <h3 className="font-black text-slate-800 text-sm">{tc.filter}</h3>
+                    <h3 className="font-black text-brand-ink text-sm">{tc.filter}</h3>
                   </div>
                   <button
                     onClick={() => { setFilterProvider('all'); setSortBy('price_asc'); }}
@@ -748,7 +802,7 @@ function InsuranceSearchContent() {
               {displayed.length > 0 && (
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-slate-600">
-                    <span className="font-black text-slate-900">{displayed.length}</span> {t.plansFound}
+                    <span className="font-black text-brand-ink">{displayed.length}</span> {t.plansFound}
                     <span className="ml-2 text-xs text-slate-400">· {nights} {t.days} · {searchMeta.pax || 1} peserta</span>
                   </p>
                   <div className="flex gap-2">
@@ -776,13 +830,13 @@ function InsuranceSearchContent() {
                 );
               })}
 
-              {/* Empty state */}
-              {displayed.length === 0 && !loading && (
-                <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+              {/* Empty state after filter */}
+              {displayed.length === 0 && (
+                <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center shadow-card">
                   <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                     <i className="fa-solid fa-shield-halved text-3xl text-slate-300"></i>
                   </div>
-                  <h3 className="text-lg font-black text-slate-900 mb-2">{t.noResult}</h3>
+                  <h3 className="text-lg font-black text-brand-ink mb-2">{t.noResult}</h3>
                   <p className="text-slate-500 text-sm">{t.noResultSub}</p>
                 </div>
               )}
@@ -790,18 +844,40 @@ function InsuranceSearchContent() {
           </div>
         )}
 
+        {/* Error */}
+        {error && !loading && (
+          <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} onRetry={() => handleSearch(searchMeta)} />
+        )}
+
+        {/* No results after search */}
+        {noResultsAfterSearch && (
+          <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} />
+        )}
+
+        </div>
+      </>
+      )}
+
         {/* Landing state — belum search */}
         {!searched && !loading && (
-          <div className="mt-6 space-y-6">
+          <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-8 space-y-6">
             <div>
-              <h2 className="text-lg sm:text-xl font-black text-slate-900">{t.landing.popularTitle}</h2>
+              <h2 className="text-lg sm:text-xl font-black text-brand-ink">{t.landing.popularTitle}</h2>
               <p className="text-slate-500 text-xs sm:text-sm mt-1">{t.landing.popularSub}</p>
-              <div className="flex flex-wrap gap-2 mt-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4 mt-4">
                 {POPULAR_INSURANCE_AREAS.map(a => (
                   <button key={a.area} onClick={() => quickSearchArea(a.area)}
-                    className="px-4 py-2.5 bg-white rounded-xl border border-slate-200 text-sm font-bold text-slate-700 hover:border-orange-300 hover:text-orange-600 hover:shadow-md transition-all">
-                    <i className="fa-solid fa-location-dot text-orange-400 mr-1.5 text-xs"></i>
-                    {isEN ? a.labelEN : a.label}
+                    className="group relative overflow-hidden rounded-2xl shadow-card hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
+                    <div className="aspect-[16/10] relative">
+                      <img src={a.img} alt={isEN ? a.labelEN : a.label} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                      <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3">
+                        <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? a.labelEN : a.label}</p>
+                        <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
+                          Mulai dari IDR {a.price}
+                        </p>
+                      </div>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -817,14 +893,13 @@ function InsuranceSearchContent() {
                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3 ${f.color}`}>
                     <i className={`fa-solid ${f.icon} text-xl`}></i>
                   </div>
-                  <h3 className="font-black text-slate-900 text-sm mb-1">{f.title}</h3>
+                  <h3 className="font-black text-brand-ink text-sm mb-1">{f.title}</h3>
                   <p className="text-xs text-slate-500 leading-relaxed">{f.desc}</p>
                 </div>
               ))}
             </div>
           </div>
         )}
-      </div>
 
       {/* ── Review Panel ── */}
       <ReviewPanel
@@ -836,6 +911,14 @@ function InsuranceSearchContent() {
         priceData={priceData}
         loadingConfirm={loadingPrice}
       />
+
+      <style jsx global>{`
+        /* Saat halaman hasil pencarian asuransi: navbar ikut terscroll,
+           hanya "Ubah Pencarian" yang sticky di atas. */
+        body:has([data-compact-search]) header.fixed {
+          position: absolute;
+        }
+      `}</style>
     </div>
   );
 }
@@ -843,8 +926,20 @@ function InsuranceSearchContent() {
 export default function InsuranceSearchPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-screen bg-[#f4f6fb]">
-        <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-600 rounded-full animate-spin" />
+      <div className="min-h-screen bg-brand-bgLight pt-20">
+        <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
+          <div className="max-w-[1280px] mx-auto px-4 md:px-8">
+            <div className="space-y-3 animate-pulse">
+              <div className="h-6 w-48 bg-slate-200 rounded-full"></div>
+              <div className="h-8 w-72 bg-slate-200 rounded"></div>
+              <div className="h-4 w-96 bg-slate-200 rounded"></div>
+              <div className="h-16 w-full bg-slate-200 rounded-full"></div>
+            </div>
+            <div className="bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-floating p-4 sm:p-6 mt-6 animate-pulse">
+              <div className="h-20 w-full bg-slate-200 rounded-xl"></div>
+            </div>
+          </div>
+        </section>
       </div>
     }>
       <InsuranceSearchContent />

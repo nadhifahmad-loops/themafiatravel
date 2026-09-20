@@ -11,20 +11,44 @@ export function apiSuccess(data: Record<string, unknown>, status = 200): NextRes
   return NextResponse.json({ success: true, ...data }, { status });
 }
 
-export function handleOrbisError(error: unknown, context: string): NextResponse {
+// Kode error Orbis yang berarti "tidak ada hasil dari provider ini" —
+// bukan bug di request kita, jadi degradasi ke hasil kosong (success: true)
+// alih-alih mematikan seluruh pencarian. Lihat Codeset 4.1 di dokumentasi:
+// 4005 Provider is unavailable, 4023 Data tidak ditemukan (mis. destinasi/
+// kode hotel/stasiun tidak dikenali vendor). 4015/4020 bukan bagian dari
+// codeset resmi hotel/train, tapi beberapa provider mengembalikannya lewat
+// error_msg saja (bukan error_code terstruktur) untuk kasus serupa, jadi
+// tetap dicek lewat teks pesan sebagai fallback.
+export function handleOrbisError(error: unknown, context: string, emptyData: unknown = []): NextResponse {
   const err = error as { orbisCode?: number; message?: string };
   const orbisCode = err?.orbisCode;
   const msg = String(err?.message || 'Unknown error');
 
-  console.error(`[${context}] Error:`, msg, orbisCode ? `code: ${orbisCode}` : '');
+  console.error(`[${context}] Error:`, msg, orbisCode ? `code: ${orbisCode}` : '(no orbisCode)');
+
+  // FIX: 9952 bukan bagian dari Codeset 4.1 resmi — kode internal Orbis untuk
+  // "Connection error to Hotel Webservice" (gateway mereka gagal menghubungi
+  // layanan agregasi vendor hotel mereka sendiri, walau signature/session kita
+  // valid). Ini kegagalan infrastruktur di sisi Orbis, bukan bug request kita
+  // (sudah dicek: payload cocok 100% dengan dokumentasi, dan gagal di semua
+  // destination_id). Sudah otomatis di-retry (lihat orbis.ts), jadi kalau
+  // masih sampai sini berarti retry pun gagal — beri pesan yang jujur (503,
+  // "layanan sedang gangguan") daripada raw 500 generik atau hasil kosong
+  // yang menyesatkan (seolah memang tidak ada hotel yang cocok).
+  const isHotelWebserviceDown = orbisCode === 9952 || msg.toLowerCase().includes('connection error to hotel webservice');
+  if (isHotelWebserviceDown) {
+    console.log(`[${context}] Hotel Webservice Orbis tidak dapat dihubungi (code=9952) walau setelah retry.`);
+    return apiError('Layanan pencarian hotel sedang mengalami gangguan koneksi ke vendor. Silakan coba lagi dalam beberapa saat.', 503);
+  }
 
   const isNotAllowed = orbisCode === 4015 || msg.includes('4015') || msg.toLowerCase().includes('not allowed');
   const isUnavailable = orbisCode === 4005 || msg.includes('4005') || msg.toLowerCase().includes('unavailable');
   const isNoSchedules = orbisCode === 4020 || msg.toLowerCase().includes('no schedules');
+  const isNotFound = orbisCode === 4023 || msg.toLowerCase().includes('tidak ditemukan') || msg.toLowerCase().includes('not found');
 
-  if (isNotAllowed || isUnavailable || isNoSchedules) {
-    console.log(`[${context}] Provider offline or route not supported, returning empty data.`);
-    return apiSuccess({ data: [] });
+  if (isNotAllowed || isUnavailable || isNoSchedules || isNotFound) {
+    console.log(`[${context}] Provider offline / route tidak tersedia / tidak ditemukan (code=${orbisCode ?? 'n/a'}), mengembalikan hasil kosong.`);
+    return apiSuccess({ data: emptyData });
   }
 
   if (orbisCode === 4011 || msg.toLowerCase().includes('kedaluwarsa')) {
@@ -40,7 +64,7 @@ export function handleOrbisError(error: unknown, context: string): NextResponse 
     return apiError('Sistem sedang sibuk. Silakan coba lagi.', 503);
   }
 
-  return apiError(msg, 500);
+  return apiError(msg, 500, orbisCode ? { orbisCode } : undefined);
 }
 
 export function validateBody<T>(schema: ZodSchema<T>, body: unknown): { success: true; data: T } | { success: false; response: NextResponse } {
@@ -86,7 +110,8 @@ export const passengerSchema = z.object({
   first_name: z.string().min(1, 'Nama depan wajib diisi'),
   last_name: z.string().optional(),
   birth_date: z.string().min(1, 'Tanggal lahir wajib diisi'),
-  pax_type: z.enum(['ADT', 'CHD', 'INF']),
+  pax_type: z.enum(['ADT', 'CHD', 'INF', 'YCD', 'STU']),
+  gender: z.enum(['male', 'female']).optional(),
   nationality_code: z.string().optional().default('ID'),
   identity: passengerIdentitySchema.optional(),
 });
@@ -166,8 +191,17 @@ export const flightBookSchema = z.object({
   selectedBaggage: z.object({
     ssr_code: z.string(),
     journey_code: z.string(),
+    kg: z.number().optional(),
+    name: z.string().optional(),
+  }).optional(),
+  selectedMeal: z.object({
+    ssr_code: z.string(),
+    journey_code: z.string(),
+    name: z.string().optional(),
   }).optional(),
   is_locked_before: z.boolean().optional().default(false),
+  coupon_code: z.string().optional(),
+  discount_amount: z.number().optional().default(0),
 });
 
 // ─── Hotel ───────────────────────────────────────────────────────────────────
@@ -179,7 +213,21 @@ export const hotelSearchSchema = z.object({
   hotel_id: z.string().optional(),
   adult: z.union([z.number(), z.string()]).optional(),
   child: z.union([z.number(), z.string()]).optional(),
-  child_ages: z.array(z.union([z.number(), z.string()])).optional(),
+  child_ages: z.array(z.number()).optional(),
+  room: z.union([z.number(), z.string()]).optional(),
+  nationality: z.string().optional(),
+}).passthrough();
+
+// Hotel Search Detail (§3.5) — mirip search tapi hotel_id wajib
+export const hotelDetailSchema = z.object({
+  checkin_date: z.string().min(1, 'Tanggal check-in wajib diisi'),
+  checkout_date: z.string().min(1, 'Tanggal check-out wajib diisi'),
+  destination_id: z.string().min(1, 'destination_id wajib diisi'),
+  hotel_id: z.string().min(1, 'hotel_id wajib diisi untuk detail hotel'),
+  search_name: z.string().optional(),
+  adult: z.union([z.number(), z.string()]).optional(),
+  child: z.union([z.number(), z.string()]).optional(),
+  child_ages: z.array(z.number()).optional(),
   room: z.union([z.number(), z.string()]).optional(),
   nationality: z.string().optional(),
 }).passthrough();
@@ -198,24 +246,32 @@ export const hotelBookSchema = z.object({
   hotel_code: z.string().min(1, 'Kode hotel wajib diisi'),
   price_code: z.string().min(1, 'Kode harga wajib diisi'),
   provider: z.string().optional(),
-  passenger: z.union([hotelGuestSchema, z.array(hotelGuestSchema)]).optional(),
-  contact: z.union([contactSchema.passthrough(), z.array(contactSchema.passthrough())]).optional(),
+  // §3.8.1.1: passenger dan contact wajib (M) pada request create_booking
+  passenger: z.union([hotelGuestSchema, z.array(hotelGuestSchema)]),
+  contact: z.union([contactSchema.passthrough(), z.array(contactSchema.passthrough())]),
   booker: bookerSchema.passthrough(),
   special_request: z.string().optional(),
   search_data: z.object({
     checkin_date: z.string().min(1),
     checkout_date: z.string().min(1),
+    // §3.8.1.1: destination_id, adult, child, child_ages, room, nationality — semua M
     destination_id: z.string().optional(),
     adult: z.union([z.number(), z.string()]).optional(),
     child: z.union([z.number(), z.string()]).optional(),
-    child_ages: z.array(z.union([z.number(), z.string()])).optional(),
+    child_ages: z.array(z.number()).optional(),
     room: z.union([z.number(), z.string()]).optional(),
     nationality: z.string().optional(),
     hotel_id: z.string().optional(),
     search_name: z.string().optional(),
+    // Hotel detail fields — dari frontend checkout
+    meal_type: z.string().optional(),
+    room_description: z.string().optional(),
+    nights: z.union([z.number(), z.string()]).optional(),
   }).passthrough(),
   total_amount: z.number().positive('total_amount harus positif'),
   hotel_name: z.string().optional(),
+  coupon_code: z.string().optional(),
+  discount_amount: z.number().optional(),
 });
 
 // ─── Train ───────────────────────────────────────────────────────────────────
@@ -247,6 +303,8 @@ export const trainBookSchema = z.object({
   train_name: z.string().optional(),
   train_number: z.string().optional(),
   cabin_class: z.string().optional(),
+  coupon_code: z.string().optional(),
+  discount_amount: z.number().optional(),
 });
 
 // ─── Insurance ───────────────────────────────────────────────────────────────
@@ -272,9 +330,11 @@ export const insuranceBookSchema = z.object({
   total_amount: z.number().positive('total_amount harus positif'),
   product_name: z.string().optional(),
   product_code: z.string().optional(),
+  package: z.union([z.number(), z.string()]).optional(),
   date_start: z.string().optional(),
   date_end: z.string().optional(),
   destination: z.string().optional(),
+  coupon_code: z.string().optional(),
 });
 
 // ─── Payment ─────────────────────────────────────────────────────────────────

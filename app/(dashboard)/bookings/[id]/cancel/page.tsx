@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, use } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/contexts/LanguageContext';
 import Image from 'next/image';
 import { i18n } from '@/lib/i18n';
+import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -98,17 +98,34 @@ function StepBar({ current }: { current: Step }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+function resolveAirlineName(name: string): string {
+  if (!name) return '';
+  const trimmed = name.trim();
+  const parts = trimmed.split(/\s+/);
+  const firstPart = parts[0] || '';
+  const upperFirst = firstPart.toUpperCase();
+  if (CARRIER_CODE_TO_AIRLINE[upperFirst]) return CARRIER_CODE_TO_AIRLINE[upperFirst];
+  const upper = trimmed.toUpperCase();
+  if (CARRIER_CODE_TO_AIRLINE[upper]) return CARRIER_CODE_TO_AIRLINE[upper];
+  const lower = trimmed.toLowerCase();
+  if (PROVIDER_ID_TO_LABEL[lower]) return PROVIDER_ID_TO_LABEL[lower];
+  return trimmed;
+}
+
+// ─────────────────────────────────────────────────────────────
 // PAGE
 // ─────────────────────────────────────────────────────────────
 export default function CancelPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const router = useRouter();
   const { language } = useLanguage();
   const t = i18n.bookingDetail[language];
   const tc = i18n.common[language];
 
   const [step, setStep]                 = useState<Step>(1);
-  const [booking, setBooking]           = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [booking, setBooking] = useState<any>(null);
   const [loadingBooking, setLoadingBooking] = useState(true);
 
   // Step 1
@@ -139,13 +156,6 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
       .catch(console.error)
       .finally(() => setLoadingBooking(false));
   }, [id]);
-
-  // ── Immediately call check_refund_amount when booking loaded ─
-  useEffect(() => {
-    if (!booking) return;
-    callCheckRefund();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking]);
 
   const callCheckRefund = async () => {
     if (!booking) return;
@@ -207,6 +217,13 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
       setLoadingRefund(false);
     }
   };
+
+  // ── Immediately call check_refund_amount when booking loaded ─
+  useEffect(() => {
+    if (!booking) return;
+    callCheckRefund();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking]);
 
   // ── Cleanup interval on unmount ──
   const ivRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -396,7 +413,7 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
   const isIns    = sType === 'insurance';
 
   const productName = isFlight
-    ? `${booking.routeLabel || `${booking.origin} \u2192 ${booking.destination}`} \u00B7 ${booking.airlineName || 'Maskapai'}`
+    ? `${booking.routeLabel || `${booking.origin} → ${booking.destination}`} · ${resolveAirlineName(booking.airlineName || '') || 'Maskapai'}`
     : isTrain
     ? booking.routeLabel || 'Kereta Api'
     : isIns
@@ -520,7 +537,7 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                   <i className="fa-solid fa-receipt" style={{ color: '#cbd5e1', fontSize: '12px' }}></i> {booking.orderNumber}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
-                  <i className="fa-solid fa-plug" style={{ color: '#cbd5e1', fontSize: '12px' }}></i> {booking.provider || sType}
+                  <i className="fa-solid fa-plug" style={{ color: '#cbd5e1', fontSize: '12px' }}></i> {resolveAirlineName(booking.provider || '') || sType}
                 </span>
                 {booking.checkinDate && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontWeight: 600 }}>

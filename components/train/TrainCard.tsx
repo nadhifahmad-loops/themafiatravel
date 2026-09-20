@@ -70,12 +70,12 @@ function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { jour
               <div className="w-20 h-20 rounded-full border-[6px] border-orange-100"></div>
               <div className="absolute inset-0 rounded-full border-[6px] border-orange-500 border-t-transparent animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <i className="fa-solid fa-train-subway text-orange-600 text-2xl"></i>
+                <i className="fa-solid fa-ticket text-orange-600 text-2xl"></i>
               </div>
             </div>
             <div className="text-center">
-              <h3 className="font-black text-xl text-slate-900">Mengunci Kursi...</h3>
-              <p className="text-sm text-slate-500 mt-2">Memproses kereta {trainName}</p>
+              <h3 className="font-black text-xl text-brand-ink">Sedang Diproses...</h3>
+              <p className="text-sm text-slate-500 mt-2">Mohon tunggu sebentar</p>
             </div>
             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
               <div className="h-full bg-orange-500 animate-pulse w-3/4"></div>
@@ -84,7 +84,7 @@ function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { jour
         </div>
       )}
 
-      <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-200 hover:border-orange-200'}`}>
+      <div className={`bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
         <div className="h-1.5 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600" />
         {isCheapest && (
           <div className="px-5 pt-3 pb-0">
@@ -102,7 +102,7 @@ function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { jour
                <i className="fa-solid fa-train text-orange-500 text-xl"></i>
             </div>
             <div>
-              <p className="font-black text-slate-800 text-sm leading-tight">{trainName}</p>
+              <p className="font-black text-brand-ink text-sm leading-tight">{trainName}</p>
               <p className="text-[11px] text-slate-400 font-semibold">{trainCode}{trainNum ? ` ${trainNum}` : ''}</p>
               <p className="text-[11px] text-slate-400">{cabinLabel} {journey.class_of_service && `· ${journey.class_of_service}`}</p>
             </div>
@@ -111,7 +111,7 @@ function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { jour
           {/* Bagian Tengah: Rute & Waktu */}
           <div className="flex-1 flex items-center justify-between gap-2">
             <div className="text-center">
-              <p className="text-2xl font-black text-slate-900">{departureTime}</p>
+              <p className="text-2xl font-black text-brand-ink">{departureTime}</p>
               <p className="text-xs font-bold text-slate-500 uppercase">{journey.origin}</p>
             </div>
 
@@ -128,7 +128,7 @@ function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { jour
             </div>
 
             <div className="text-center">
-              <p className="text-2xl font-black text-slate-900">{arrivalTime}</p>
+              <p className="text-2xl font-black text-brand-ink">{arrivalTime}</p>
               <p className="text-xs font-bold text-slate-500 uppercase">{journey.destination}</p>
             </div>
           </div>
@@ -189,7 +189,7 @@ function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { jour
                     className={`bg-white rounded-xl border-2 border-slate-200 hover:border-orange-400 p-4 ${seatAvail > 0 ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'} transition-all hover:shadow-md relative`}
                   >
                     <div className="mb-3">
-                      <p className="text-lg font-black text-slate-900">{fmtIDR(farePrice)}</p>
+                      <p className="text-lg font-black text-brand-ink">{fmtIDR(farePrice)}</p>
                       <p className="text-[10px] text-slate-400 uppercase tracking-wide">per orang</p>
                     </div>
                     

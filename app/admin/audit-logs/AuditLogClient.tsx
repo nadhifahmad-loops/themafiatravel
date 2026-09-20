@@ -94,8 +94,8 @@ export default function AuditLogClient({
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-2">
-        <h1 className="text-xl font-bold text-slate-800">Audit Log</h1>
-        <p className="text-sm text-slate-500">Jejak aksi admin (ubah role, hapus user, ubah markup, status pesanan) untuk akuntabilitas tim.</p>
+        <h1 className="text-xl font-bold text-brand-ink">Audit Log</h1>
+        <p className="text-brand-neutral text-sm">Jejak aksi admin (ubah role, hapus user, ubah markup, status pesanan) untuk akuntabilitas tim.</p>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 space-y-4">

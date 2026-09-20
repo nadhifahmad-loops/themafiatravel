@@ -19,8 +19,6 @@ export default function EditPhonePage() {
   const ta = i18n.account[language];
   const tc = i18n.common[language];
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [originalPhone, setOriginalPhone] = useState('');
   const [phoneCode, setPhoneCode] = useState('62');
@@ -43,8 +41,6 @@ export default function EditPhonePage() {
         if (!res.ok) throw new Error(data.error);
         const rawPhone = data.user.phone || '';
         const { code, number } = parsePhoneWithCode(rawPhone);
-        setName(data.user.name || '');
-        setEmail(data.user.email || '');
         setPhone(number);
         setOriginalPhone(number);
         setPhoneCode(code);
@@ -68,8 +64,6 @@ export default function EditPhonePage() {
       <div style={{ width: '36px', height: '36px', border: '3px solid #e2e8f0', borderTopColor: '#EA580C', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   );
-
-  const displayPhone = phone ? `+${phoneCode} ${phone}` : 'Belum ditambahkan';
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f6fb' }}>

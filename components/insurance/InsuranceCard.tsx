@@ -10,11 +10,11 @@ function fmtIDR(n: number) {
 }
 
 const PROVIDER_COLORS: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  assistcard:    { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200',  label: '🩺 Assist Card' },
-  bcainsurance:  { bg: 'bg-sky-50',    text: 'text-sky-700',    border: 'border-sky-200',   label: '🏦 BCA Insurance' },
-  zurich:        { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200',label: '🔵 Zurich' },
-  great_eastern: { bg: 'bg-emerald-50',text: 'text-emerald-700',border: 'border-emerald-200',label: '🟢 Great Eastern' },
-  oona:          { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200',label: '🟠 Oona' },
+  assistcard:    { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200',  label: 'Assist Card' },
+  bcainsurance:  { bg: 'bg-sky-50',    text: 'text-sky-700',    border: 'border-sky-200',   label: 'BCA Insurance' },
+  zurich:        { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200',label: 'Zurich' },
+  great_eastern: { bg: 'bg-emerald-50',text: 'text-emerald-700',border: 'border-emerald-200',label: 'Great Eastern' },
+  oona:          { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200',label: 'Oona' },
 };
 
 // Bersihkan & render HTML dari provider (BCA, Oona: HTML tabel; AssistCard: plain text + <br>)
@@ -90,7 +90,7 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
   }, [product]);
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-200 hover:border-orange-200'}`}>
+    <div className={`bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-lg transition-all duration-200 group ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
       {/* Provider Badge */}
       <div className={`px-5 pt-3 pb-0 flex items-center gap-2`}>
         {isCheapest && (
@@ -120,7 +120,7 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
             <i className={`fa-solid fa-shield-halved text-xl ${badge.text}`}></i>
           </div>
           <div className="min-w-0">
-            <p className="font-black text-slate-900 text-sm leading-snug">{product.product_name}</p>
+            <p className="font-black text-brand-ink text-sm leading-snug">{product.product_name}</p>
             <p className="text-[11px] text-slate-400 font-mono mt-0.5">{product.product_code}</p>
             {product.data_name && (
               <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
@@ -186,7 +186,7 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
           <button
             onClick={() => onSelect(product)}
             disabled={isSelecting}
-            className="mt-3 md:mt-0 w-full md:w-auto px-5 py-2.5 bg-slate-900 hover:bg-orange-600 disabled:bg-slate-300 text-white font-bold rounded-xl transition-colors text-sm shadow-sm"
+            className="mt-3 md:mt-0 w-full md:w-auto px-5 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 text-white font-bold rounded-xl transition-colors text-sm shadow-sm group-hover:shadow-md"
           >
             {isSelecting ? (
               <span className="flex items-center gap-2 justify-center">

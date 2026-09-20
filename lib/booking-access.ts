@@ -57,3 +57,52 @@ export function canManageBooking(booking: BookingLike, claim: AccessClaim): bool
   if (claim.bookerEmail) return hasMatchingEmail(emails, claim.bookerEmail);
   return hasMatchingEmail(emails, claim.sessionEmail);
 }
+
+interface GuestProofBooking {
+  orderNumber?: string | null;
+  userId?: string | null;
+  bookingData?: unknown;
+  passengerData?: unknown;
+}
+
+function normalizePhoneForMatch(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('62')) return digits;
+  return '62' + digits.replace(/^0/, '');
+}
+
+/**
+ * Bukti kepemilikan ala guest flow (find-booking): orderNumber + email/HP yang
+ * cocok dengan isi bookingData/passengerData. Dipakai endpoint yang bisa
+ * diakses tamu (ubah kursi / lihat peta kursi) agar konsisten dengan verifikasi
+ * tampilan di /find-booking/[id]. Booking milik user login tidak lolos jalur ini
+ * — mereka tetap diverifikasi lewat session (canManageBooking).
+ */
+export function verifyGuestBookingProof(
+  booking: GuestProofBooking,
+  orderNumber?: string | null,
+  phone?: string | null
+): boolean {
+  if (!orderNumber || !phone || booking.userId) return false;
+  const storedOrder = (booking.orderNumber ?? '').trim().toLowerCase();
+  if (!storedOrder || storedOrder !== String(orderNumber).trim().toLowerCase()) return false;
+
+  const inputStr = String(phone).trim();
+  if (!inputStr) return false;
+
+  const bd = booking.bookingData ?? {};
+  const pd = booking.passengerData ?? {};
+  const allDataStr = JSON.stringify(bd) + JSON.stringify(pd);
+
+  const isEmail = inputStr.includes('@');
+  if (isEmail) return allDataStr.toLowerCase().includes(inputStr.toLowerCase());
+
+  const cleanInput = normalizePhoneForMatch(inputStr);
+  if (cleanInput.length < 10) return false;
+  const localFormat = cleanInput.replace(/^62/, '0');
+  return allDataStr.includes(localFormat)
+    || allDataStr.includes(cleanInput)
+    || allDataStr.includes('+' + cleanInput)
+    || allDataStr.includes(cleanInput.replace(/^62/, ''));
+}

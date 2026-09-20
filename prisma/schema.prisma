@@ -31,6 +31,8 @@ model User {
     bookings      Booking[]
     passwordResets PasswordReset[]
     adminNotificationReads AdminNotificationRead[]
+    customerNotificationReads CustomerNotificationRead[]
+    couponUsages   CouponUsage[]
   }
 
 model Account {
@@ -90,6 +92,9 @@ model Booking {
   // ── Keuangan ──────────────────────────────────────────────────────────────
   totalAmount     Float
   currency        String   @default("IDR")
+  couponId        Int?
+  couponCode      String?
+  discountAmount  Float    @default(0)
 
   // ── Midtrans Payment ──────────────────────────────────────────────────────
   snapToken       String?                         // Token Snap Midtrans
@@ -103,6 +108,19 @@ model Booking {
   hotelName       String?                         // Nama hotel — khusus bookingType=hotel
   checkinDate     DateTime?                       // Tanggal check-in hotel
   checkoutDate    DateTime?                       // Tanggal check-out hotel
+
+  // ── Data Hotel Detail (§3.5 — dari search_data saat booking) ──────────────
+  destinationId   String?                         // Destination code (misal: "SG7355")
+  hotelIdOrbis    String?                         // Orbis hotel ID (misal: "2252")
+  roomCount       Int?                            // Jumlah kamar yang dipesan
+  adultCount      Int?                            // Jumlah dewasa
+  childCount      Int?                            // Jumlah anak
+  nationality     String?                         // Kode negara tamu (misal: "ID", "SG")
+  mealType        String?                         // Tipe meal: "Room Only", "Breakfast", dll
+  roomDescription String?                         // Nama tipe kamar (misal: "Deluxe Room")
+  priceCode       String?                         // Orbis price_code untuk cancel/refund
+  originalPrice   Float?                          // Harga sebelum markup (audit trail)
+  nights          Int?                            // Jumlah malam menginap
 
   // ── Data Penerbangan & Kereta ─────────────────────────────────────────────
   routeLabel      String?                         // Label rute: "CGK → SUB" (flight/train)
@@ -180,10 +198,14 @@ model Payment {
 
 model MarkupSetting {
   key              String   @id                    // e.g. "default"
-  flight           Int      @default(50000)        // Rp flat per pax
+  flight           Float    @default(50000)        // Rp flat per pax
+  flight_type      String   @default("flat")       // "flat" atau "percent"
   hotel            Float    @default(10)           // % dari harga kamar
-  train            Int      @default(15000)        // Rp flat per tiket
+  hotel_type       String   @default("percent")    // "flat" atau "percent"
+  train            Float    @default(15000)        // Rp flat per tiket
+  train_type       String   @default("flat")       // "flat" atau "percent"
   insurance        Float    @default(5)            // % dari premi
+  insurance_type   String   @default("percent")    // "flat" atau "percent"
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -261,6 +283,24 @@ model AdminNotificationRead {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER NOTIFICATION READ — Status "sudah dibaca" untuk notifikasi customer
+// key format: pay-<id> | bk-<id> | remind-h3-<id> | remind-h1-<id> | expired-<id>
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CustomerNotificationRead {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  readAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@index([key])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AUDIT LOG — Jejak aksi admin (ubah role, hapus user, ubah markup, dll)
 // adminEmail disimpan sebagai snapshot agar tetap terbaca walau admin dihapus
 // ─────────────────────────────────────────────────────────────────────────────
@@ -282,4 +322,121 @@ model AuditLog {
   @@index([action])
   @@index([entityType])
   @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COUPON — Kupon diskon yang bisa dibuat admin dan dipakai saat checkout
+// type: 'percentage' | 'fixed'
+// category: 'all' | 'flight' | 'hotel' | 'train' | 'insurance' | 'transfer' | 'activity'
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Coupon {
+  id              Int       @id @default(autoincrement())
+  code            String    @unique                    // Kode unik kupon (misal: HOTELBARU12)
+  name            String                               // Nama tampilan kupon
+  description     String?                              // Deskripsi singkat
+  type            String                               // 'percentage' | 'fixed'
+  value           Float                                // Nilai diskon (% atau Rp)
+  category        String   @default("all")             // all | flight | hotel | train | insurance | transfer | activity
+  minOrderAmount  Float    @default(0)                 // Minimum total belanja untuk pakai kupon
+  maxDiscount     Float?                               // Batas maksimal diskon (untuk tipe percentage)
+  maxUsage        Int?                                 // Batas total pemakaian kupon (null = unlimited)
+  usedCount       Int      @default(0)                 // Sudah dipakai berapa kali
+  isActive        Boolean  @default(true)              // Aktif atau tidak
+  isFeatured      Boolean  @default(false)             // Tampilkan di banner utama
+  startDate       DateTime?                            // Mulai berlaku
+  endDate         DateTime?                            // Berakhir berlaku
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  usages          CouponUsage[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COUPON USAGE — Riwayat penggunaan kupon per user
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CouponUsage {
+  id              Int       @id @default(autoincrement())
+  couponId        Int
+  userId          String
+  bookingId       String?
+  usedAt          DateTime @default(now())
+
+  coupon          Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([couponId, userId])
+  @@index([couponId])
+  @@index([userId])
+}
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BANNER — Banner carousel di halaman utama
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Banner {
+  id        Int      @id @default(autoincrement())
+  title     String                               // Judul banner (untuk alt text & admin)
+  imageUrl  String                               // Path gambar (misal: /uploads/banners/xxx.jpg)
+  link      String?                              // URL tujuan jika diklik (opsional)
+  sortOrder Int      @default(0)                 // Urutan tampil (ascending)
+  isActive  Boolean  @default(true)              // Aktif atau tidak
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CAREER — Lowongan pekerjaan
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Career {
+  id           String   @id @default(cuid())
+  title        String                                     // Judul posisi
+  department   String                                     // Divisi (Engineering, Marketing, dll)
+  type         String   @default("full-time")             // full-time, part-time, freelance
+  location     String                                     // Lokasi kerja
+  description  String                                     // Deskripsi pekerjaan
+  requirements String                                     // Persyaratan (satu baris per poin, dipisah newline)
+  isActive     Boolean  @default(true)                    // Aktif atau tidak
+  sortOrder    Int      @default(0)                       // Urutan tampil
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BLOG_POST — Artikel blog
+// ─────────────────────────────────────────────────────────────────────────────
+
+model BlogPost {
+  id          String    @id @default(cuid())
+  title       String                                      // Judul artikel
+  slug        String    @unique                           // URL-friendly (misal: tips-liburan-bali)
+  excerpt     String                                      // Ringkasan singkat
+  content     String                                      // Konten artikel (markdown)
+  coverImage  String?                                     // Gambar sampul (opsional)
+  author      String    @default("Admin")                 // Nama penulis
+  category    String    @default("Travel Tips")           // Kategori artikel
+  isPublished Boolean   @default(false)                   // Terbit atau draft
+  publishedAt DateTime?                                   // Tanggal terbit (diisi saat publish)
+  sortOrder   Int       @default(0)                       // Urutan tampil
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isPublished, sortOrder])
+  @@index([slug])
+  @@index([category])
 }

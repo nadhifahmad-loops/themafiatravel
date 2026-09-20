@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { bookingStore } from '@/lib/store';
+import { sendBookingConfirmationEmail } from '@/lib/email';
+import { getBookingContact } from '@/lib/notify';
+import { getSession } from '@/lib/auth';
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === 'true';
@@ -21,8 +22,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as { id?: string } | undefined)?.id;
+    const session = await getSession(_req);
+    const userId = (session as { id?: string } | undefined)?.id;
 
     if (!session || !userId) {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
@@ -91,6 +92,31 @@ export async function GET(
           ...(newStatus === 'paid' && { paidAt: new Date() }),
         });
       } catch { /* non-fatal */ }
+
+      // Send email confirmation if payment successful
+      if (newStatus === 'paid') {
+        try {
+          const contact = getBookingContact(booking);
+          if (contact.email) {
+            await sendBookingConfirmationEmail({
+              to: contact.email,
+              userName: contact.name,
+              booking: {
+                id: booking.id,
+                orderNumber: booking.orderNumber,
+                bookingType: booking.bookingType,
+                routeLabel: booking.routeLabel,
+                totalAmount: booking.totalAmount,
+                pnr: booking.pnr,
+                provider: booking.provider,
+              },
+            });
+            console.log('[Check Payment] Email sent to:', contact.email);
+          }
+        } catch (emailErr: any) {
+          console.error('[Check Payment] Email failed:', emailErr.message);
+        }
+      }
 
       updated = true;
     }

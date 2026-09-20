@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { hotelAPI } from '@/lib/orbis';
-import { hotelSearchSchema, validateBody } from '@/lib/validate';
+import { hotelSearchSchema, validateBody, handleOrbisError } from '@/lib/validate';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+
+// FIX: search hotel meng-agregasi banyak vendor sekaligus (RDX07, RDX03,
+// hotelbeds, mgjarvis, dst — lihat doc 3.4.1.4) dan bisa lambat. Tanpa
+// maxDuration eksplisit, platform (mis. Vercel) bisa mematikan function
+// sebelum request 90 detik ke Orbis selesai, sehingga search selalu gagal.
+export const maxDuration = 90;
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -58,7 +64,15 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data });
   } catch (e: any) {
-    console.error('[HOTEL SEARCH ERROR]', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    // FIX: sebelumnya setiap error Orbis (termasuk 4005 "Provider is
+    // unavailable" atau destinasi/hotel yang tidak dikenali salah satu
+    // vendor) langsung dilempar sebagai HTTP 500, sehingga UI selalu
+    // menampilkan "gagal" walau sebenarnya cuma "tidak ada hasil".
+    // handleOrbisError men-degradasi kasus semacam itu jadi hasil kosong
+    // (success: true) dengan bentuk data yang sesuai response.response
+    // pada doc 3.4.1.2 (hotel_ids/city_ids/destination_ids), dan tetap
+    // melempar error asli untuk kasus yang benar-benar bug (kredensial,
+    // validasi request, dll).
+    return handleOrbisError(e, 'HOTEL SEARCH', { hotel_ids: [], city_ids: [], destination_ids: [] });
   }
 }

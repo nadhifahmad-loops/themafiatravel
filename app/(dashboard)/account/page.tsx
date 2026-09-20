@@ -3,8 +3,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name: string) {
@@ -23,12 +25,12 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
 
   return (
     <div style={{ position: 'fixed', top: '96px', left: '50%', transform: 'translateX(-50%)', zIndex: 99999, animation: 'fadeInDown 0.3s ease' }}>
-      <div style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px)', boxShadow: '0 20px 50px -12px rgba(0,0,0,0.2)', borderRadius: '16px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '14px', minWidth: '320px', maxWidth: '420px', border: '1px solid #e2e8f0' }}>
-        <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: type === 'success' ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px)', boxShadow: '0 20px 50px -12px rgba(31,29,22,0.12)', borderRadius: '16px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '14px', minWidth: '320px', maxWidth: '420px', border: '1px solid #e2e8f0' }}>
+        <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: type === 'success' ? '#338CB2' : '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <i className={`fa-solid ${type === 'success' ? 'fa-check' : 'fa-xmark'}`} style={{ color: 'white', fontSize: '16px' }}></i>
         </div>
         <div style={{ flex: 1 }}>
-          <p style={{ fontWeight: 800, color: '#0f172a', fontSize: '13px', margin: 0 }}>{type === 'success' ? ta.toast.success : ta.toast.error}</p>
+          <p style={{ fontWeight: 800, color: '#1F1D16', fontSize: '13px', margin: 0 }}>{type === 'success' ? ta.toast.success : ta.toast.error}</p>
           <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0', fontWeight: 500 }}>{message}</p>
         </div>
         <button onClick={onClose} style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'transparent', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8' }}>
@@ -54,7 +56,7 @@ function DeleteAccountModal({ onClose, onConfirm, loading, userEmail, isGoogleLo
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 100); }, []);
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 25px 60px -12px rgba(0,0,0,0.35)', animation: 'popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)' }}>
         <div style={{ background: '#dc2626', padding: '24px 28px', display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -75,12 +77,12 @@ function DeleteAccountModal({ onClose, onConfirm, loading, userEmail, isGoogleLo
             ))}
           </div>
           <div>
-            <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, margin: '0 0 8px' }}>Akun: <span style={{ fontWeight: 800, color: '#0f172a' }}>{userEmail}</span></p>
+            <p style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, margin: '0 0 8px' }}>Akun: <span style={{ fontWeight: 800, color: '#1F1D16' }}>{userEmail}</span></p>
             <p style={{ fontSize: '11px', fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px' }}>
               {ta.danger.modal.confirmLabel} <span style={{ color: '#dc2626', background: '#fef2f2', padding: '2px 8px', borderRadius: '4px', fontWeight: 900 }}>{required}</span> {ta.danger.modal.confirmHelper}:
             </p>
             <input ref={inputRef} type="text" value={confirmText} onChange={e => setConfirmText(e.target.value)} placeholder={required}
-              style={{ width: '100%', padding: '14px 16px', border: `2px solid ${isMatch ? '#ef4444' : '#e2e8f0'}`, borderRadius: '12px', fontSize: '14px', fontWeight: 700, outline: 'none', background: isMatch ? '#fef2f2' : '#f8fafc', color: isMatch ? '#991b1b' : '#334155', transition: 'all 0.2s', boxSizing: 'border-box' }} />
+              style={{ width: '100%', padding: '14px 16px', border: `2px solid ${isMatch ? '#ef4444' : '#f1f5f9'}`, borderRadius: '12px', fontSize: '14px', fontWeight: 700, outline: 'none', background: isMatch ? '#fef2f2' : '#F5FAFC', color: isMatch ? '#991b1b' : '#334155', transition: 'all 0.2s', boxSizing: 'border-box' }} />
           </div>
           {!isGoogleLogin && (
             <div>
@@ -89,7 +91,7 @@ function DeleteAccountModal({ onClose, onConfirm, loading, userEmail, isGoogleLo
               </p>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Masukkan password akun"
                 autoComplete="current-password"
-                style={{ width: '100%', padding: '14px 16px', border: `2px solid ${password.length >= 8 ? '#ef4444' : '#e2e8f0'}`, borderRadius: '12px', fontSize: '14px', outline: 'none', background: password.length >= 8 ? '#fef2f2' : '#f8fafc', color: '#334155', transition: 'all 0.2s', boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '14px 16px', border: `2px solid ${password.length >= 8 ? '#ef4444' : '#f1f5f9'}`, borderRadius: '12px', fontSize: '14px', outline: 'none', background: password.length >= 8 ? '#fef2f2' : '#F5FAFC', color: '#334155', transition: 'all 0.2s', boxSizing: 'border-box' }} />
               <p style={{ fontSize: '11px', color: '#64748b', margin: '6px 0 0', fontWeight: 500 }}>Wajib diisi (min. 8 karakter) untuk menghapus akun — melindungi dari penghapusan oleh orang lain yang menguasai sesi.</p>
             </div>
           )}
@@ -185,13 +187,13 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
 
   return (
     <div>
-      <button aria-label="Ubah autentikasi 2 langkah" onClick={() => setExpanded((prev) => !prev)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer' }}>
+      <button aria-label="Ubah autentikasi 2 langkah" onClick={() => setExpanded((prev) => !prev)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#F5FAFC', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: enabled ? '#ecfdf5' : '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <i className={`fa-solid ${enabled ? 'fa-shield-halved' : 'fa-lock'}`} style={{ color: enabled ? '#10b981' : '#d97706', fontSize: '14px' }} />
+          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: enabled ? '#EFF9FC' : '#FFF7EE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <i className={`fa-solid ${enabled ? 'fa-shield-halved' : 'fa-lock'}`} style={{ color: enabled ? '#338CB2' : '#F27717', fontSize: '14px' }} />
           </div>
           <div style={{ textAlign: 'left' }}>
-            <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px', margin: 0 }}>Autentikasi 2 Langkah</p>
+            <p style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px', margin: 0 }}>Autentikasi 2 Langkah</p>
             <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>{enabled ? '2FA aktif untuk akun Anda' : 'Aktifkan perlindungan tambahan saat login'}</p>
           </div>
         </div>
@@ -206,7 +208,7 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
             </p>
 
             {!setupData && !enabled && !configured && (
-              <button onClick={startSetup} disabled={loading} style={{ width: '100%', padding: '14px', background: '#ea580c', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: 'pointer' }}>
+              <button onClick={startSetup} disabled={loading} style={{ width: '100%', padding: '14px', background: '#F27717', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: 'pointer' }}>
                 {loading ? 'Mempersiapkan...' : 'Siapkan 2FA'}
               </button>
             )}
@@ -216,7 +218,7 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
                 <p style={{ margin: 0, color: '#64748b', fontSize: '13px', lineHeight: 1.6 }}>
                   Setup 2FA sebelumnya belum selesai. Lanjutkan dengan membuat QR baru — kode backup lama dibatalkan.
                 </p>
-                <button onClick={startSetup} disabled={loading} style={{ width: '100%', padding: '14px', background: '#ea580c', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: 'pointer' }}>
+                <button onClick={startSetup} disabled={loading} style={{ width: '100%', padding: '14px', background: '#F27717', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: 'pointer' }}>
                   {loading ? 'Mempersiapkan...' : 'Lanjutkan / Ulangi Setup'}
                 </button>
               </div>
@@ -227,7 +229,7 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
                   <img src={setupData.qrCodeDataUrl} alt="QR 2FA" style={{ width: '220px', height: '220px', borderRadius: '16px', border: '1px solid #e2e8f0', background: 'white' }} />
                 </div>
-                <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '12px', fontSize: '12px', color: '#475569', lineHeight: 1.6 }}>
+                <div style={{ padding: '12px', background: '#F5FAFC', borderRadius: '12px', fontSize: '12px', color: '#475569', lineHeight: 1.6 }}>
                   <div><strong>Secret:</strong> {setupData.secret}</div>
                   <div style={{ marginTop: '8px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '8px 10px', color: '#92400e' }}>
                     <strong>Backup codes:</strong> {setupData.backupCodes.join(', ')}
@@ -235,7 +237,7 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
                   </div>
                 </div>
                 <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Kode 6 digit dari aplikasi authenticator" style={{ width: '100%', padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: '12px' }} />
-                <button onClick={enable2FA} disabled={loading || code.length < 6} style={{ width: '100%', padding: '14px', background: loading || code.length < 6 ? '#cbd5e1' : '#10b981', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: loading || code.length < 6 ? 'not-allowed' : 'pointer' }}>
+                <button onClick={enable2FA} disabled={loading || code.length < 6} style={{ width: '100%', padding: '14px', background: loading || code.length < 6 ? '#cbd5e1' : '#338CB2', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: loading || code.length < 6 ? 'not-allowed' : 'pointer' }}>
                   {loading ? 'Memproses...' : 'Aktifkan 2FA'}
                 </button>
               </div>
@@ -243,7 +245,7 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
 
             {enabled && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ padding: '12px', background: '#ecfdf5', borderRadius: '12px', color: '#065f46', fontSize: '13px', fontWeight: 700 }}>2FA aktif untuk akun Anda.</div>
+                <div style={{ padding: '12px', background: '#EFF9FC', borderRadius: '12px', color: '#065f46', fontSize: '13px', fontWeight: 700 }}>2FA aktif untuk akun Anda.</div>
                 <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Masukkan kode 6 digit untuk menonaktifkan" style={{ width: '100%', padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: '12px' }} />
                 <button onClick={disable2FA} disabled={loading || code.length < 6} style={{ width: '100%', padding: '14px', background: loading || code.length < 6 ? '#cbd5e1' : '#ef4444', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: loading || code.length < 6 ? 'not-allowed' : 'pointer' }}>
                   {loading ? 'Memproses...' : 'Nonaktifkan 2FA'}
@@ -269,7 +271,7 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
   const strength = (p: string) => { if (!p) return 0; let s = 0; if (p.length >= 8) s++; if (/[A-Z]/.test(p)) s++; if (/[0-9]/.test(p)) s++; if (/[^A-Za-z0-9]/.test(p)) s++; return s; };
   const s = strength(form.newPass);
   const sLabel = ['', 'Lemah', 'Cukup', 'Kuat', 'Sangat Kuat'][s];
-  const sColor = ['', '#ef4444', '#f59e0b', '#3b82f6', '#10b981'][s];
+  const sColor = ['', '#ef4444', '#f59e0b', '#3b82f6', '#338CB2'][s];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,13 +292,13 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
   return (
     <div>
       {!showFields ? (
-        <button aria-label={ta.security.title} onClick={() => setShowFields(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s' }}>
+        <button aria-label={ta.security.title} onClick={() => setShowFields(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#F5FAFC', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <i className="fa-solid fa-lock" style={{ color: '#10b981', fontSize: '14px' }}></i>
+            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#EFF9FC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <i className="fa-solid fa-lock" style={{ color: '#338CB2', fontSize: '14px' }}></i>
             </div>
             <div style={{ textAlign: 'left' }}>
-              <p style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px', margin: 0 }}>{ta.security.title}</p>
+              <p style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px', margin: 0 }}>{ta.security.title}</p>
               <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>{ta.security.subtitle}</p>
             </div>
           </div>
@@ -304,7 +306,7 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
         </button>
       ) : (
         <div style={{ border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#F5FAFC', borderBottom: '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <i className="fa-solid fa-lock" style={{ color: '#64748b', fontSize: '13px' }}></i>
               <span style={{ fontWeight: 700, color: '#334155', fontSize: '14px' }}>{ta.security.title}</span>
@@ -318,7 +320,7 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
               <label style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>{ta.security.currentLabel}</label>
               <div style={{ position: 'relative' }}>
                 <input type={showCurrent ? 'text' : 'password'} value={form.current} onChange={e => setForm({ ...form, current: e.target.value })} placeholder="••••••••" required
-                  style={{ width: '100%', padding: '14px 44px 14px 16px', background: '#f8fafc', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '14px', fontWeight: 600, color: '#0f172a', outline: 'none', transition: 'all 0.2s', boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '14px 44px 14px 16px', background: '#F5FAFC', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '14px', fontWeight: 600, color: '#1F1D16', outline: 'none', transition: 'all 0.2s', boxSizing: 'border-box' }} />
                 <button type="button" onClick={() => setShowCurrent(!showCurrent)} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#94a3b8' }}>
                   <i className={`fa-solid ${showCurrent ? 'fa-eye-slash' : 'fa-eye'}`} style={{ fontSize: '14px' }}></i>
                 </button>
@@ -328,7 +330,7 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
               <label style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>{ta.security.newLabel}</label>
               <div style={{ position: 'relative' }}>
                 <input type={showNew ? 'text' : 'password'} value={form.newPass} onChange={e => setForm({ ...form, newPass: e.target.value })} placeholder="Min. 8 karakter" required
-                  style={{ width: '100%', padding: '14px 44px 14px 16px', background: '#f8fafc', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '14px', fontWeight: 600, color: '#0f172a', outline: 'none', transition: 'all 0.2s', boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '14px 44px 14px 16px', background: '#F5FAFC', border: '2px solid #e2e8f0', borderRadius: '12px', fontSize: '14px', fontWeight: 600, color: '#1F1D16', outline: 'none', transition: 'all 0.2s', boxSizing: 'border-box' }} />
                 <button type="button" onClick={() => setShowNew(!showNew)} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#94a3b8' }}>
                   <i className={`fa-solid ${showNew ? 'fa-eye-slash' : 'fa-eye'}`} style={{ fontSize: '14px' }}></i>
                 </button>
@@ -336,7 +338,7 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
               {form.newPass && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
                   <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
-                    {[1,2,3,4].map(i => <div key={i} style={{ height: '4px', flex: 1, borderRadius: '2px', background: i <= s ? sColor : '#e2e8f0', transition: 'all 0.3s' }}></div>)}
+                    {[1,2,3,4].map(i => <div key={i} style={{ height: '4px', flex: 1, borderRadius: '2px', background: i <= s ? sColor : '#f1f5f9', transition: 'all 0.3s' }}></div>)}
                   </div>
                   <span style={{ fontSize: '10px', fontWeight: 700, color: sColor }}>{sLabel}</span>
                 </div>
@@ -345,10 +347,10 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
             <div>
               <label style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>{ta.security.confirmLabel}</label>
               <input type="password" value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })} placeholder="Ulangi password baru" required
-                style={{ width: '100%', padding: '14px 16px', border: `2px solid ${form.confirm ? (form.confirm === form.newPass ? '#10b981' : '#ef4444') : '#e2e8f0'}`, borderRadius: '12px', fontSize: '14px', fontWeight: 600, background: form.confirm ? (form.confirm === form.newPass ? '#ecfdf5' : '#fef2f2') : '#f8fafc', color: '#0f172a', outline: 'none', transition: 'all 0.2s', boxSizing: 'border-box' }} />
+                style={{ width: '100%', padding: '14px 16px', border: `2px solid ${form.confirm ? (form.confirm === form.newPass ? '#338CB2' : '#ef4444') : '#f1f5f9'}`, borderRadius: '12px', fontSize: '14px', fontWeight: 600, background: form.confirm ? (form.confirm === form.newPass ? '#EFF9FC' : '#fef2f2') : '#F5FAFC', color: '#1F1D16', outline: 'none', transition: 'all 0.2s', boxSizing: 'border-box' }} />
             </div>
             <button type="submit" disabled={loading || form.newPass !== form.confirm || !form.current || !form.newPass}
-              style={{ width: '100%', padding: '14px', background: (!loading && form.newPass === form.confirm && form.current && form.newPass) ? 'linear-gradient(135deg, #10b981, #059669)' : '#e2e8f0', color: (!loading && form.newPass === form.confirm && form.current && form.newPass) ? 'white' : '#94a3b8', fontWeight: 800, borderRadius: '14px', border: 'none', fontSize: '14px', cursor: (!loading && form.newPass === form.confirm && form.current && form.newPass) ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s', boxShadow: (!loading && form.newPass === form.confirm && form.current && form.newPass) ? '0 4px 12px rgba(16,185,129,0.25)' : 'none' }}>
+              style={{ width: '100%', padding: '14px', background: (!loading && form.newPass === form.confirm && form.current && form.newPass) ? 'linear-gradient(135deg, #F27717, #D9650E)' : '#f1f5f9', color: (!loading && form.newPass === form.confirm && form.current && form.newPass) ? 'white' : '#94a3b8', fontWeight: 800, borderRadius: '14px', border: 'none', fontSize: '14px', cursor: (!loading && form.newPass === form.confirm && form.current && form.newPass) ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s', boxShadow: (!loading && form.newPass === form.confirm && form.current && form.newPass) ? '0 4px 12px rgba(242,119,23,0.3)' : 'none' }}>
               {loading ? <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }}></div> : <><i className="fa-solid fa-key" style={{ fontSize: '13px' }}></i> {ta.security.saveBtn}</>}
             </button>
           </form>
@@ -365,6 +367,8 @@ export default function AccountPage() {
   const searchParams = useSearchParams();
   const { language } = useLanguage();
   const ta = i18n.account[language];
+
+  usePageTitle('Akun Saya');
 
   const [form, setForm] = useState({ name: '', email: '', phone: '', phoneCode: '62' });
   const [provider, setProvider] = useState<'google' | 'credentials' | 'unknown'>('unknown');
@@ -390,16 +394,18 @@ export default function AccountPage() {
       error: { type: 'error', text: 'Terjadi kesalahan. Silakan coba lagi.' },
     };
     const msg = messages[verified] || messages.error;
-    setToast(msg);
-    if (verified === 'success') {
-      fetch('/api/user/profile').then(r => r.json()).then(async (data) => {
-        if (data.user?.email) {
-          setForm(p => ({ ...p, email: data.user.email }));
-          await update({ user: { email: data.user.email } });
-        }
-      }).catch(() => {});
-    }
-    router.replace('/account');
+    queueMicrotask(() => {
+      setToast(msg);
+      if (verified === 'success') {
+        fetch('/api/user/profile').then(r => r.json()).then(async (data) => {
+          if (data.user?.email) {
+            setForm(p => ({ ...p, email: data.user.email }));
+            await update({ user: { email: data.user.email } });
+          }
+        }).catch(() => {});
+      }
+      router.replace('/account');
+    });
   }, [searchParams]);
 
   // Load profile
@@ -443,8 +449,8 @@ export default function AccountPage() {
   };
 
   if (status === 'loading') return (
-    <div style={{ minHeight: '100vh', background: '#f0f4f8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: '36px', height: '36px', border: '3px solid #e2e8f0', borderTopColor: '#EA580C', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+    <div style={{ minHeight: '100vh', background: '#F5FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '36px', height: '36px', border: '3px solid #e2e8f0', borderTopColor: '#F27717', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   );
 
@@ -456,7 +462,7 @@ export default function AccountPage() {
     : session?.user ? new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : '';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f4f6fb' }}>
+    <div style={{ minHeight: '100vh', background: '#F5FAFC' }}>
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -489,22 +495,26 @@ export default function AccountPage() {
         <div className="acct-card" style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
             <button onClick={() => router.back()} style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'white', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#ea580c'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}>
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#F27717'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#f1f5f9'}>
               <i className="fa-solid fa-arrow-left" style={{ fontSize: '13px', color: '#64748b' }}></i>
             </button>
-            <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>{ta.title}</h1>
+            <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#1F1D16', margin: 0, letterSpacing: '-0.02em' }}>{ta.title}</h1>
           </div>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '0', fontWeight: 500 }}>{ta.subtitle}</p>
         </div>
 
         {/* ══ PROFILE HERO CARD ══ */}
-        <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)', marginBottom: '24px' }}>
-          <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '32px', position: 'relative', overflow: 'hidden' }}>
+        <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)', marginBottom: '24px' }}>
+          <div style={{ background: 'linear-gradient(135deg, #F27717, #D9650E)', padding: '32px', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', right: -40, top: -40, width: 200, height: 200, borderRadius: '50%', background: 'rgba(234,88,12,0.15)', filter: 'blur(30px)' }} />
             <div className="profile-hero" style={{ display: 'flex', alignItems: 'center', gap: '20px', position: 'relative' }}>
-              <div className="avatar" style={{ width: '72px', height: '72px', borderRadius: '20px', background: 'linear-gradient(135deg, #f97316, #ea580c)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', fontWeight: 900, color: 'white', flexShrink: 0, boxShadow: '0 4px 20px rgba(234,88,12,0.35)' }}>
-                {getInitials(form.name)}
+              <div className="avatar" style={{ width: '72px', height: '72px', borderRadius: '20px', background: 'linear-gradient(135deg, #F27717, #D9650E)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', fontWeight: 900, color: 'white', flexShrink: 0, boxShadow: '0 4px 20px rgba(242,119,23,0.35)', overflow: 'hidden' }}>
+                {session?.user?.image ? (
+                  <Image src={session.user.image} alt="Profile" width={72} height={72} className="w-full h-full object-cover" />
+                ) : (
+                  getInitials(form.name)
+                )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h2 style={{ fontWeight: 900, fontSize: '22px', color: 'white', margin: 0, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.name || 'Pengguna'}</h2>
@@ -521,30 +531,16 @@ export default function AccountPage() {
           </div>
         </div>
 
-        {/* ══ NAVIGATION CARD (Pemesanan + Informasi Akun) ══ */}
-        <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)', marginBottom: '24px' }}>
-          <Link href="/bookings" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <i className="fa-solid fa-ticket" style={{ color: '#3b82f6', fontSize: '16px' }}></i>
-              </div>
-              <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>Pemesanan</span>
-            </div>
-            <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
-          </Link>
-
-          <div style={{ height: '1px', background: '#f1f5f9', margin: '0 32px' }} />
-
+        {/* ══ NAVIGATION CARD (Informasi Akun + Bahasa) ══ */}
+        <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)', marginBottom: '24px' }}>
           <Link href="/account/detail" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+            onMouseEnter={e => e.currentTarget.style.background = '#F5FAFC'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <i className="fa-solid fa-user" style={{ color: '#10b981', fontSize: '16px' }}></i>
+                <i className="fa-solid fa-user" style={{ color: '#338CB2', fontSize: '16px' }}></i>
               </div>
-              <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>Informasi Akun</span>
+              <span style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px' }}>Informasi Akun</span>
             </div>
             <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
           </Link>
@@ -552,14 +548,14 @@ export default function AccountPage() {
           <div style={{ height: '1px', background: '#f1f5f9', margin: '0 32px' }} />
 
           <Link href="/account/language" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+            onMouseEnter={e => e.currentTarget.style.background = '#F5FAFC'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <i className="fa-solid fa-globe" style={{ color: '#ea580c', fontSize: '16px' }}></i>
+                <i className="fa-solid fa-globe" style={{ color: '#F27717', fontSize: '16px' }}></i>
               </div>
               <div>
-                <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>{ta.language.title}</span>
+                <span style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px' }}>{ta.language.title}</span>
                 <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>{language === 'ID' ? 'Bahasa Indonesia' : 'English'}</p>
               </div>
             </div>
@@ -570,12 +566,12 @@ export default function AccountPage() {
 
         {/* ══ SECURITY CARD ══ */}
         {!isGoogleLogin && (
-          <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)', marginBottom: '24px' }}>
+          <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)', marginBottom: '24px' }}>
             <div style={{ padding: '20px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <i className="fa-solid fa-shield-halved" style={{ color: '#10b981', fontSize: '14px' }}></i>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#EFF9FC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <i className="fa-solid fa-shield-halved" style={{ color: '#338CB2', fontSize: '14px' }}></i>
               </div>
-              <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '15px' }}>{ta.tabs.security}</span>
+              <span style={{ fontWeight: 800, color: '#1F1D16', fontSize: '15px' }}>{ta.tabs.security}</span>
             </div>
             <div style={{ padding: '20px 32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <TwoFactorSection onNotify={setToast} />
@@ -586,13 +582,13 @@ export default function AccountPage() {
 
         {/* ══ DELETE ACCOUNT ══ */}
         <div className="acct-card" style={{ marginBottom: '24px' }}>
-          <div className="delete-row" style={{ padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', background: 'white', borderRadius: '24px', border: '1px solid #fecaca', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)' }}>
+          <div className="delete-row" style={{ padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', background: 'white', borderRadius: '24px', border: '1px solid #fecaca', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <i className="fa-solid fa-triangle-exclamation" style={{ color: '#ef4444', fontSize: '16px' }}></i>
               </div>
               <div>
-                <p style={{ fontWeight: 800, color: '#0f172a', fontSize: '14px', margin: 0 }}>{ta.danger.title}</p>
+                <p style={{ fontWeight: 800, color: '#1F1D16', fontSize: '14px', margin: 0 }}>{ta.danger.title}</p>
                 <p style={{ fontSize: '13px', color: '#94a3b8', margin: '3px 0 0' }}>{ta.danger.subtitle}</p>
               </div>
             </div>

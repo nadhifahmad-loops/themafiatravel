@@ -40,7 +40,7 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="bg-[#f8f9ff] min-h-screen font-sans text-slate-900 flex flex-col selection:bg-orange-500 selection:text-white">
+    <div className="bg-brand-bgLight min-h-screen font-sans text-brand-ink flex flex-col selection:bg-brand-orange selection:text-white">
 
       {/* ── MAIN CONTENT ── */}
       <main className="flex-grow flex items-center justify-center py-12 px-6">
@@ -79,7 +79,7 @@ export default function ForgotPasswordPage() {
 
             {/* Mobile Logo Only */}
             <div className="lg:hidden mb-8">
-              <Link href="/" className="font-black text-2xl font-display text-slate-900">
+              <Link href="/" className="font-black text-2xl font-display text-brand-ink">
                 The <span className="text-orange-600">Mafia</span> Travel
               </Link>
             </div>
@@ -91,7 +91,7 @@ export default function ForgotPasswordPage() {
             {!sent ? (
               <>
                 <div className="mb-8">
-                  <h2 className="text-3xl font-black text-slate-900 mb-2 font-display tracking-tight">{t.title}</h2>
+                  <h2 className="text-3xl font-black text-brand-ink mb-2 font-display tracking-tight">{t.title}</h2>
                   <p className="text-slate-500 text-sm">{t.subtitle}</p>
                 </div>
 
@@ -112,7 +112,7 @@ export default function ForgotPasswordPage() {
                       onChange={e => setEmail(e.target.value)}
                       required
                       disabled={loading}
-                      className="peer w-full h-14 px-4 pt-4 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-slate-900 bg-transparent disabled:bg-slate-50"
+                      className="peer w-full h-14 px-4 pt-4 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-brand-ink bg-transparent disabled:bg-slate-50"
                       placeholder=" "
                     />
                     <label htmlFor="email" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
@@ -145,7 +145,7 @@ export default function ForgotPasswordPage() {
                 <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
                   <i className="fa-solid fa-envelope-open-text text-3xl text-emerald-600"></i>
                 </div>
-                <h2 className="text-3xl font-black text-slate-900 mb-3 font-display tracking-tight">{t.successTitle}</h2>
+                <h2 className="text-3xl font-black text-brand-ink mb-3 font-display tracking-tight">{t.successTitle}</h2>
                 <p className="text-slate-500 text-sm leading-relaxed max-w-sm mx-auto">{t.successSub}</p>
 
                 <Link
@@ -160,21 +160,6 @@ export default function ForgotPasswordPage() {
           </div>
         </div>
       </main>
-
-      {/* ── FOOTER ── */}
-      <footer className="w-full border-t bg-slate-50 border-slate-200 mt-auto">
-        <div className="max-w-[1280px] mx-auto py-8 px-6 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex flex-col items-center md:items-start gap-1">
-            <span className="text-lg font-black text-slate-900 font-display">The Mafia Travel</span>
-            <p className="text-xs text-slate-500 font-medium">© 2026 The Mafia Travel. Unstoppable Movement.</p>
-          </div>
-          <div className="flex gap-6">
-            <a href="#" className="text-xs font-semibold text-slate-500 hover:text-orange-600 transition-colors">About Us</a>
-            <a href="#" className="text-xs font-semibold text-slate-500 hover:text-orange-600 transition-colors">Terms of Service</a>
-            <a href="#" className="text-xs font-semibold text-slate-500 hover:text-orange-600 transition-colors">Privacy Policy</a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

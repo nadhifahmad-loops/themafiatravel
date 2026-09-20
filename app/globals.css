@@ -1,13 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
 :root {
-  --orange: #F97316;
-  --orange-dark: #EA6B0A;
-  --orange-light: #FFF7ED;
-  --orange-mid: #FDBA74;
-  --blue: #5BB8D4;
+  --orange: #F27717;
+  --orange-dark: #D9650E;
+  --orange-light: #FFF6EE;
+  --orange-mid: #FBB97C;
+  --blue: #338CB2;
   --blue-dark: #3A9AB8;
   --blue-light: #EFF9FC;
   --dark: #111827;
@@ -21,15 +21,35 @@
 html { scroll-behavior: smooth; }
 
 body {
-  font-family: 'Poppins', sans-serif;
-  background: #ffffff;
-  color: #111827;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: #F5FAFC;
+  color: #1F1D16;
   -webkit-font-smoothing: antialiased;
 }
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #F3F4F6; }
 ::-webkit-scrollbar-thumb { background: var(--orange); border-radius: 3px; }
+
+.scrollbar-hide {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  -webkit-appearance: none !important;
+  background: transparent !important;
+}
+.scrollbar-hide::-webkit-scrollbar-track {
+  display: none !important;
+  background: transparent !important;
+}
+.scrollbar-hide::-webkit-scrollbar-thumb {
+  display: none !important;
+  background: transparent !important;
+}
 
 
 @keyframes fadeInUp {
@@ -65,6 +85,41 @@ body {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+
+/* ─── Home page dynamic animations ─── */
+@keyframes kenburns {
+  0%   { transform: scale(1) translate(0, 0); }
+  50%  { transform: scale(1.12) translate(1.5%, -1.5%); }
+  100% { transform: scale(1) translate(0, 0); }
+}
+@keyframes floaty {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-16px) rotate(4deg); }
+}
+@keyframes floatyX {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  50%      { transform: translateX(14px) translateY(-10px); }
+}
+@keyframes pulseRing {
+  0%   { transform: scale(1); opacity: 0.55; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes shineSweep {
+  0%   { transform: translateX(-160%) skewX(-18deg); }
+  60%, 100% { transform: translateX(320%) skewX(-18deg); }
+}
+@keyframes marqueeX {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-kenburns { animation: kenburns 26s ease-in-out infinite; }
+.animate-floaty   { animation: floaty 6s ease-in-out infinite; }
+.animate-floaty-x { animation: floatyX 7s ease-in-out infinite; }
+.animate-pulse-ring { animation: pulseRing 2.4s cubic-bezier(0.4,0,0.6,1) infinite; }
+.animate-shine { animation: shineSweep 3.6s ease-in-out infinite; }
+.animate-marquee { animation: marqueeX 32s linear infinite; }
+.marquee-paused:hover .animate-marquee { animation-play-state: paused; }
 
 .fade-up { animation: fadeInUp 0.9s ease forwards; }
 .animate-fade-up { animation: fadeInUp 0.5s ease forwards; }
@@ -107,36 +162,51 @@ html {
 }
 
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* DatePicker: kalender tidak boleh tertimpa konten di bawah (sidebar sticky / kartu) */
+#datepicker-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+}
+#datepicker-root .react-datepicker-popper {
+  pointer-events: auto;
+}
 .react-datepicker-popper {
   z-index: 3000 !important;
 }
 
-/* DatePicker dark theme */
+/* DatePicker base */
 .react-datepicker {
-  background-color: #0f172a;
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 1.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
   font-family: inherit;
-  color: white;
+  box-shadow: 0 20px 50px -12px rgba(0,0,0,0.18);
+  overflow: hidden;
 }
 .react-datepicker__header {
-  background-color: #1e293b;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
 }
 .react-datepicker__current-month,
 .react-datepicker__day-name {
-  color: white;
+  color: #1e293b;
+  font-weight: 600;
+  font-size: 12px;
 }
 .react-datepicker__day {
-  color: rgba(255,255,255,0.8);
+  color: #475569;
+  font-size: 13px;
+  padding: 0.35rem;
+  border-radius: 0.5rem;
+  transition: all 0.15s;
 }
 .react-datepicker__day:hover {
-  background-color: #ea580c;
-  border-radius: 0.5rem;
+  background-color: #fff7ed;
+  color: #ea580c;
 }
 .react-datepicker__day--selected,
 .react-datepicker__day--in-range {
@@ -144,5 +214,32 @@ body {
   color: white !important;
 }
 .react-datepicker__day--disabled {
-  color: rgba(255,255,255,0.2) !important;
+  color: #cbd5e1 !important;
+}
+.react-datepicker__day--outside-month {
+  color: #e2e8f0;
+}
+.react-datepicker__navigation:hover .react-datepicker__navigation-icon::before {
+  border-color: #ea580c;
+}
+.react-datepicker__select-month,
+.react-datepicker__select-year select {
+  font-size: 13px;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  color: #1e293b;
+  background-color: white;
+}
+.react-datepicker__select-month:hover,
+.react-datepicker__select-year select:hover {
+  border-color: #ea580c;
+}
+.react-datepicker__close-icon::after {
+  background-color: #ea580c;
+  color: white;
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
 }

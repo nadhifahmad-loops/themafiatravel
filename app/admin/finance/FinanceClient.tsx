@@ -9,6 +9,7 @@ import {
   Wallet, ExternalLink, CalendarDays,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import * as XLSX from 'xlsx';
 
 interface FinanceSummary {
   currentRevenue: number;
@@ -55,7 +56,6 @@ function exportExcel(transactions: FinanceTransaction[], currentMonth: string, s
     return;
   }
 
-  const XLSX = require('xlsx');
   const wb = XLSX.utils.book_new();
 
   // ── Sheet 1: Laporan Transaksi ──
@@ -168,8 +168,8 @@ export default function FinanceClient({
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Laporan Keuangan</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Rangkuman pendapatan, laba kotor, dan arus kas.</p>
+          <h1 className="text-xl font-bold text-brand-ink">Laporan Keuangan</h1>
+          <p className="text-brand-neutral text-sm mt-0.5">Rangkuman pendapatan, laba kotor, dan arus kas.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -244,7 +244,7 @@ export default function FinanceClient({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chart */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-800 mb-6">Grafik Pendapatan ({currentYear})</h3>
+          <h3 className="text-sm font-bold text-brand-ink mb-6">Grafik Pendapatan ({currentYear})</h3>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -260,7 +260,7 @@ export default function FinanceClient({
         {/* Recent Ledger */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
           <div className="p-5 border-b border-slate-100">
-            <h3 className="text-sm font-bold text-slate-800">Arus Kas Masuk Terkini</h3>
+              <h3 className="text-sm font-bold text-brand-ink">Arus Kas Masuk Terkini</h3>
           </div>
           <div className="flex-1 overflow-y-auto max-h-[350px]">
             {recentTransactions.length === 0 ? (

@@ -2,6 +2,7 @@
 import { memo, useMemo, useState, useCallback } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { CARRIER_CODE_TO_AIRLINE } from '@/lib/providers';
 
 function formatDuration(elapsed: string) {
   if (!elapsed) return '-';
@@ -36,8 +37,8 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
   const lastSeg = journey.segments?.[journey.segments.length - 1];
   const fares = useMemo(() => seg?.fares || [], [seg]);
 
-  const airlineName = seg?.carrier_name || '';
   const airlineCode = seg?.carrier_code || '';
+  const airlineName = CARRIER_CODE_TO_AIRLINE[airlineCode] || seg?.carrier_name || airlineCode;
   const flightNum = seg?.carrier_number || '';
   const stopsCount = (journey.segments?.length || 1) - 1;
 
@@ -77,12 +78,12 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
               <div className="w-20 h-20 rounded-full border-[6px] border-orange-100"></div>
               <div className="absolute inset-0 rounded-full border-[6px] border-orange-500 border-t-transparent animate-spin"></div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <i className="fa-solid fa-plane-departure text-orange-600 text-2xl"></i>
+                <i className="fa-solid fa-ticket text-orange-600 text-2xl"></i>
               </div>
             </div>
             <div className="text-center">
-              <h3 className="font-black text-xl text-slate-900">Mengunci Kursi...</h3>
-              <p className="text-sm text-slate-500 mt-2">Memproses penerbangan {airlineName}</p>
+              <h3 className="font-black text-xl text-brand-ink">Sedang Diproses...</h3>
+              <p className="text-sm text-slate-500 mt-2">Mohon tunggu sebentar</p>
             </div>
             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
               <div className="h-full bg-orange-500 animate-pulse w-3/4"></div>
@@ -91,7 +92,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
         </div>
       )}
 
-      <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-200 hover:border-orange-200'}`}>
+      <div className={`bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
         <div className="h-1.5 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600" />
 
         {/* Promo & termurah badge */}
@@ -127,7 +128,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
               />
             </div>
             <div>
-              <p className="font-black text-slate-800 text-sm leading-tight">{airlineName.split(' ')[0]}</p>
+              <p className="font-black text-brand-ink text-sm leading-tight">{airlineName.split(' ')[0]}</p>
               <p className="text-[11px] text-slate-400 font-semibold">{airlineCode}{flightNum ? ` ${flightNum}` : ''}</p>
               <p className="text-[11px] text-slate-400">{fares[0]?.cabin_class === 'C' ? tf.business : tf.economy}</p>
             </div>
@@ -136,7 +137,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
           {/* Center: Route */}
           <div className="flex-1 flex items-center justify-between gap-2">
             <div className="text-center">
-              <p className="text-2xl font-black text-slate-900">{departureTime}</p>
+              <p className="text-2xl font-black text-brand-ink">{departureTime}</p>
               <p className="text-xs font-bold text-slate-500 uppercase">{seg?.origin || journey.origin}</p>
             </div>
 
@@ -153,7 +154,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
             </div>
 
             <div className="text-center">
-              <p className="text-2xl font-black text-slate-900">{arrivalTime}</p>
+              <p className="text-2xl font-black text-brand-ink">{arrivalTime}</p>
               <p className="text-xs font-bold text-slate-500 uppercase">{lastSeg?.destination || journey.destination}</p>
             </div>
           </div>
@@ -225,7 +226,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
                       </span>
                     )}
                     <div className="mb-3">
-                      <p className="text-lg font-black text-slate-900">{fmtIDR(farePrice)}</p>
+                      <p className="text-lg font-black text-brand-ink">{fmtIDR(farePrice)}</p>
                       <p className="text-[10px] text-slate-400 uppercase tracking-wide">per orang</p>
                     </div>
                     <div className="space-y-1.5 text-xs text-slate-600">

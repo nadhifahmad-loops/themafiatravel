@@ -1,19 +1,46 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
+import { useSession, signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { useState, Suspense, useEffect } from 'react';
+import { useState, Suspense, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
+import { motion, AnimatePresence } from 'framer-motion';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { registerLocale } from 'react-datepicker';
+import { id as localeId } from 'date-fns/locale';
+registerLocale('id', localeId);
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 import UnifiedNavbar from '@/components/layout/UnifiedNavbar';
+import Footer from '@/components/layout/Footer';
 import FlightSearchForm from '@/components/flight/FlightSearchForm';
 import TrainSearchForm from '@/components/train/TrainSearchForm';
 import InsuranceSearchForm from '@/components/insurance/InsuranceSearchForm';
 import HotelSearchForm from '@/components/hotel/HotelSearchForm';
+
+/* ─────────────────────────────────────────────────────────────
+   ANIMATION HELPERS
+───────────────────────────────────────────────────────────── */
+
+function Reveal({ children, delay = 0, className }: { children: React.ReactNode; delay?: number; className?: string }) {
+  return (
+    <motion.div
+      className={className}
+      initial={{ opacity: 0, y: 26 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-60px' }}
+      transition={{ duration: 0.55, delay, ease: 'easeOut' }}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 /* ─────────────────────────────────────────────────────────────
    HOTEL MINI FORM
@@ -40,18 +67,42 @@ interface HotelSearchPayload {
   nationality: string;
 }
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysToDateString(value: string, days: number): string {
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return formatLocalDate(date);
+}
+
 function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload) => void; lang: 'ID' | 'EN' }) {
   const t = i18n.home[lang].hotel;
-  const today    = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  const [today]    = useState(() => formatLocalDate(new Date()));
+  const [tomorrow] = useState(() => addDaysToDateString(today, 1));
+
+  const PROPERTY_TYPES = [
+    { value: 'all', label: lang === 'EN' ? 'All' : 'Semua', icon: 'fa-solid fa-list' },
+    { value: 'hotel', label: lang === 'EN' ? 'Hotel' : 'Hotel', icon: 'fa-solid fa-hotel' },
+    { value: 'villa', label: lang === 'EN' ? 'Villa' : 'Villa', icon: 'fa-solid fa-house-chimney' },
+    { value: 'apartment', label: lang === 'EN' ? 'Apartment' : 'Apartemen', icon: 'fa-solid fa-building' },
+  ];
 
   const [selectedDest, setSelectedDest] = useState(HOTEL_DESTINATIONS[1]);
   const [destInput, setDestInput]       = useState(HOTEL_DESTINATIONS[1].label);
   const [showDrop, setShowDrop]         = useState(false);
-  const [checkin, setCheckin]           = useState(today);
-  const [checkout, setCheckout]         = useState(tomorrow);
+  const [dateRange, setDateRange]       = useState<[Date | null, Date | null]>([new Date(), new Date(Date.now() + 86400000)]);
   const [rooms, setRooms]               = useState(1);
   const [guests, setGuests]             = useState(2);
+  const [propertyType, setPropertyType] = useState('all');
+  const [showPropertyDrop, setShowPropertyDrop] = useState(false);
+  const destRef = useRef<HTMLDivElement>(null);
+  const propertyRef = useRef<HTMLDivElement>(null);
 
   const filtered = HOTEL_DESTINATIONS.filter(d =>
     d.label.toLowerCase().includes(destInput.toLowerCase()) ||
@@ -59,15 +110,15 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
   );
 
   const handleSearch = () => {
-    if (!checkin || !checkout) {
+    if (!dateRange[0] || !dateRange[1]) {
       alert(lang === 'EN' ? 'Please select check-in and check-out dates' : 'Mohon pilih tanggal check-in dan check-out');
       return;
     }
     onSearch({
       destination_id: selectedDest.id,
       destination_label: selectedDest.label,
-      checkin_date: checkin,
-      checkout_date: checkout,
+      checkin_date: formatLocalDate(dateRange[0]),
+      checkout_date: formatLocalDate(dateRange[1]),
       adult: guests,
       child: 0,
       room: rooms,
@@ -75,72 +126,150 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
     });
   };
 
+  const calcDestPos = useCallback(() => {
+    if (!destRef.current) return;
+    const r = destRef.current.getBoundingClientRect();
+    return { top: r.bottom + 4, left: r.left, width: r.width };
+  }, []);
+
+  const calcPropertyPos = useCallback(() => {
+    if (!propertyRef.current) return;
+    const r = propertyRef.current.getBoundingClientRect();
+    return { top: r.bottom + 4, left: r.left, width: r.width };
+  }, []);
+
   return (
-    <div className="p-4 sm:p-5">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
-        <div className="lg:col-span-4 relative">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1 block">{t.destination}</label>
-          <div className="flex items-center gap-3 border border-slate-200 rounded-xl px-4 py-3 bg-white relative">
-            <i className="fa-solid fa-location-dot text-orange-500 text-sm shrink-0" />
+    <div className="p-3 sm:p-4">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end">
+        {/* Property Type Filter */}
+        <div className="lg:col-span-3 relative" ref={propertyRef}>
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{lang === 'EN' ? 'Property Type' : 'Tipe Properti'}</label>
+          <div
+            onClick={() => setShowPropertyDrop(!showPropertyDrop)}
+            className="flex items-center gap-2 border border-white/30 rounded-lg px-3 py-2 bg-white/50 hover:border-orange-300/50 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-500/10 transition-all duration-200 cursor-pointer"
+          >
+            <i className={`fa-solid ${PROPERTY_TYPES.find(p => p.value === propertyType)?.icon || 'fa-solid fa-list'} text-orange-500 text-xs shrink-0`} />
+            <span className="flex-1 text-sm font-medium text-slate-800 truncate">{PROPERTY_TYPES.find(p => p.value === propertyType)?.label}</span>
+            <i className={`fa-solid fa-chevron-down text-xs transition-transform ${showPropertyDrop ? 'rotate-180' : ''} text-slate-400`} />
+          </div>
+          {showPropertyDrop && (
+            createPortal(
+              <div className="fixed z-[9999] animate-fade-in shadow-2xl">
+                <div
+                  className="bg-white border border-white/40 rounded-xl overflow-hidden"
+                  style={{
+                    top: calcPropertyPos()?.top,
+                    left: calcPropertyPos()?.left,
+                    width: calcPropertyPos()?.width,
+                    maxWidth: 280,
+                  }}
+                >
+                  {PROPERTY_TYPES.map(p => (
+                    <div
+                      key={p.value}
+                      onMouseDown={() => { setPropertyType(p.value); setShowPropertyDrop(false); }}
+                      className={`px-3 py-2.5 cursor-pointer border-b border-slate-100 last:border-0 flex items-center gap-2 ${propertyType === p.value ? 'bg-orange-50 text-orange-600' : 'hover:bg-orange-50'}`}
+                    >
+                      <i className={`${p.icon} text-xs ${propertyType === p.value ? 'text-orange-500' : 'text-slate-400'}`} />
+                      <span className="text-sm font-medium text-slate-700">{p.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>,
+              document.body
+            )
+          )}
+        </div>
+
+        {/* Destination */}
+        <div className="lg:col-span-4 relative" ref={destRef}>
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{t.destination}</label>
+          <div
+            onClick={() => setShowDrop(true)}
+            className="flex items-center gap-2 border border-white/30 rounded-lg px-3 py-2 bg-white/50 hover:border-orange-300/50 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-500/10 transition-all duration-200 cursor-pointer"
+          >
+            <i className="fa-solid fa-location-dot text-orange-500 text-xs shrink-0" />
             <input
               value={destInput}
+              readOnly
               onChange={e => { setDestInput(e.target.value); setShowDrop(true); }}
               onFocus={() => setShowDrop(true)}
-              onBlur={() => setTimeout(() => setShowDrop(false), 150)}
               placeholder={t.searchPlaceholder}
-              className="flex-1 outline-none bg-transparent text-sm font-semibold text-slate-800 placeholder:text-slate-400"
+              className="flex-1 outline-none bg-transparent text-sm font-medium text-slate-800 placeholder:text-slate-400 cursor-pointer"
             />
           </div>
           {showDrop && filtered.length > 0 && (
-            <div className="absolute top-full mt-1 left-0 w-full bg-white border border-slate-100 rounded-xl shadow-2xl z-50 overflow-hidden">
-              {filtered.map(d => (
+            createPortal(
+              <div className="fixed z-[9999] animate-fade-in shadow-2xl">
                 <div
-                  key={d.id}
-                  onMouseDown={() => { setSelectedDest(d); setDestInput(d.label); setShowDrop(false); }}
-                  className="px-4 py-3 hover:bg-orange-50 cursor-pointer border-b border-slate-50 last:border-0"
+                  className="bg-white border border-white/40 rounded-xl overflow-hidden"
+                  style={{
+                    top: calcDestPos()?.top,
+                    left: calcDestPos()?.left,
+                    width: calcDestPos()?.width,
+                    maxWidth: 320,
+                  }}
                 >
-                  <div className="font-bold text-sm text-slate-800">{d.city}</div>
-                  <div className="text-xs text-slate-400">{d.label}</div>
+                  {filtered.map(d => (
+                    <div
+                      key={d.id}
+                      onMouseDown={() => { setSelectedDest(d); setDestInput(d.label); setShowDrop(false); }}
+                      className="px-3 py-2.5 hover:bg-orange-50 cursor-pointer border-b border-slate-100 last:border-0"
+                    >
+                      <div className="font-medium text-sm text-slate-700">{d.city}</div>
+                      <div className="text-xs text-slate-400">{d.label}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>,
+              document.body
+            )
           )}
         </div>
-        <div className="lg:col-span-2">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1 block">{t.checkin}</label>
-          <div className="flex items-center gap-3 border border-slate-200 rounded-xl px-4 py-3 bg-white">
-            <i className="fa-regular fa-calendar text-orange-500 text-sm shrink-0" />
-            <input type="date" value={checkin} min={today} onChange={e => { setCheckin(e.target.value); if (e.target.value >= checkout) setCheckout(''); }} className="flex-1 outline-none bg-transparent text-sm font-semibold text-slate-800" />
+
+        {/* Date Range */}
+        <div className="lg:col-span-3">
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{lang === 'EN' ? 'Check-in - Check-out' : 'Check-in - Check-out'}</label>
+          <div className="flex items-center gap-2 border border-white/30 rounded-lg px-3 py-2 bg-white/50 hover:border-orange-300/50 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-500/10 transition-all duration-200">
+            <i className="fa-regular fa-calendar text-orange-500 text-xs shrink-0" />
+            <DatePicker
+              selectsRange
+              startDate={dateRange[0]}
+              endDate={dateRange[1]}
+              onChange={setDateRange}
+              minDate={new Date()}
+              className="flex-1 outline-none bg-transparent text-sm font-medium text-slate-800"
+              dateFormat="dd MMM yyyy"
+              placeholderText={lang === 'EN' ? 'Select dates' : 'Pilih tanggal'}
+              locale={lang === 'EN' ? undefined : localeId}
+            />
           </div>
         </div>
-        <div className="lg:col-span-2">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1 block">{t.checkout}</label>
-          <div className="flex items-center gap-3 border border-slate-200 rounded-xl px-4 py-3 bg-white">
-            <i className="fa-regular fa-calendar text-orange-500 text-sm shrink-0" />
-            <input type="date" value={checkout} min={checkin ? new Date(new Date(checkin).getTime() + 86400000).toISOString().split('T')[0] : today} onChange={e => setCheckout(e.target.value)} className="flex-1 outline-none bg-transparent text-sm font-semibold text-slate-800" />
-          </div>
-        </div>
-        <div className="lg:col-span-2 flex gap-2">
+
+        {/* Rooms & Guests */}
+        <div className="lg:col-span-2 flex gap-1.5">
           <div className="flex-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1 block">{t.rooms}</label>
-            <div className="flex items-center justify-between border border-slate-200 rounded-xl px-3 py-3 bg-white">
-              <button type="button" onClick={() => setRooms(Math.max(1, rooms - 1))} className="w-6 h-6 rounded-full bg-slate-100 text-xs font-bold hover:bg-orange-100">-</button>
-              <span className="text-sm font-black text-slate-800">{rooms}</span>
-              <button type="button" onClick={() => setRooms(rooms + 1)} className="w-6 h-6 rounded-full bg-slate-100 text-xs font-bold hover:bg-orange-100">+</button>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{t.rooms}</label>
+            <div className="flex items-center justify-between border border-white/30 rounded-lg px-2 py-2 bg-white/50 hover:border-orange-300/50 transition-all duration-200">
+              <button type="button" onClick={() => setRooms(Math.max(1, rooms - 1))} className="w-8 h-8 rounded-full bg-white/60 text-xs font-bold text-slate-500 hover:bg-orange-100 hover:text-orange-600 transition-colors flex items-center justify-center">-</button>
+              <span className="text-xs font-bold text-slate-800">{rooms}</span>
+              <button type="button" onClick={() => setRooms(rooms + 1)} className="w-8 h-8 rounded-full bg-white/60 text-xs font-bold text-slate-500 hover:bg-orange-100 hover:text-orange-600 transition-colors flex items-center justify-center">+</button>
             </div>
           </div>
           <div className="flex-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1 block">{t.guests}</label>
-            <div className="flex items-center justify-between border border-slate-200 rounded-xl px-3 py-3 bg-white">
-              <button type="button" onClick={() => setGuests(Math.max(1, guests - 1))} className="w-6 h-6 rounded-full bg-slate-100 text-xs font-bold hover:bg-orange-100">-</button>
-              <span className="text-sm font-black text-slate-800">{guests}</span>
-              <button type="button" onClick={() => setGuests(guests + 1)} className="w-6 h-6 rounded-full bg-slate-100 text-xs font-bold hover:bg-orange-100">+</button>
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{t.guests}</label>
+            <div className="flex items-center justify-between border border-white/30 rounded-lg px-2 py-2 bg-white/50 hover:border-orange-300/50 transition-all duration-200">
+              <button type="button" onClick={() => setGuests(Math.max(1, guests - 1))} className="w-8 h-8 rounded-full bg-white/60 text-xs font-bold text-slate-500 hover:bg-orange-100 hover:text-orange-600 transition-colors flex items-center justify-center">-</button>
+              <span className="text-xs font-bold text-slate-800">{guests}</span>
+              <button type="button" onClick={() => setGuests(guests + 1)} className="w-8 h-8 rounded-full bg-white/60 text-xs font-bold text-slate-500 hover:bg-orange-100 hover:text-orange-600 transition-colors flex items-center justify-center">+</button>
             </div>
           </div>
         </div>
+
+        {/* Search Button */}
         <div className="lg:col-span-2">
-          <button type="button" onClick={handleSearch} className="w-full h-[50px] rounded-xl bg-orange-600 text-white text-sm font-bold hover:bg-orange-700 transition-all shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
-            <i className="fa-solid fa-magnifying-glass" /> {t.searchBtn}
+          <button type="button" onClick={handleSearch} className="w-full h-[42px] rounded-lg bg-gradient-to-r from-orange-500 to-orange-600 text-white text-sm font-semibold hover:from-orange-600 hover:to-orange-700 transition-all duration-200 shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 active:scale-95">
+            <i className="fa-solid fa-magnifying-glass text-xs" /> {t.searchBtn}
           </button>
         </div>
       </div>
@@ -195,53 +324,66 @@ const PROMO_BANNERS_EN = {
 };
 
 const ASIA_DESTINATIONS = [
-  { name: 'Singapura',    nameEN: 'Singapore',     code: 'SIN', flag: '🇸🇬', img: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=600&q=80', price: 'ab Rp 1,1 jt',  priceEN: 'from Rp 1.1M' },
-  { name: 'Malaysia',     nameEN: 'Malaysia',       code: 'KUL', flag: '🇲🇾', img: 'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=600&q=80', price: 'ab Rp 899 rb', priceEN: 'from Rp 899K' },
-  { name: 'Thailand',     nameEN: 'Thailand',       code: 'BKK', flag: '🇹🇭', img: 'https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=600&q=80', price: 'ab Rp 1,3 jt',  priceEN: 'from Rp 1.3M' },
-  { name: 'Korea Selatan',nameEN: 'South Korea',    code: 'ICN', flag: '🇰🇷', img: 'https://images.unsplash.com/photo-1538485399081-7191377e8241?w=600&q=80', price: 'ab Rp 2,4 jt',  priceEN: 'from Rp 2.4M' },
-  { name: 'Jepang',       nameEN: 'Japan',          code: 'NRT', flag: '🇯🇵', img: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=600&q=80', price: 'ab Rp 3,1 jt',  priceEN: 'from Rp 3.1M' },
-  { name: 'Hong Kong',    nameEN: 'Hong Kong',      code: 'HKG', flag: '🇭🇰', img: 'https://images.unsplash.com/photo-1506970845246-18f21d533b20?w=600&q=80', price: 'ab Rp 1,8 jt',  priceEN: 'from Rp 1.8M' },
+  { name: 'Singapura',    nameEN: 'Singapore',     code: 'SIN', img: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=600&q=80', price: 'Rp 1.100.000',  priceEN: 'Rp 1.100.000' },
+  { name: 'Malaysia',     nameEN: 'Malaysia',       code: 'KUL', img: 'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=600&q=80', price: 'Rp 899.000', priceEN: 'Rp 899.000' },
+  { name: 'Thailand',     nameEN: 'Thailand',       code: 'BKK', img: 'https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=600&q=80', price: 'Rp 1.300.000',  priceEN: 'Rp 1.300.000' },
+  { name: 'Korea Selatan',nameEN: 'South Korea',    code: 'ICN', img: 'https://images.unsplash.com/photo-1538485399081-7191377e8241?w=600&q=80', price: 'Rp 2.400.000',  priceEN: 'Rp 2.400.000' },
+  { name: 'Jepang',       nameEN: 'Japan',          code: 'NRT', img: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=600&q=80', price: 'Rp 3.100.000',  priceEN: 'Rp 3.100.000' },
+  { name: 'Hong Kong',    nameEN: 'Hong Kong',      code: 'HKG', img: 'https://images.unsplash.com/photo-1506970845246-18f21d533b20?w=600&q=80', price: 'Rp 1.800.000',  priceEN: 'Rp 1.800.000' },
+];
+
+const ASIA_DESTINATIONS_BADGES_ID = ['Favorit Wisatawan', 'Termurah', 'Eksotis', 'Top Rated', 'Best Seller', 'City Trip'];
+const ASIA_DESTINATIONS_BADGES_EN = ['Top Pick', 'Best Value', 'Exotic', 'Top Rated', 'Best Seller', 'City Trip'];
+const ASIA_DESTINATIONS_BADGE_CLASS = [
+  'bg-white/90 text-brand-ink',
+  'bg-brand-forest text-white',
+  'bg-brand-cream text-brand-ink',
+  'bg-brand-blue text-white',
+  'bg-white/90 text-brand-ink',
+  'bg-brand-orange text-white',
 ];
 
 const DOMESTIC_CITIES = ['Bali', 'Medan', 'Surabaya', 'Yogyakarta', 'Palembang', 'Lombok', 'Balikpapan', 'Jakarta'];
 
 const DOMESTIC_FLIGHTS: Record<string, { route: string; routeEN: string; dest: string; origin?: string; price: string; img: string }[]> = {
   Bali: [
-    { route: 'Jakarta – Bali / Denpasar', routeEN: 'Jakarta – Bali / Denpasar', dest: 'DPS', price: 'Rp 1.239.200', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
-    { route: 'Jakarta – Bali / Denpasar', routeEN: 'Jakarta – Bali / Denpasar', dest: 'DPS', price: 'Rp 1.331.000', img: 'https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?w=400&q=75' },
-    { route: 'Jakarta – Bali / Denpasar', routeEN: 'Jakarta – Bali / Denpasar', dest: 'DPS', price: 'Rp 1.378.900', img: 'https://images.unsplash.com/photo-1573790387438-4da905039392?w=400&q=75' },
-    { route: 'Jakarta – Bali / Denpasar', routeEN: 'Jakarta – Bali / Denpasar', dest: 'DPS', price: 'Rp 1.360.600', img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=75' },
+    { route: 'Jakarta – Bali / Denpasar', routeEN: 'Jakarta – Bali / Denpasar', dest: 'DPS', origin: 'CGK', price: 'Rp 1.239.200', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
+    { route: 'Surabaya – Bali / Denpasar', routeEN: 'Surabaya – Bali / Denpasar', dest: 'DPS', origin: 'SUB', price: 'Rp 890.000', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
+    { route: 'Yogyakarta – Bali / Denpasar', routeEN: 'Yogyakarta – Bali / Denpasar', dest: 'DPS', origin: 'JOG', price: 'Rp 950.000', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
+    { route: 'Bandung – Bali / Denpasar', routeEN: 'Bandung – Bali / Denpasar', dest: 'DPS', origin: 'BDG', price: 'Rp 1.100.000', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
   ],
   Medan: [
-    { route: 'Jakarta – Medan / Kualanamu', routeEN: 'Jakarta – Medan / Kualanamu', dest: 'KNO', price: 'Rp 989.000',   img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=75' },
-    { route: 'Jakarta – Medan / Kualanamu', routeEN: 'Jakarta – Medan / Kualanamu', dest: 'KNO', price: 'Rp 1.050.000', img: 'https://images.unsplash.com/photo-1555400038-63f5ba517a47?w=400&q=75' },
-    { route: 'Jakarta – Medan / Kualanamu', routeEN: 'Jakarta – Medan / Kualanamu', dest: 'KNO', price: 'Rp 1.100.500', img: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=75' },
+    { route: 'Jakarta – Medan / Kualanamu', routeEN: 'Jakarta – Medan / Kualanamu', dest: 'KNO', origin: 'CGK', price: 'Rp 989.000', img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=75' },
+    { route: 'Surabaya – Medan / Kualanamu', routeEN: 'Surabaya – Medan / Kualanamu', dest: 'KNO', origin: 'SUB', price: 'Rp 1.050.000', img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=75' },
+    { route: 'Yogyakarta – Medan / Kualanamu', routeEN: 'Yogyakarta – Medan / Kualanamu', dest: 'KNO', origin: 'JOG', price: 'Rp 980.000', img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=75' },
   ],
   Surabaya: [
-    { route: 'Jakarta – Surabaya / Juanda', routeEN: 'Jakarta – Surabaya / Juanda', dest: 'SUB', price: 'Rp 550.000', img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&q=75' },
-    { route: 'Jakarta – Surabaya / Juanda', routeEN: 'Jakarta – Surabaya / Juanda', dest: 'SUB', price: 'Rp 610.000', img: 'https://images.unsplash.com/photo-1510798831971-661eb04b3739?w=400&q=75' },
-    { route: 'Jakarta – Surabaya / Juanda', routeEN: 'Jakarta – Surabaya / Juanda', dest: 'SUB', price: 'Rp 670.000', img: 'https://images.unsplash.com/photo-1526772662000-3f88f10405ff?w=400&q=75' },
+    { route: 'Jakarta – Surabaya / Juanda', routeEN: 'Jakarta – Surabaya / Juanda', dest: 'SUB', origin: 'CGK', price: 'Rp 550.000', img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&q=75' },
+    { route: 'Bandung – Surabaya / Juanda', routeEN: 'Bandung – Surabaya / Juanda', dest: 'SUB', origin: 'BDG', price: 'Rp 580.000', img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&q=75' },
+    { route: 'Yogyakarta – Surabaya / Juanda', routeEN: 'Yogyakarta – Surabaya / Juanda', dest: 'SUB', origin: 'JOG', price: 'Rp 420.000', img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&q=75' },
   ],
   Yogyakarta: [
-    { route: 'Jakarta – Yogyakarta / Adisutjipto', routeEN: 'Jakarta – Yogyakarta / Adisutjipto', dest: 'JOG', price: 'Rp 480.000', img: 'https://images.unsplash.com/photo-1580981568153-81e4a20bf7ec?w=400&q=75' },
-    { route: 'Jakarta – Yogyakarta / Adisutjipto', routeEN: 'Jakarta – Yogyakarta / Adisutjipto', dest: 'JOG', price: 'Rp 520.000', img: 'https://images.unsplash.com/photo-1558618047-f4e5f8e9c8c0?w=400&q=75' },
-    { route: 'Jakarta – Yogyakarta / Adisutjipto', routeEN: 'Jakarta – Yogyakarta / Adisutjipto', dest: 'JOG', price: 'Rp 560.000', img: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=400&q=75' },
+    { route: 'Jakarta – Yogyakarta / Adisutjipto', routeEN: 'Jakarta – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'CGK', price: 'Rp 480.000', img: 'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=400&q=75' },
+    { route: 'Surabaya – Yogyakarta / Adisutjipto', routeEN: 'Surabaya – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'SUB', price: 'Rp 350.000', img: 'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=400&q=75' },
+    { route: 'Bandung – Yogyakarta / Adisutjipto', routeEN: 'Bandung – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'BDG', price: 'Rp 520.000', img: 'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=400&q=75' },
   ],
   Palembang: [
-    { route: 'Jakarta – Palembang / SMB II', routeEN: 'Jakarta – Palembang / SMB II', dest: 'PLM', price: 'Rp 430.000', img: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=75' },
-    { route: 'Jakarta – Palembang / SMB II', routeEN: 'Jakarta – Palembang / SMB II', dest: 'PLM', price: 'Rp 480.000', img: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=400&q=75' },
+    { route: 'Jakarta – Palembang / SMB II', routeEN: 'Jakarta – Palembang / SMB II', dest: 'PLM', origin: 'CGK', price: 'Rp 430.000', img: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=75' },
+    { route: 'Surabaya – Palembang / SMB II', routeEN: 'Surabaya – Palembang / SMB II', dest: 'PLM', origin: 'SUB', price: 'Rp 490.000', img: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=75' },
   ],
   Lombok: [
-    { route: 'Jakarta – Lombok / Praya', routeEN: 'Jakarta – Lombok / Praya', dest: 'LOP', price: 'Rp 850.000', img: 'https://images.unsplash.com/photo-1518548419970-58e3b4079ab2?w=400&q=75' },
-    { route: 'Jakarta – Lombok / Praya', routeEN: 'Jakarta – Lombok / Praya', dest: 'LOP', price: 'Rp 920.000', img: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&q=75' },
+    { route: 'Jakarta – Lombok / Praya', routeEN: 'Jakarta – Lombok / Praya', dest: 'LOP', origin: 'CGK', price: 'Rp 850.000', img: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&q=75' },
+    { route: 'Surabaya – Lombok / Praya', routeEN: 'Surabaya – Lombok / Praya', dest: 'LOP', origin: 'SUB', price: 'Rp 650.000', img: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&q=75' },
+    { route: 'Yogyakarta – Lombok / Praya', routeEN: 'Yogyakarta – Lombok / Praya', dest: 'LOP', origin: 'JOG', price: 'Rp 720.000', img: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&q=75' },
   ],
   Balikpapan: [
-    { route: 'Jakarta – Balikpapan / SAMS', routeEN: 'Jakarta – Balikpapan / SAMS', dest: 'BPN', price: 'Rp 750.000', img: 'https://images.unsplash.com/photo-1440778303588-435521a3e3f0?w=400&q=75' },
-    { route: 'Jakarta – Balikpapan / SAMS', routeEN: 'Jakarta – Balikpapan / SAMS', dest: 'BPN', price: 'Rp 830.000', img: 'https://images.unsplash.com/photo-1504701954957-2010ec3bcec1?w=400&q=75' },
+    { route: 'Jakarta – Balikpapan / SAMS', routeEN: 'Jakarta – Balikpapan / SAMS', dest: 'BPN', origin: 'CGK', price: 'Rp 750.000', img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&q=75' },
+    { route: 'Surabaya – Balikpapan / SAMS', routeEN: 'Surabaya – Balikpapan / SAMS', dest: 'BPN', origin: 'SUB', price: 'Rp 780.000', img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&q=75' },
   ],
   Jakarta: [
-    { route: 'Bali – Jakarta / Soetta',     routeEN: 'Bali – Jakarta / Soetta',     dest: 'CGK', origin: 'DPS', price: 'Rp 620.000', img: 'https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=400&q=75' },
+    { route: 'Bali – Jakarta / Soetta',     routeEN: 'Bali – Jakarta / Soetta',     dest: 'CGK', origin: 'DPS', price: 'Rp 620.000', img: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=400&q=75' },
     { route: 'Surabaya – Jakarta / Soetta', routeEN: 'Surabaya – Jakarta / Soetta', dest: 'CGK', origin: 'SUB', price: 'Rp 540.000', img: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=400&q=75' },
+    { route: 'Yogyakarta – Jakarta / Soetta', routeEN: 'Yogyakarta – Jakarta / Soetta', dest: 'CGK', origin: 'JOG', price: 'Rp 380.000', img: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=400&q=75' },
   ],
 };
 
@@ -349,6 +491,34 @@ const SEO_LINKS_EN: Record<string, SEO_LINK[]> = {
   ],
 };
 
+const MARQUEE_ID = [
+  { icon: 'fa-plane', label: 'Pesawat' },
+  { icon: 'fa-hotel', label: 'Hotel' },
+  { icon: 'fa-train', label: 'Kereta' },
+  { icon: 'fa-shield-halved', label: 'Asuransi' },
+  { icon: 'fa-lock', label: 'Pembayaran Aman' },
+  { icon: 'fa-headset', label: 'Support 24/7' },
+  { icon: 'fa-globe', label: '100+ Destinasi' },
+  { icon: 'fa-wallet', label: 'Banyak Metode Bayar' },
+];
+const MARQUEE_EN = [
+  { icon: 'fa-plane', label: 'Flights' },
+  { icon: 'fa-hotel', label: 'Hotels' },
+  { icon: 'fa-train', label: 'Trains' },
+  { icon: 'fa-shield-halved', label: 'Insurance' },
+  { icon: 'fa-lock', label: 'Secure Payment' },
+  { icon: 'fa-headset', label: '24/7 Support' },
+  { icon: 'fa-globe', label: '100+ Destinations' },
+  { icon: 'fa-wallet', label: 'Many Payment Options' },
+];
+
+const FEATURES = [
+  { icon: 'fa-bolt', color: 'bg-brand-orange/10 text-brand-orange', ring: 'group-hover:bg-orange-500' },
+  { icon: 'fa-tags', color: 'bg-brand-blue/10 text-brand-blue', ring: 'group-hover:bg-blue-500' },
+  { icon: 'fa-shield-halved', color: 'bg-brand-forest/10 text-brand-forest', ring: 'group-hover:bg-emerald-500' },
+  { icon: 'fa-headset', color: 'bg-brand-blue/10 text-brand-blue', ring: 'group-hover:bg-blue-500' },
+];
+
 /* ─────────────────────────────────────────────────────────────
    MAIN PAGE
 ───────────────────────────────────────────────────────────── */
@@ -359,6 +529,8 @@ export default function LandingPage() {
   const pathname = usePathname();
   const { language } = useLanguage();
   const location = useLocation();
+
+  usePageTitle(null);
 
   const t = i18n.home[language];
   const isEN = language === 'EN';
@@ -401,58 +573,23 @@ export default function LandingPage() {
       : title;
 
   // ISO date helpers untuk redirect pencarian otomatis
-  const todayISO = new Date().toISOString().split('T')[0];
+  const todayISO = formatLocalDate(new Date());
   const tomorrowISO = (() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+    return formatLocalDate(d);
   })();
   const weekAfterISO = (() => {
     const d = new Date();
     d.setDate(d.getDate() + 7);
-    return d.toISOString().split('T')[0];
+    return formatLocalDate(d);
   })();
 
   const SEARCH_TABS = [
-    { id: 'flights',   label: t.tabs.flights,   icon: 'fa-plane' },
-    { id: 'hotels',    label: t.tabs.hotels,    icon: 'fa-hotel' },
-    { id: 'trains',    label: t.tabs.trains,    icon: 'fa-train' },
-    { id: 'insurance', label: t.tabs.insurance, icon: 'fa-shield-halved' },
-  ];
-
-  const QUICK_SHORTCUTS = [
-    {
-      label: isEN ? 'Travel Insurance' : 'Asuransi Perjalanan',
-      desc:  isEN ? 'Travel safer'     : 'Perjalanan lebih aman',
-      icon: 'fa-shield-halved',
-      color: 'from-blue-600 to-blue-800',
-      img: 'https://images.unsplash.com/photo-1606868306217-dbf5046868d2?w=600&q=80',
-      href: `/insurance/search?autoSearch=1&provider=all&destination_area=Asia&date_start=${todayISO}&date_end=${weekAfterISO}&trip_type=single_trip&pax=1`,
-    },
-    {
-      label: isEN ? 'Train Tickets'  : 'Tiket Kereta',
-      desc:  isEN ? 'Comfortable & affordable' : 'Nyaman & terjangkau',
-      icon: 'fa-train',
-      color: 'from-emerald-600 to-teal-700',
-      img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=600&q=80',
-      href: `/train/search?origin=${trainOrigin}&destination=BD&depart=${tomorrowISO}&adult=1&infant=0&direction=OW&provider=kai`,
-    },
-    {
-      label: isEN ? 'Hotel Deals'    : 'Hotel Promo',
-      desc:  isEN ? 'Best price today' : 'Harga terbaik hari ini',
-      icon: 'fa-hotel',
-      color: 'from-purple-600 to-violet-800',
-      img: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&q=80',
-      href: `/hotel/search?destination_id=ID8731&q=&checkin_date=${todayISO}&checkout_date=${tomorrowISO}&adult=2&child=0&room=1&nationality=ID`,
-    },
-    {
-      label: isEN ? 'Flight Deals'   : 'Pesawat Promo',
-      desc:  isEN ? 'Flash sale every Friday' : 'Flash sale setiap Jumat',
-      icon: 'fa-plane',
-      color: 'from-orange-500 to-red-600',
-      img: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=600&q=80',
-      href: `/flight/search?origin=${flightOrigin}&destination=DPS&departure_date=${tomorrowISO}&adult=1&child=0&infant=0&cabin_class=Y&direction=OW`,
-    },
+    { id: 'flights',   label: t.tabs.flights,   icon: 'fa-plane',          color: 'text-blue-400', activeColor: 'text-blue-500' },
+    { id: 'hotels',    label: t.tabs.hotels,    icon: 'fa-bed',            color: 'text-amber-400', activeColor: 'text-amber-500' },
+    { id: 'trains',    label: t.tabs.trains,    icon: 'fa-train',          color: 'text-emerald-400', activeColor: 'text-emerald-500' },
+    { id: 'insurance', label: t.tabs.insurance, icon: 'fa-plane-circle-check',  color: 'text-violet-400', activeColor: 'text-violet-500' },
   ];
 
   const PROMO_TABS_ID   = ['Pesawat', 'Hotel', 'Kereta'];
@@ -527,6 +664,7 @@ export default function LandingPage() {
     if (payload.journey_list?.length) {
       params.set('origin',      payload.journey_list[0].origin);
       params.set('destination', payload.journey_list[0].destination);
+      params.set('departure_date', payload.journey_list[0].departure_date);
       params.set('depart',      payload.journey_list[0].departure_date);
       if (payload.direction === 'RT' && payload.journey_list[1])
         params.set('return_date', payload.journey_list[1].departure_date);
@@ -551,7 +689,7 @@ export default function LandingPage() {
   const quickFlight = (dest: string, origin: string = 'CGK') => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const date = tomorrow.toISOString().split('T')[0];
+    const date = [tomorrow.getFullYear(), String(tomorrow.getMonth() + 1).padStart(2, '0'), String(tomorrow.getDate()).padStart(2, '0')].join('-');
     const params = new URLSearchParams({ origin, destination: dest, departure_date: date, adult: '1', child: '0', infant: '0', cabin_class: 'Y', direction: 'OW', autoSearch: '1' });
     router.push(`/flight/search?${params.toString()}`);
   };
@@ -582,23 +720,58 @@ export default function LandingPage() {
     }
   };
 
-  const handleCouponClick = (type: string) => {
-    const t = type.toLowerCase();
-    if (t.includes('hotel')) {
-      const params = new URLSearchParams({ destination_id: 'ID8731', q: '', checkin_date: todayISO, checkout_date: tomorrowISO, adult: '2', child: '0', room: '1', nationality: 'ID' });
-      router.push(`/hotel/search?${params.toString()}`);
-    } else if (t.includes('asuransi') || t.includes('insurance')) {
-      router.push(`/insurance/search?autoSearch=1&provider=all&destination_area=Asia&date_start=${todayISO}&date_end=${weekAfterISO}&trip_type=single_trip&pax=1`);
-    } else {
-      quickFlight('DPS');
-    }
-  };
-
   const [copiedCoupon, setCopiedCoupon] = useState<string | null>(null);
+  const [showCopiedToast, setShowCopiedToast] = useState(false);
   const copyCoupon = async (code: string) => {
     try { await navigator.clipboard.writeText(code); } catch {}
     setCopiedCoupon(code);
-    setTimeout(() => setCopiedCoupon(null), 1500);
+    setShowCopiedToast(true);
+    setTimeout(() => { setCopiedCoupon(null); setShowCopiedToast(false); }, 2000);
+  };
+
+  const couponRowRef = useRef<HTMLDivElement>(null);
+  const scrollCoupon = (dir: number) => {
+    if (!couponRowRef.current) return;
+    const scrollAmount = couponRowRef.current.offsetWidth * 0.75;
+    couponRowRef.current.scrollBy({ left: dir * scrollAmount, behavior: 'smooth' });
+  };
+
+  const fallbackBg = '/images/background.jpg';
+  const [favIds, setFavIds] = useState<string[]>([]);
+  const [showLoginPopup, setShowLoginPopup] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const toggleFav = (code: string) => {
+    if (!session) {
+      setShowLoginPopup(true);
+      return;
+    }
+    setFavIds(prev => (prev.includes(code) ? prev.filter(x => x !== code) : [...prev, code]));
+  };
+
+  // ─── Kupon dinamis dari database ───
+  interface DbCoupon { id: number; code: string; name: string; description: string | null; type: string; value: number; category: string; minOrderAmount: number; maxDiscount: number | null; isFeatured: boolean; }
+  const [dbCoupons, setDbCoupons] = useState<DbCoupon[]>([]);
+  useEffect(() => {
+    fetch('/api/coupons/active?limit=10')
+      .then(r => r.json())
+      .then(d => setDbCoupons(d.coupons || []))
+      .catch(() => {});
+  }, []);
+
+  const couponCategoryLabel = (c: DbCoupon) => {
+    const map: Record<string, Record<string, string>> = {
+      ID: { flight: 'Pesawat', hotel: 'Hotel', train: 'Kereta', insurance: 'Asuransi', transfer: 'Transfer', activity: 'Aktivitas', all: 'Semua' },
+      EN: { flight: 'Flights', hotel: 'Hotels', train: 'Trains', insurance: 'Insurance', transfer: 'Transfer', activity: 'Activities', all: 'All' },
+    };
+    return (map[language] || map.ID)[c.category] || c.category;
+  };
+
+  const couponLabel = (c: DbCoupon) => {
+    if (c.type === 'percentage') return `${c.value}%`;
+    return `Rp${c.value.toLocaleString('id-ID')}`;
   };
 
   // ─── Popup izin lokasi ───
@@ -648,206 +821,250 @@ export default function LandingPage() {
 
   const loadingText = isEN ? 'Loading...' : 'Memuat form...';
 
+  // ─── Carousel & back-to-top ───
+  const promoRowRef = useRef<HTMLDivElement>(null);
+  const scrollPromo = (dir: 1 | -1) => {
+    promoRowRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
+  };
+
+  const [showTop, setShowTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 600);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+
   return (
-    <main className="bg-[#f0f4f8] min-h-screen overflow-x-hidden">
+    <main className="bg-brand-bgLight min-h-screen">
       <UnifiedNavbar user={session?.user || null} />
 
       {/* ══════════════════════════════════════════════════════
           1. HERO SECTION
       ══════════════════════════════════════════════════════ */}
-      <section className="relative pt-28 md:pt-36 pb-14 md:pb-20 overflow-visible">
-        <div className="absolute inset-0">
-          <Image
-            src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=1800&q=80"
-            alt="Hero background"
-            fill
-            priority
-            quality={75}
-            className="object-cover"
-          />
-          <div className="absolute inset-0 bg-slate-900/50" />
+      <section className="relative z-10 pt-[120px] md:pt-[132px] pb-16 md:pb-20 overflow-hidden">
+        {/* Hero card */}
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
+          <div className="relative rounded-3xl md:rounded-[36px] overflow-hidden min-h-[400px] md:min-h-[520px] flex flex-col justify-between p-6 sm:p-10 lg:p-14 shadow-floating bg-slate-900">
+            {/* Background cover image & overlay */}
+            <div className="absolute inset-0 z-0">
+              <Image
+                src={fallbackBg}
+                alt="Hero background"
+                fill
+                priority
+                quality={75}
+                className="object-cover object-center animate-kenburns"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-white via-white/85 to-transparent lg:max-w-3xl" />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 via-transparent to-transparent" />
+            </div>
+
+            {/* Headline */}
+            <div className="relative z-10 max-w-2xl pt-4">
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-brand-blue/10 border border-brand-blue/25 mb-4 backdrop-blur-sm"
+              >
+                <span className="w-2 h-2 rounded-full bg-brand-orange animate-pulse"></span>
+                <span className="text-xs font-bold uppercase tracking-widest text-brand-blue">
+                  {isEN ? 'Explore Indonesia & the World' : 'Jelajahi Indonesia & Dunia'}
+                </span>
+              </motion.div>
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="text-3xl sm:text-4xl lg:text-[48px] font-extrabold text-brand-ink leading-[1.12] tracking-tight"
+              >
+                {isEN ? (
+                  <>Explore the World, Make Your <span className="text-brand-orange">Dream Trip</span> Come True</>
+                ) : (
+                  <>Jelajahi Dunia, Wujudkan <span className="text-brand-orange">Impian Perjalananmu</span></>
+                )}
+              </motion.h1>
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="mt-4 text-base sm:text-lg text-brand-neutral max-w-xl font-medium leading-relaxed"
+              >
+                {isEN
+                  ? 'Flights, hotels, trains & insurance — transparent best prices, instant booking & friendly 24/7 support.'
+                  : 'Pesawat, hotel, kereta & asuransi — harga transparan terbaik, reservasi instan & dukungan ramah 24/7.'}
+              </motion.p>
+            </div>
+            <div className="hidden lg:block h-20"></div>
+          </div>
         </div>
 
-        <div className="relative z-10 max-w-[1280px] mx-auto px-4 md:px-8">
-          <div className="text-center mb-8 md:mb-10">
-            <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-2">{t.hero.badge}</p>
-            <h1 className="text-[28px] sm:text-[42px] md:text-6xl leading-tight font-black text-white tracking-tight">
-              {isEN ? (
-                <>Top Choice for{' '}<span className="text-orange-400">Explore the World</span></>
-              ) : (
-                <>Pilihan Utama untuk{' '}<span className="text-orange-400">Jelajahi Dunia</span></>
-              )}
-            </h1>
-            <p className="text-white/80 text-sm sm:text-base mt-4 max-w-2xl mx-auto leading-relaxed px-2">
-              {t.hero.subtitle}
-            </p>
-          </div>
-
-          {/* Search Card */}
-          <div className="max-w-5xl mx-auto bg-white/15 backdrop-blur-2xl border border-white/20 rounded-[28px] md:rounded-[36px] shadow-2xl overflow-visible">
-            {/* Tabs */}
-            <div className="flex overflow-x-auto scrollbar-hide gap-2 p-3 border-b border-white/10">
+        {/* Floating search widget */}
+        <motion.div
+          initial={{ opacity: 0, y: 32 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7, delay: 0.35 }}
+          className="max-w-[1280px] mx-auto px-4 md:px-8 -mt-10 md:-mt-20 relative z-20"
+        >
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-floating border border-slate-100/80 p-4 sm:p-6 transition-all">
+            {/* Category tabs */}
+            <div className="flex items-center gap-2 pb-5 border-b border-slate-100 overflow-x-auto scrollbar-hide">
               {SEARCH_TABS.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 sm:px-5 py-3 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold shrink-0 transition-all duration-200 ${
                     activeTab === tab.id
-                      ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/30'
-                      : 'text-white/80 hover:bg-white/10'
+                      ? 'bg-brand-blue text-white shadow-sm'
+                      : 'bg-slate-50 hover:bg-slate-100 text-brand-neutral'
                   }`}
                 >
-                  <i className={`fa-solid ${tab.icon} text-xs`} />
+                  <i className={`fa-solid ${tab.icon} text-xs ${activeTab === tab.id ? '' : 'text-slate-400'}`} />
                   {tab.label}
                 </button>
               ))}
             </div>
 
-            {/* Search Forms */}
-            <div className="relative z-[999] w-full p-2 sm:p-3">
-              {activeTab === 'flights' && (
-                <Suspense fallback={<div className="h-32 flex items-center justify-center text-white/70 text-sm">{loadingText}</div>}>
-                  <FlightSearchForm onSearch={handleFlightSearch} loading={isSearching} />
-                </Suspense>
-              )}
-              {activeTab === 'hotels' && (
-                <Suspense fallback={<div className="h-32 flex items-center justify-center text-white/70 text-sm">{loadingText}</div>}>
-                  <HotelSearchForm onSearch={handleHotelSearch} loading={isSearching} />
-                </Suspense>
-              )}
-              {activeTab === 'trains' && (
-                <Suspense fallback={<div className="h-32 flex items-center justify-center text-white/70 text-sm">{loadingText}</div>}>
-                  <TrainSearchForm onSearch={handleTrainSearch} loading={isSearching} />
-                </Suspense>
-              )}
-              {activeTab === 'insurance' && (
-                <Suspense fallback={<div className="h-32 flex items-center justify-center text-white/70 text-sm">{loadingText}</div>}>
-                  <InsuranceSearchForm onSearch={handleInsuranceSearch} loading={isSearching} />
-                </Suspense>
-              )}
+            {/* Search forms */}
+            <div className="pt-5">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.22 }}
+                >
+                  {activeTab === 'flights' && (
+                    <Suspense fallback={<div className="h-32 flex items-center justify-center text-slate-400 text-sm">{loadingText}</div>}>
+                      <FlightSearchForm onSearch={handleFlightSearch} loading={isSearching} variant="light" />
+                    </Suspense>
+                  )}
+                  {activeTab === 'hotels' && (
+                    <Suspense fallback={<div className="h-32 flex items-center justify-center text-slate-400 text-sm">{loadingText}</div>}>
+                      <HotelSearchForm onSearch={handleHotelSearch} loading={isSearching} variant="light" />
+                    </Suspense>
+                  )}
+                  {activeTab === 'trains' && (
+                    <Suspense fallback={<div className="h-32 flex items-center justify-center text-slate-400 text-sm">{loadingText}</div>}>
+                      <TrainSearchForm onSearch={handleTrainSearch} loading={isSearching} variant="light" />
+                    </Suspense>
+                  )}
+                  {activeTab === 'insurance' && (
+                    <Suspense fallback={<div className="h-32 flex items-center justify-center text-slate-400 text-sm">{loadingText}</div>}>
+                      <InsuranceSearchForm onSearch={handleInsuranceSearch} loading={isSearching} variant="light" />
+                    </Suspense>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Trust badges */}
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8 mt-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-slate-100 shadow-card">
+              <div className="w-12 h-12 rounded-xl bg-brand-blue/10 flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-bolt text-brand-blue text-lg"></i>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-brand-ink">{isEN ? 'Fast & Easy Booking' : 'Booking Cepat & Mudah'}</h4>
+                <p className="text-xs text-brand-neutral mt-0.5">{isEN ? 'Instant ticket & hotel voucher confirmation' : 'Konfirmasi instan tiket & voucher hotel'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-slate-100 shadow-card">
+              <div className="w-12 h-12 rounded-xl bg-brand-forest/10 flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-shield-halved text-brand-forest text-lg"></i>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-brand-ink">{isEN ? '100% Secure Transactions' : 'Transaksi 100% Aman'}</h4>
+                <p className="text-xs text-brand-neutral mt-0.5">{isEN ? 'Trusted encryption & refund guarantee' : 'Enkripsi terpercaya & garansi refund'}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-slate-100 shadow-card">
+              <div className="w-12 h-12 rounded-xl bg-brand-orange/10 flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-tags text-brand-orange text-lg"></i>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-brand-ink">{isEN ? 'Best Price Guarantee' : 'Jaminan Harga Terbaik'}</h4>
+                <p className="text-xs text-brand-neutral mt-0.5">{isEN ? 'Exclusive promos with no hidden fees' : 'Promo eksklusif tanpa biaya tersembunyi'}</p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════════════
-          2. BANNER & KUPON EKSTRA
-      ══════════════════════════════════════════════════════ */}
-      <section className="relative z-0 bg-[#f0f4f8] pt-4 pb-6">
-        {/* Full-width promo banner */}
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8 mb-5">
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-800 via-blue-700 to-orange-600 p-6 md:p-8 flex items-center justify-between gap-4">
-            <div className="absolute -left-10 -top-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-orange-500/20 rounded-full blur-2xl pointer-events-none" />
-            <div className="relative z-10">
-              <span className="inline-block bg-orange-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-3">WOW Weekend</span>
-              <p className="text-white/80 text-sm mb-1">{isEN ? 'Special Discount Every Friday – Sunday' : 'Diskon Spesial Setiap Jumat – Minggu'}</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-white text-lg font-semibold">{isEN ? 'Cashback Coupon' : 'Kupon Cashback'}</span>
-                <span className="text-4xl md:text-5xl font-black text-white">700rb</span>
-              </div>
-            </div>
-            <div className="relative z-10 hidden sm:flex flex-col items-end gap-3">
-              <button
-                onClick={() => router.push('/flight/search')}
-                className="bg-white text-orange-600 font-black text-sm px-6 py-3 rounded-xl hover:bg-orange-50 transition-all shadow-lg"
-              >
-                {isEN ? 'Claim Now' : 'Klaim Sekarang'}
-              </button>
-              <p className="text-white/60 text-xs">{isEN ? '*For registered users only' : '*Berlaku untuk pengguna terdaftar'}</p>
-            </div>
-          </div>
-        </div>
 
+      {/* ══════════════════════════════════════════════════════
+          2. KUPON EKSTRA
+      ══════════════════════════════════════════════════════ */}
+      <section className="relative z-0 bg-brand-bgLight pt-0 pb-6">
         {/* Coupon strip */}
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
-          <div className="flex items-center gap-2 mb-3">
-            <i className="fa-solid fa-ticket text-orange-500 text-sm" />
-            <h3 className="text-sm font-black text-slate-800">
-              {isEN ? '12% Discount Coupons for New Users' : 'Kupon Diskon 12% untuk Pengguna Baru'}
-            </h3>
+        {dbCoupons.length > 0 && (
+        <Reveal delay={0.08} className="max-w-[1280px] mx-auto px-4 md:px-8">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <i className="fa-solid fa-ticket text-brand-orange text-sm" />
+              <h3 className="text-sm font-black text-brand-ink">
+                {isEN ? 'Active Discount Coupons' : 'Kupon Diskon Aktif'}
+              </h3>
+            </div>
+            {dbCoupons.length > 3 && (
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => scrollCoupon(-1)} className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-all">
+                  <i className="fa-solid fa-chevron-left text-xs" />
+                </button>
+                <button onClick={() => scrollCoupon(1)} className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-all">
+                  <i className="fa-solid fa-chevron-right text-xs" />
+                </button>
+              </div>
+            )}
           </div>
-          <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
-            {(isEN ? [
-              { label: 'Save 12% on First Hotel Booking', code: 'HOTELBARU12', type: 'Hotel' },
-              { label: 'Save 10% on Xperience Activities', code: 'XPER10',     type: 'Activity' },
-              { label: '12% Off Airport Transfer',         code: 'TRANSFER12', type: 'Transfer' },
-              { label: '15% Cashback on First Flight',     code: 'FLYAWAY15',  type: 'Flights' },
-              { label: '10% Off Travel Insurance',         code: 'AMAN10',     type: 'Insurance' },
-            ] : [
-              { label: 'Hemat 12% Pemesanan Hotel Pertama', code: 'HOTELBARU12', type: 'Hotel' },
-              { label: 'Hemat 10% Pemesanan Xperience Pa...', code: 'XPER10',    type: 'Aktivitas' },
-              { label: 'Diskon 12% Antar Jemput Bandara',   code: 'TRANSFER12', type: 'Transfer' },
-              { label: 'Cashback 15% Tiket Pesawat Perdana', code: 'FLYAWAY15', type: 'Pesawat' },
-              { label: 'Diskon 10% Asuransi Perjalanan',    code: 'AMAN10',     type: 'Asuransi' },
-            ]            ).map((c, i) => (
-              <div key={i} onClick={() => handleCouponClick(c.type)} className="flex-none w-[220px] bg-white border border-dashed border-orange-300 rounded-xl p-4 relative overflow-hidden cursor-pointer hover:border-orange-500 hover:shadow-md transition-all group">
-                <div className="absolute top-0 right-0 w-12 h-12 bg-orange-50 rounded-bl-full" />
-                <span className="text-[10px] font-bold text-orange-600 uppercase bg-orange-50 px-2 py-0.5 rounded-full">{c.type}</span>
-                <p className="text-xs font-semibold text-slate-700 mt-2 mb-3 leading-snug">{c.label}</p>
+          <div ref={couponRowRef} className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory">
+            {dbCoupons.map((c) => (
+              <div key={c.id} onClick={() => copyCoupon(c.code)} className="flex-none w-[calc((100%-1rem)/3)] min-w-[180px] snap-start bg-white border border-dashed border-orange-300 rounded-xl p-4 relative overflow-hidden cursor-pointer hover:border-orange-500 hover:shadow-md transition-all group">
+                <div className="absolute top-0 right-0 w-12 h-12 bg-orange-50 rounded-bl-full group-hover:scale-125 transition-transform" />
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[11px] font-bold text-orange-600 uppercase bg-orange-50 px-2 py-0.5 rounded-full">{couponCategoryLabel(c)}</span>
+                  <span className="text-[11px] font-black text-orange-700">{couponLabel(c)}</span>
+                </div>
+                <p className="text-xs font-semibold text-slate-700 mt-2 mb-3 leading-snug">{c.name}</p>
                 <div className="flex items-center justify-between">
-                  <code className="text-[10px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded">{c.code}</code>
-                  <button
-                    onClick={e => { e.stopPropagation(); copyCoupon(c.code); }}
-                    className="text-orange-500 text-[10px] font-black uppercase hover:text-orange-700 transition"
-                  >
+                  <code className="text-[11px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded">{c.code}</code>
+                  <span className="text-orange-500 text-[11px] font-black uppercase">
                     {copiedCoupon === c.code ? (isEN ? 'Copied!' : 'Tersalin!') : (isEN ? 'Copy' : 'Salin')}
-                  </button>
+                  </span>
                 </div>
               </div>
             ))}
           </div>
-        </div>
+        </Reveal>
+        )}
+
       </section>
 
       {/* ══════════════════════════════════════════════════════
-          3. QUICK SHORTCUTS
+          4. PROMO TERBAIK (carousel + arrow)
       ══════════════════════════════════════════════════════ */}
-      <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-8">
-        <h2 className="text-lg sm:text-xl font-black text-slate-900 mb-4">
-          {isEN ? 'Maximize Your Plans' : 'Maksimalkan Rencanamu'}
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-          {QUICK_SHORTCUTS.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => router.push(s.href)}
-              className="group relative overflow-hidden rounded-2xl aspect-[5/3] shadow-md hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-            >
-              <img src={s.img} alt={s.label} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-              <div className={`absolute inset-0 bg-gradient-to-br ${s.color} opacity-75 group-hover:opacity-85 transition-opacity`} />
-              <div className="absolute inset-0 flex flex-col justify-end p-3 md:p-4">
-                <i className={`fa-solid ${s.icon} text-white/70 text-base mb-1`} />
-                <span className="text-white font-black text-xs sm:text-sm leading-tight">{s.label}</span>
-                <span className="text-white/70 text-[10px] mt-0.5">{s.desc}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════
-          4. PROMO TERBAIK
-      ══════════════════════════════════════════════════════ */}
-      <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg sm:text-xl font-black text-slate-900">
+      <section id="promo" className="max-w-[1280px] mx-auto px-4 md:px-8 py-6">
+        <Reveal className="mb-4">
+          <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
             {isEN ? 'Best Promos for This Holiday!' : 'Promo Terbaik buat Liburan Ini!'}
           </h2>
-          <button onClick={() => router.push('/flight/search')} className="text-orange-500 text-xs sm:text-sm font-bold hover:underline">
-            {isEN ? 'See All Promos →' : 'Lihat Semua Promo →'}
-          </button>
-        </div>
+        </Reveal>
 
         <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
           {PROMO_TABS.map(tab => (
             <button
               key={tab}
               onClick={() => setActivePromoTab(tab)}
-              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
+              className={`px-4 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
                 activePromoTab === tab
-                  ? 'bg-blue-800 text-white border-blue-800'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
+                  ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-200'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'
               }`}
             >
               {tab}
@@ -855,27 +1072,42 @@ export default function LandingPage() {
           ))}
         </div>
 
-        <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
-          {((PROMO_BANNERS as any)[activePromoTab] || []).map((p: any, i: number) => (
-            <div
-              key={i}
-              onClick={() => handlePromoClick(p, activePromoTab)}
-              className="flex-none w-[200px] sm:w-[230px] bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="relative overflow-hidden h-[120px]">
-                <img src={p.img} alt={p.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                <span className="absolute top-2 left-2 bg-orange-500 text-white text-[10px] font-black px-2 py-1 rounded-full">{p.badge}</span>
-              </div>
-              <div className="p-3">
-                <p className="font-black text-slate-800 text-sm leading-snug">
-                  {isFlightTab(activePromoTab) || isHotelTab(activePromoTab)
-                    ? p.title
-                    : trainLabelFor(p.origin, p.destination, p.title)}
+        <div className="relative">
+          <div ref={promoRowRef} className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 scroll-smooth snap-x snap-mandatory">
+            {((PROMO_BANNERS as any)[activePromoTab] || []).map((p: any, i: number) => (
+              <div
+                key={i}
+                onClick={() => handlePromoClick(p, activePromoTab)}
+                className="flex-none w-[200px] sm:w-[230px] bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group snap-start"
+              >
+                <div className="relative overflow-hidden h-[120px]">
+                  <img src={p.img} alt={p.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  <span className="absolute top-2 left-2 bg-orange-500 text-white text-[11px] font-black px-2 py-1 rounded-full">{p.badge}</span>
+                </div>
+                <div className="p-3">
+                  <p className="font-black text-slate-800 text-sm leading-snug">
+                    {isFlightTab(activePromoTab) || isHotelTab(activePromoTab)
+                      ? p.title
+                      : trainLabelFor(p.origin, p.destination, p.title)}
                 </p>
                 <p className="text-orange-600 font-bold text-xs mt-1">{p.subtitle}</p>
               </div>
             </div>
           ))}
+          </div>
+          {/* Thin arrows — mobile only */}
+          <button
+            onClick={() => promoRowRef.current?.scrollBy({ left: -220, behavior: 'smooth' })}
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-orange-500 sm:hidden transition-colors"
+          >
+            <i className="fa-solid fa-chevron-left text-lg" />
+          </button>
+          <button
+            onClick={() => promoRowRef.current?.scrollBy({ left: 220, behavior: 'smooth' })}
+            className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-orange-500 sm:hidden transition-colors"
+          >
+            <i className="fa-solid fa-chevron-right text-lg" />
+          </button>
         </div>
       </section>
 
@@ -883,36 +1115,55 @@ export default function LandingPage() {
           5. DESTINASI INTERNASIONAL
       ══════════════════════════════════════════════════════ */}
       <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-8">
-        <div className="flex items-center justify-between mb-5">
+        <Reveal className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-lg sm:text-xl font-black text-slate-900">
+            <span className="text-xs font-bold text-brand-blue uppercase tracking-widest block mb-1">
+              {isEN ? 'Explore Destinations' : 'Eksplor Destinasi'}
+            </span>
+            <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
               {isEN ? 'Discover What You Love Across Asia and Beyond' : 'Temukan yang kamu suka di Asia hingga dunia'}
             </h2>
-            <p className="text-slate-500 text-xs sm:text-sm mt-1">
+            <p className="text-brand-neutral text-xs sm:text-sm mt-1">
               {isEN ? `Click a destination to search flights from ${originLabel}` : `Klik destinasi untuk langsung cari tiket dari ${originLabel}`}
             </p>
           </div>
-        </div>
+        </Reveal>
 
-        <div className="grid grid-cols-3 gap-3 md:gap-4">
-          {ASIA_DESTINATIONS.map(d => (
-            <button
-              key={d.code}
-              onClick={() => quickFlight(d.code, flightOrigin)}
-              className="group relative overflow-hidden rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
-            >
-              <div className="aspect-[4/3] sm:aspect-[3/2] relative">
-                <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3 text-left">
-                  <div className="flex items-center gap-1 mb-0.5">
-                    <span className="text-base">{d.flag}</span>
-                    <span className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          {ASIA_DESTINATIONS.map((d, i) => (
+            <Reveal key={d.code} delay={i * 0.06}>
+              <div
+                onClick={() => quickFlight(d.code, flightOrigin)}
+                className="group bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-card hover:shadow-xl transition-all duration-300 hover:-translate-y-1 w-full text-left cursor-pointer flex flex-col"
+                aria-label={isEN ? d.nameEN : d.name}
+              >
+                <div className="relative h-52 sm:h-56 overflow-hidden">
+                  <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <span className={`absolute top-3.5 left-3.5 ${ASIA_DESTINATIONS_BADGE_CLASS[i]} text-xs font-bold px-3 py-1 rounded-full shadow-sm`}>
+                    {isEN ? ASIA_DESTINATIONS_BADGES_EN[i] : ASIA_DESTINATIONS_BADGES_ID[i]}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={isEN ? 'Save to favorites' : 'Simpan ke favorit'}
+                    onClick={(e) => { e.stopPropagation(); toggleFav(d.code); }}
+                    className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-white/85 hover:bg-white text-slate-700 flex items-center justify-center transition-colors shadow-sm"
+                  >
+                    <i className={`fa-solid fa-heart text-sm ${favIds.includes(d.code) ? 'text-rose-500' : 'text-slate-400'}`}></i>
+                  </button>
+                </div>
+                <div className="p-5 flex-1 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-extrabold text-base text-brand-ink group-hover:text-brand-blue transition-colors leading-tight">
+                      {isEN ? d.nameEN : d.name}
+                    </h3>
                   </div>
-                  <span className="text-orange-300 text-[10px] sm:text-xs font-semibold">{isEN ? d.priceEN : d.price}</span>
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">{isEN ? 'From' : 'Mulai'}</span>
+                    <span className="font-extrabold text-base text-brand-orange">{isEN ? d.priceEN : d.price}</span>
+                  </div>
                 </div>
               </div>
-            </button>
+            </Reveal>
           ))}
         </div>
       </section>
@@ -921,20 +1172,20 @@ export default function LandingPage() {
           6. PROMO TIKET DOMESTIK
       ══════════════════════════════════════════════════════ */}
       <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-6">
-        <div className="flex items-center gap-2 mb-4">
-          <i className="fa-solid fa-plane text-orange-500" />
-          <h2 className="text-lg sm:text-xl font-black text-slate-900">
+        <Reveal className="flex items-center gap-2 mb-4">
+          <i className="fa-solid fa-plane text-brand-orange" />
+          <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
             {isEN ? 'Cheap Domestic Flight Promos' : 'Promo Tiket Pesawat Domestik Murah'}
           </h2>
           <span className="text-slate-400">✈️</span>
-        </div>
+        </Reveal>
 
         <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-4 pb-1">
           {DOMESTIC_CITIES.map(city => (
             <button
               key={city}
               onClick={() => setActiveDomesticCity(city)}
-              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
+              className={`px-4 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
                 activeDomesticCity === city
                   ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-200'
                   : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'
@@ -952,42 +1203,78 @@ export default function LandingPage() {
             const routeID     = personalize ? f.route.replace(/^Jakarta/, originLabel) : f.route;
             const routeEN     = personalize ? f.routeEN.replace(/^Jakarta/, originLabel) : f.routeEN;
             return (
-              <button
-                key={i}
-                onClick={() => quickFlight(f.dest, cardOrigin)}
-                className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 text-left"
-              >
-                <div className="relative overflow-hidden h-28">
-                  <img src={f.img} alt={f.route} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                  <span className="absolute top-2 left-2 bg-orange-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
-                    {isEN ? 'FROM' : 'MULAI'}
-                  </span>
-                </div>
-                <div className="p-3">
-                  <p className="text-[10px] text-slate-500 font-medium leading-snug mb-1">{isEN ? routeEN : routeID}</p>
-                  <p className="text-[10px] text-slate-400 mb-2">{tomorrowLabel}</p>
-                  <p className="text-orange-600 font-black text-sm">{f.price}</p>
-                </div>
-              </button>
+              <Reveal key={i} delay={i * 0.05}>
+                <button
+                  onClick={() => quickFlight(f.dest, cardOrigin)}
+                  className="group bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-card hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left w-full flex flex-col"
+                >
+                  <div className="relative overflow-hidden h-40">
+                    <img src={f.img} alt={f.route} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+                    <span className="absolute top-3 left-3 bg-brand-orange text-white text-[11px] font-black px-3 py-1 rounded-full uppercase shadow-sm">
+                      {isEN ? 'FROM' : 'MULAI'}
+                    </span>
+                  </div>
+                  <div className="p-4">
+                    <p className="text-[13px] text-brand-neutral font-medium leading-snug mb-1">{isEN ? routeEN : routeID}</p>
+                    <p className="text-[11px] text-slate-400 mb-0">{tomorrowLabel}</p>
+                  </div>
+                  <div className="mt-auto px-4 pt-4 pb-4 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">{isEN ? 'From' : 'Mulai'}</span>
+                    <p className="text-brand-orange font-extrabold text-sm">{f.price}</p>
+                  </div>
+                </button>
+              </Reveal>
             );
           })}
         </div>
       </section>
 
       {/* ══════════════════════════════════════════════════════
-          8. SEO LINK FARM
+          KENAPA MAFIA TRAVEL?
+      ══════════════════════════════════════════════════════ */}
+      <section id="tentang" className="max-w-[1280px] mx-auto px-4 md:px-8 py-10">
+        <Reveal className="text-center mb-8">
+          <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
+            {t.features.title}
+          </h2>
+          <p className="text-brand-neutral text-xs sm:text-sm mt-2 max-w-xl mx-auto">
+            {t.features.subtitle}
+          </p>
+        </Reveal>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
+          {[
+            { title: t.features.fast, desc: t.features.fastDesc },
+            { title: t.features.price, desc: t.features.priceDesc },
+            { title: t.features.secure, desc: t.features.secureDesc },
+            { title: t.features.support, desc: t.features.supportDesc },
+          ].map((f, i) => (
+            <Reveal key={i} delay={i * 0.08}>
+              <div className="group h-full bg-white rounded-2xl border border-slate-100 p-5 md:p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                <div className={`w-11 h-11 rounded-xl ${FEATURES[i].color} flex items-center justify-center mb-4 transition-colors duration-300`}>
+                  <i className={`fa-solid ${FEATURES[i].icon} text-sm`} />
+                </div>
+                <h3 className="font-black text-brand-ink text-sm mb-1.5">{f.title}</h3>
+                <p className="text-xs text-brand-neutral leading-relaxed">{f.desc}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════
+          7. SEO LINK FARM
       ══════════════════════════════════════════════════════ */}
       <section className="bg-white border-t border-slate-100 py-10">
         <div className="max-w-[1280px] mx-auto px-4 md:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
             {Object.entries(SEO_LINKS).map(([category, links]) => (
               <div key={category}>
-                <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-3 pb-2 border-b border-slate-100">{category}</h4>
+                <h4 className="text-xs font-black text-brand-ink uppercase tracking-widest mb-3 pb-2 border-b border-slate-100">{category}</h4>
                 <ul className="space-y-1.5">
                   {(links as SEO_LINK[]).map(link => (
                     <li key={link.label}>
-                      <button onClick={() => seoGo(link)} className="text-xs text-slate-500 hover:text-orange-500 transition-colors leading-relaxed text-left">
+                      <button onClick={() => seoGo(link)} className="text-xs text-slate-500 hover:text-brand-orange transition-colors leading-relaxed text-left">
                         {link.type === 'flight' ? seoFlightLabel(link.label, link.origin, link.dest) : link.label}
                       </button>
                     </li>
@@ -1003,105 +1290,39 @@ export default function LandingPage() {
           CTA REGISTER (if not logged in)
       ══════════════════════════════════════════════════════ */}
       {!isLoggedIn && (
-        <section className="relative overflow-hidden bg-[#003580] py-14">
-          <div className="absolute inset-0 opacity-30 pointer-events-none">
-            <div className="absolute top-0 left-1/4 w-72 h-72 bg-orange-500 rounded-full blur-[100px]" />
-            <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-400 rounded-full blur-[100px]" />
+        <Reveal className="relative overflow-hidden">
+          <div className="absolute inset-0">
+            <img src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200&q=80" alt="" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-900/90 via-slate-900/75 to-slate-900/90" />
           </div>
-          <div className="relative max-w-[900px] mx-auto px-4 text-center">
-            <h2 className="text-3xl md:text-4xl font-black text-white leading-tight">
-              {isEN ? 'Join ' : 'Bergabung dengan '}{' '}
-              <span className="text-orange-400">The Mafia Travel</span>
+          <div className="relative max-w-[700px] mx-auto px-4 text-center py-16">
+            <h2 className="text-2xl md:text-3xl font-black text-white leading-tight">
+              {isEN ? 'Ready to Explore?' : 'Siap Jelajahi Dunia?'}
             </h2>
-            <p className="text-slate-300 text-sm sm:text-base mt-4 leading-relaxed">
+            <p className="text-white/70 text-sm mt-3 leading-relaxed max-w-lg mx-auto">
               {isEN
-                ? 'Enjoy exclusive pricing, discount coupons, and the most modern booking experience in Indonesia.'
-                : 'Nikmati harga eksklusif, kupon diskon, dan pengalaman booking paling modern di Indonesia.'}
+                ? 'Create a free account and get access to exclusive deals, discount coupons, and a seamless booking experience.'
+                : 'Buat akun gratis dan dapatkan akses ke promo eksklusif, kupon diskon, dan pengalaman booking yang mudah.'}
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-3 mt-8">
-              <Link href="/register" className="px-8 py-4 rounded-xl bg-orange-600 text-white text-sm font-black hover:bg-orange-700 transition-all shadow-lg shadow-orange-500/30">
+              <button
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="px-8 py-3.5 rounded-xl bg-brand-orange text-white text-sm font-bold hover:bg-orange-700 transition-all shadow-lg shadow-brand-orange/30"
+              >
+                {isEN ? 'Search Tickets' : 'Cari Tiket'}
+              </button>
+              <Link href="/register" className="px-8 py-3.5 rounded-xl border border-white/25 text-white text-sm font-bold hover:bg-white/10 transition-all">
                 {isEN ? 'Register Free' : 'Daftar Gratis'}
-              </Link>
-              <Link href="/flight/search" className="px-8 py-4 rounded-xl border border-white/25 text-white text-sm font-bold hover:bg-white/10 transition-all">
-                {isEN ? 'Search Tickets →' : 'Cari Tiket →'}
               </Link>
             </div>
           </div>
-        </section>
+        </Reveal>
       )}
 
       {/* ══════════════════════════════════════════════════════
           FOOTER
       ══════════════════════════════════════════════════════ */}
-      <footer className="bg-slate-50 border-t border-slate-200">
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-10">
-          <div className="flex flex-col lg:flex-row justify-between gap-10 pb-8 border-b border-slate-200">
-            <div className="max-w-sm">
-              <h2 className="text-2xl font-black text-slate-900">
-                The <span className="text-orange-600">Mafia</span> Travel
-              </h2>
-              <p className="text-sm text-slate-500 leading-relaxed mt-3">
-                {isEN
-                  ? 'A modern travel platform for a fast, secure, and comfortable booking experience.'
-                  : 'Platform perjalanan modern untuk pengalaman booking yang cepat, aman, dan nyaman.'}
-              </p>
-              <div className="flex items-center gap-3 mt-5">
-                {['fa-facebook', 'fa-instagram', 'fa-twitter', 'fa-tiktok'].map(s => (
-                  <a key={s} href="#" className="w-9 h-9 bg-slate-100 hover:bg-orange-100 hover:text-orange-500 text-slate-500 rounded-xl flex items-center justify-center transition-all">
-                    <i className={`fa-brands ${s} text-sm`} />
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 text-sm">
-              <div>
-                <h4 className="font-black text-slate-900 mb-4">{t.footer.services}</h4>
-                <ul className="space-y-2 text-slate-500">
-                  {(isEN
-                    ? ['Flights', 'Hotels', 'Trains', 'Insurance', 'Airport Transfer']
-                    : ['Pesawat', 'Hotel', 'Kereta', 'Asuransi', 'Transfer Bandara']
-                  ).map(s => (
-                    <li key={s}><Link href="#" className="hover:text-orange-500 transition-colors">{s}</Link></li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-black text-slate-900 mb-4">{t.footer.company}</h4>
-                <ul className="space-y-2 text-slate-500">
-                  {[t.footer.about, t.footer.career, t.footer.partner, 'Blog', t.footer.press].map(s => (
-                    <li key={s}><Link href="#" className="hover:text-orange-500 transition-colors">{s}</Link></li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-black text-slate-900 mb-4">{t.footer.help}</h4>
-                <ul className="space-y-2 text-slate-500">
-                  {(isEN
-                    ? ['Help Center', 'Refund & Reschedule', 'Privacy Policy', 'Terms & Conditions', 'Contact Us']
-                    : ['Pusat Bantuan', 'Refund & Reschedule', 'Kebijakan Privasi', 'Syarat & Ketentuan', 'Hubungi Kami']
-                  ).map(s => (
-                    <li key={s}><Link href="#" className="hover:text-orange-500 transition-colors">{s}</Link></li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs sm:text-sm text-slate-400 text-center sm:text-left">
-              {t.footer.copyright}
-            </p>
-            <div className="flex items-center gap-3 text-slate-400 text-xs">
-              <span>🇮🇩 Indonesia</span>
-              <span>|</span>
-              <span>IDR</span>
-              <span>|</span>
-              <span>{isEN ? 'English' : 'Bahasa Indonesia'}</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <Footer />
 
       {/* ══════════════════════════════════════════════════════
           POPUP IZIN LOKASI
@@ -1117,7 +1338,7 @@ export default function LandingPage() {
               <div className="flex flex-col items-center text-center gap-4 py-4">
                 <span className="w-10 h-10 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin"></span>
                 <div>
-                  <h3 className="font-black text-slate-900 text-lg">{isEN ? 'Detecting location...' : 'Mendeteksi lokasi...'}</h3>
+                  <h3 className="font-black text-brand-ink text-lg">{isEN ? 'Detecting location...' : 'Mendeteksi lokasi...'}</h3>
                   <p className="text-slate-500 text-sm mt-1">
                     {isEN ? 'This only takes a moment.' : 'Sebentar, cuma butuh beberapa detik.'}
                   </p>
@@ -1128,7 +1349,7 @@ export default function LandingPage() {
                 <div className="w-14 h-14 rounded-2xl bg-orange-100 flex items-center justify-center mb-4">
                   <i className="fa-solid fa-location-crosshairs text-orange-500 text-xl animate-pulse"></i>
                 </div>
-                <h3 className="font-black text-slate-900 text-lg leading-snug">
+                <h3 className="font-black text-brand-ink text-lg leading-snug">
                   {isEN ? 'Allow location access?' : 'Izinkan akses lokasi?'}
                 </h3>
                 <p className="text-slate-500 text-sm mt-2 leading-relaxed">
@@ -1165,7 +1386,7 @@ export default function LandingPage() {
             <i className="fa-solid fa-check text-emerald-600"></i>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-900">
+            <p className="text-xs font-bold text-brand-ink">
               {isEN ? 'Departure detected' : 'Asal terdeteksi'}
             </p>
             <p className="text-xs text-slate-500 truncate">
@@ -1184,7 +1405,7 @@ export default function LandingPage() {
             <i className="fa-solid fa-location-crosshairs text-slate-400"></i>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-900">
+            <p className="text-xs font-bold text-brand-ink">
               {isEN ? 'Location unavailable' : 'Lokasi tidak diizinkan'}
             </p>
             <p className="text-xs text-slate-500">
@@ -1196,6 +1417,199 @@ export default function LandingPage() {
           </button>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════
+          COPIED TOAST
+      ══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {showCopiedToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[900] bg-slate-800 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2"
+          >
+            <i className="fa-solid fa-check-circle text-emerald-400"></i>
+            {isEN ? 'Coupon code copied!' : 'Kode kupon tersalin!'}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════
+          BACK TO TOP
+      ══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {showTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.7, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.7, y: 20 }}
+            transition={{ duration: 0.25 }}
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            aria-label={isEN ? 'Back to top' : 'Kembali ke atas'}
+            className="fixed bottom-6 left-6 z-[900] w-12 h-12 rounded-full bg-orange-600 text-white shadow-xl shadow-orange-600/40 flex items-center justify-center hover:bg-orange-700 hover:-translate-y-1 transition-all"
+          >
+            <i className="fa-solid fa-arrow-up text-sm" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* ══════════════════════════════════════════════════════
+          LOGIN POPUP (untuk favorit)
+      ══════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {showLoginPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center px-4"
+            onClick={() => { setShowLoginPopup(false); setLoginError(''); setLoginEmail(''); setLoginPassword(''); }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ duration: 0.25 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
+            >
+              {/* Close button */}
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold text-slate-800">
+                  {isEN ? 'Sign In' : 'Masuk'}
+                </h3>
+                <button
+                  onClick={() => { setShowLoginPopup(false); setLoginError(''); setLoginEmail(''); setLoginPassword(''); }}
+                  className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors"
+                >
+                  <i className="fa-solid fa-xmark text-slate-400 text-sm" />
+                </button>
+              </div>
+
+              {/* Error Alert */}
+              {loginError && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5 mb-4">
+                  <i className="fa-solid fa-circle-exclamation text-red-500 text-xs" />
+                  <p className="text-red-600 text-xs font-medium">{loginError}</p>
+                </div>
+              )}
+
+              {/* Google Login */}
+              <button
+                type="button"
+                onClick={() => {
+                  sessionStorage.setItem('mt_welcome_pending', '1');
+                  signIn('google', { callbackUrl: '/' });
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 border border-slate-200 rounded-lg font-bold text-sm text-slate-700 hover:bg-slate-50 transition-all active:scale-95 mb-4"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                {isEN ? 'Continue with Google' : 'Lanjutkan dengan Google'}
+              </button>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex-grow border-t border-slate-200" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {isEN ? 'or sign in with email' : 'atau masuk dengan email'}
+                </span>
+                <div className="flex-grow border-t border-slate-200" />
+              </div>
+
+              {/* Email/Password Form */}
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setLoginLoading(true);
+                setLoginError('');
+                try {
+                  const res = await Promise.race([
+                    signIn('credentials', { email: loginEmail, password: loginPassword, redirect: false }),
+                    new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000)),
+                  ]);
+                  if (res?.error) {
+                    setLoginError(isEN ? 'Incorrect email or password.' : 'Email atau password salah.');
+                    setLoginLoading(false);
+                  } else {
+                    sessionStorage.setItem('mt_welcome_pending', '1');
+                    window.location.reload();
+                  }
+                } catch (err) {
+                  setLoginError(err instanceof Error && err.message === 'timeout'
+                    ? (isEN ? 'Connection timed out.' : 'Koneksi timeout.')
+                    : (isEN ? 'Server error.' : 'Kesalahan server.'));
+                  setLoginLoading(false);
+                }
+              }} className="space-y-3">
+                {/* Email */}
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={loginEmail}
+                    onChange={e => setLoginEmail(e.target.value)}
+                    required
+                    disabled={loginLoading}
+                    className="peer w-full h-11 px-3 pt-3 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-brand-ink bg-transparent disabled:bg-slate-50"
+                    placeholder=" "
+                  />
+                  <label className="absolute left-3 top-3 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2 peer-not-placeholder-shown:scale-75 origin-left">
+                    {isEN ? 'Email Address' : 'Alamat Email'}
+                  </label>
+                </div>
+
+                {/* Password */}
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={loginPassword}
+                    onChange={e => setLoginPassword(e.target.value)}
+                    required
+                    disabled={loginLoading}
+                    className="peer w-full h-11 px-3 pt-3 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-brand-ink bg-transparent disabled:bg-slate-50"
+                    placeholder=" "
+                  />
+                  <label className="absolute left-3 top-3 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2 peer-not-placeholder-shown:scale-75 origin-left">
+                    {isEN ? 'Password' : 'Password'}
+                  </label>
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={loginLoading}
+                  className="w-full h-11 bg-slate-900 text-white font-bold rounded-lg shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-sm"
+                >
+                  {loginLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      {isEN ? 'Checking...' : 'Memeriksa...'}
+                    </>
+                  ) : (
+                    <>
+                      {isEN ? 'Sign In Now' : 'Masuk Sekarang'}
+                      <i className="fa-solid fa-arrow-right text-xs" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Register Link */}
+              <p className="mt-4 text-center text-xs text-slate-500 font-medium">
+                {isEN ? "Don't have an account?" : 'Belum punya akun?'}{' '}
+                <a href="/register" className="text-orange-600 font-bold hover:underline underline-offset-4">
+                  {isEN ? 'Register here' : 'Daftar di sini'}
+                </a>
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

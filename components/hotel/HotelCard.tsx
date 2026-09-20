@@ -82,6 +82,7 @@ export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest 
       child: String(searchParams.child || 0),
       room: String(searchParams.room),
       nationality: searchParams.nationality || 'ID',
+      search_name: searchParams.search_name || '',
     }).toString();
     router.push(`/hotel/${hotel.id}?${q}`);
   };
@@ -89,7 +90,7 @@ export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest 
   return (
     <article
       onClick={handleSelect}
-      className={`bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col md:flex-row hover:shadow-lg transition-all duration-300 group cursor-pointer ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200/60'}`}
+      className={`bg-white rounded-2xl border shadow-card overflow-hidden flex flex-col md:flex-row hover:shadow-lg transition-all duration-300 group cursor-pointer ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}
     >
       {/* ── IMAGE ── */}
       <div className="md:w-[260px] lg:w-[280px] relative h-[220px] md:h-auto bg-slate-100 overflow-hidden shrink-0">
@@ -144,7 +145,7 @@ export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest 
         {/* Top: name + location */}
         <div className="mb-3">
           <div className="flex items-start justify-between gap-3 mb-1.5">
-            <h3 className="font-black text-slate-900 text-lg leading-tight truncate flex-1">
+            <h3 className="font-black text-brand-ink text-lg leading-tight truncate flex-1">
               {hotel.name}
             </h3>
             {rating > 0 && (

@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 function ConfirmationContent() {
   const { language } = useLanguage();
@@ -15,6 +16,8 @@ function ConfirmationContent() {
   const status = sp.get('status') || 'pending';
   const isSuccess = status === 'success';
   const isPending = status === 'pending';
+
+  usePageTitle(isSuccess ? 'Konfirmasi Kereta' : isPending ? 'Menunggu Pembayaran' : 'Pembayaran Gagal');
 
   const config = {
     icon: isSuccess ? '✓' : isPending ? '🚆' : '✕',

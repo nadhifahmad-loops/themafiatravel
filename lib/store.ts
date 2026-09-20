@@ -37,6 +37,10 @@ export const bookingStore = {
     // JSON blobs
     passengerData?: Prisma.InputJsonValue;
     bookingData?: Prisma.InputJsonValue;
+    // Coupon
+    couponId?: number;
+    couponCode?: string;
+    discountAmount?: number;
   }) => {
     return await prisma.booking.create({
       data: {
@@ -67,6 +71,10 @@ export const bookingStore = {
         // JSON
         passengerData: data.passengerData ?? undefined,
         bookingData: data.bookingData ?? undefined,
+        // Coupon
+        couponId: data.couponId ?? null,
+        couponCode: data.couponCode ?? null,
+        discountAmount: data.discountAmount ?? 0,
       },
     });
   },
@@ -338,4 +346,27 @@ export const bookingStore = {
       },
     });
   },
+};
+
+// ── ORBIS REFUND STATE MAPPING (§4.16) ────────────────────────────────────
+// Maps Orbis vendor-side refund states to app-level statuses.
+// Orbis states: draft → confirm → sent → finalize → done
+// App statuses: refund_requested → cancelled (with refundResult)
+export function mapOrbisRefundState(orbisState: string): string {
+  const stateMap: Record<string, string> = {
+    draft: 'refund_requested',
+    confirm: 'refund_requested',
+    sent: 'refund_requested',
+    finalize: 'refund_processing',
+    done: 'cancelled',
+  };
+  return stateMap[orbisState] || 'refund_requested';
+}
+
+export const ORBIS_REFUND_STATE_LABELS: Record<string, string> = {
+  draft: 'Permintaan refund baru',
+  confirm: 'Refund dikonfirmasi',
+  sent: 'Refund dikirim ke vendor',
+  finalize: 'Refund sedang diproses',
+  done: 'Refund selesai',
 };

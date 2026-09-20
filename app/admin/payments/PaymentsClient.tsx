@@ -93,8 +93,8 @@ export default function PaymentsClient({ initialPayments }: { initialPayments: A
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Log Pembayaran (Midtrans)</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Pantau status transaksi webhook dari payment gateway.</p>
+          <h1 className="text-xl font-bold text-brand-ink">Log Pembayaran (Midtrans)</h1>
+          <p className="text-brand-neutral text-sm mt-0.5">Pantau status transaksi webhook dari payment gateway.</p>
         </div>
       </div>
 

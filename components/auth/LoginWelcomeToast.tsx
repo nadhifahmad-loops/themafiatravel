@@ -12,17 +12,17 @@ export default function LoginWelcomeToast() {
   const { language } = useLanguage();
   const t = i18n.navbar[language];
 
-  // Baca penanda "baru saja login" sekali saat mount (disimpan oleh halaman login).
-  const [pending] = useState(() => {
-    try {
-      if (!sessionStorage.getItem(STORAGE_KEY)) return false;
-      sessionStorage.removeItem(STORAGE_KEY);
-      return true;
-    } catch {
-      return false;
-    }
-  });
+  const [pending, setPending] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(STORAGE_KEY)) {
+        sessionStorage.removeItem(STORAGE_KEY);
+        setPending(true);
+      }
+    } catch {}
+  }, []);
 
   const visible = pending && !dismissed && status === 'authenticated';
 

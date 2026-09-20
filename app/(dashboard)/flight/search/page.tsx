@@ -3,14 +3,35 @@ import { useState, useMemo, Suspense, useEffect, useCallback, useRef } from 'rea
 import { useRouter, useSearchParams } from 'next/navigation';
 import FlightSearchForm from '@/components/flight/FlightSearchForm';
 import FlightCard from '@/components/flight/FlightCard';
-import { FLIGHT_PROVIDERS } from '@/lib/providers';
+import { FLIGHT_PROVIDERS, CARRIER_CODE_TO_AIRLINE } from '@/lib/providers';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtIDR(n: number) {
   if (!n) return 'Rp 0';
   return 'Rp ' + Math.round(n).toLocaleString('id-ID');
+}
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** Hitung total harga per penumpang dari fare (termasuk admin fee/charge lain) */
+function calcFarePerPax(summary: any): number {
+  if (!summary) return 0;
+  let total = 0;
+  for (const ch of (summary.service_charges || [])) {
+    total += ch.total || 0;
+  }
+  // Fallback jika service_charges kosong
+  if (total === 0) {
+    total = (summary.base_fare || 0) + (summary.base_tax || 0);
+  }
+  return total;
 }
 function fmtTime(dt: string) {
   if (!dt) return '--:--';
@@ -87,16 +108,12 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
     const seg     = journey.segments?.[0];
     const lastSeg = journey.segments?.[journey.segments.length - 1];
     const summary = fare?.service_charge_summary?.[0];
-    const price   = ((summary?.base_fare || 0) + (summary?.base_tax || 0)) * (searchMeta?.adult || 1);
+    const price   = calcFarePerPax(summary) * (searchMeta?.adult || 1);
     return (
       <div>
-        <div className="flex items-center gap-2 mb-2">
-          <span className={`text-xs font-black px-2.5 py-1 rounded-full text-white ${color || 'bg-orange-600'}`}>{label}</span>
-          <span className="text-xs text-slate-500 font-semibold">{fmtDate(seg?.departure_date)}</span>
-        </div>
         <div className="bg-slate-50 rounded-2xl p-4">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center border border-slate-200 shadow-sm overflow-hidden">
+            <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center border border-slate-100 shadow-card overflow-hidden">
               <img
                 src={`https://assets.wego.com/image/upload/h_72,c_fit,f_auto,fl_lossy,q_auto/v20250101/flights/airlines_square/${seg?.carrier_code}.png`}
                 alt={seg?.carrier_name}
@@ -105,7 +122,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
               />
             </div>
             <div>
-              <p className="font-black text-slate-800 text-sm">{seg?.carrier_name}</p>
+              <p className="font-black text-brand-ink text-sm">{CARRIER_CODE_TO_AIRLINE[seg?.carrier_code] || seg?.carrier_name || seg?.carrier_code}</p>
               <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">
                 {fare?.fare_name || fare?.class_of_service || 'Economy'} ·{' '}
                 {(journey.segments?.length || 1) === 1 ? t.directOnly : `${(journey.segments?.length || 1) - 1} transit`}
@@ -114,7 +131,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xl font-black text-slate-900">{fmtTime(seg?.departure_date)}</p>
+              <p className="text-xl font-black text-brand-ink">{fmtTime(seg?.departure_date)}</p>
               <p className="text-xs font-bold text-slate-500">{seg?.origin || journey.origin}</p>
             </div>
             <div className="flex flex-col items-center flex-1 px-3">
@@ -129,7 +146,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xl font-black text-slate-900">{fmtTime(lastSeg?.arrival_date)}</p>
+              <p className="text-xl font-black text-brand-ink">{fmtTime(lastSeg?.arrival_date)}</p>
               <p className="text-xs font-bold text-slate-500">{lastSeg?.destination || journey.destination}</p>
             </div>
           </div>
@@ -149,7 +166,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
   const totalPrice = selectedLegs.reduce((sum: number, leg: any) => {
     if (!leg) return sum;
     const summary = leg.fare?.service_charge_summary?.[0];
-    return sum + ((summary?.base_fare || 0) + (summary?.base_tax || 0)) * (searchMeta?.adult || 1);
+    return sum + calcFarePerPax(summary) * (searchMeta?.adult || 1);
   }, 0);
 
   const allSelected = isRT
@@ -174,7 +191,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
               <i className="fa-solid fa-xmark text-gray-500"></i>
             </button>
-            <h2 className="text-base font-black text-slate-900">Review Penerbanganmu</h2>
+            <h2 className="text-base font-black text-brand-ink">Review Penerbanganmu</h2>
           </div>
           {/* Step pills */}
           {(isRT || isMulti) && (
@@ -285,32 +302,146 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
 }
 
 // ─── Provider Search Progress ─────────────────────────────────────────────────
-function ProviderProgress({ providers, done, total }: { providers: string[]; done: number; total: number }) {
+function ProviderProgress({ done, total }: { done: number; total: number }) {
   if (total === 0) return null;
   const pct = Math.round((done / total) * 100);
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-4">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-          <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          Mencari di {total} maskapai...
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2.5 text-sm font-bold text-slate-700">
+          <div className="relative">
+            <div className="w-5 h-5 border-2 border-orange-200 rounded-full"></div>
+            <div className="absolute inset-0 w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          Sedang mencari penerbangan terbaik...
         </div>
-        <span className="text-xs text-orange-600 font-black">{done}/{total}</span>
+        <span className="text-xs font-black text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full">{pct}%</span>
       </div>
-      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+      <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
         <div
-          className="h-full bg-orange-500 transition-all duration-500 rounded-full"
+          className="h-full bg-gradient-to-r from-orange-400 to-orange-500 rounded-full transition-all duration-700 ease-out relative"
           style={{ width: `${pct}%` }}
-        />
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-[shimmer_1.5s_infinite]"></div>
+        </div>
       </div>
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {providers.map((p, i) => (
-          <span key={p} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-            i < done ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'
-          }`}>
-            {i < done ? '✓ ' : ''}{FLIGHT_PROVIDERS.find(f => f.id === p)?.label || p}
-          </span>
-        ))}
+    </div>
+  );
+}
+
+// ─── Filter Skeleton ────────────────────────────────────────────────────────
+function FilterSkeleton() {
+  return (
+    <div className="w-full lg:w-64 shrink-0 space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden sticky top-24 animate-pulse">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100">
+          <div className="w-4 h-4 bg-slate-200 rounded"></div>
+          <div className="h-3 w-16 bg-slate-200 rounded"></div>
+        </div>
+        <div className="p-4 space-y-5">
+          {/* Price */}
+          <div>
+            <div className="h-2.5 w-20 bg-slate-200 rounded mb-3"></div>
+            <div className="flex gap-1.5 mb-2">
+              {[1, 2, 3, 4].map(i => <div key={i} className="h-6 w-14 bg-slate-100 rounded-lg"></div>)}
+            </div>
+            <div className="h-2 w-full bg-slate-100 rounded-full mt-2"></div>
+          </div>
+          <div className="h-px bg-slate-100"></div>
+          {/* Transit */}
+          <div>
+            <div className="h-2.5 w-14 bg-slate-200 rounded mb-3"></div>
+            <div className="space-y-2">
+              {[1, 2].map(i => <div key={i} className="flex items-center gap-2"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-20 bg-slate-100 rounded"></div></div>)}
+            </div>
+          </div>
+          <div className="h-px bg-slate-100"></div>
+          {/* Airline */}
+          <div>
+            <div className="h-2.5 w-16 bg-slate-200 rounded mb-3"></div>
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <div key={i} className="flex items-center justify-between"><div className="flex items-center gap-2"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-24 bg-slate-100 rounded"></div></div><div className="w-5 h-4 bg-slate-100 rounded"></div></div>)}
+            </div>
+          </div>
+          <div className="h-px bg-slate-100"></div>
+          {/* Time */}
+          <div>
+            <div className="h-2.5 w-24 bg-slate-200 rounded mb-3"></div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[1, 2, 3].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl"></div>)}
+            </div>
+          </div>
+          <div className="h-px bg-slate-100"></div>
+          {/* Sort */}
+          <div>
+            <div className="h-2.5 w-12 bg-slate-200 rounded mb-3"></div>
+            <div className="space-y-2">
+              {[1, 2, 3, 4].map(i => <div key={i} className="flex items-center gap-2"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-28 bg-slate-100 rounded"></div></div>)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── No Results with Alternatives ───────────────────────────────────────────
+function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMeta: any; onSearch: (p: any) => void; onRetry?: () => void }) {
+  const { language } = useLanguage();
+  const t = i18n.flightSearch[language];
+  const isEN = language === 'EN';
+
+  const quickFlight = (dest: string) => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    onSearch({
+      origin: searchMeta?.origin || 'CGK',
+      destination: dest,
+      departure_date: formatLocalDate(d),
+      adult: searchMeta?.adult || 1,
+      child: searchMeta?.child || 0,
+      infant: searchMeta?.infant || 0,
+      cabin_class: searchMeta?.cabin_class || 'Y',
+      direction: searchMeta?.direction || 'OW',
+    });
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+      {/* No results header */}
+      <div className="px-6 py-10 text-center">
+        <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <i className="fa-solid fa-plane text-3xl text-orange-300"></i>
+        </div>
+        <h3 className="font-black text-brand-ink text-lg mb-1.5">{t.noResultTitle}</h3>
+        <p className="text-slate-400 text-sm max-w-md mx-auto">{t.noResultDesc}</p>
+        {onRetry && (
+          <button onClick={onRetry} className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-colors">
+            <i className="fa-solid fa-rotate-right"></i> Coba Lagi
+          </button>
+        )}
+      </div>
+
+      {/* Alternative destinations */}
+      <div className="border-t border-slate-100 bg-slate-50 px-6 py-6">
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">{t.alternativeTitle}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {POPULAR_DESTINATIONS.filter(d => d.code !== searchMeta?.destination).map(d => (
+            <button key={d.code} onClick={() => quickFlight(d.code)}
+              className="group relative overflow-hidden rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
+              <div className="aspect-[16/10] relative">
+                <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-2.5">
+                  <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
+                  <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
+                    Mulai dari IDR {(d.price / 1000).toLocaleString('id-ID')}K
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -357,13 +488,13 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
       ? (searchMeta?.routes || []).map((r: any) => `${r.origin}→${r.destination}`).join(', ')
       : `${searchMeta?.origin} → ${searchMeta?.destination}`;
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 cursor-pointer" onClick={() => setCollapsed(false)}>
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 cursor-pointer" onClick={() => setCollapsed(false)}>
         <div className="flex items-center gap-3 flex-1">
           <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
             <i className="fa-solid fa-plane text-orange-600"></i>
           </div>
           <div>
-            <p className="font-black text-slate-900 text-sm">{routeLabel}</p>
+            <p className="font-black text-brand-ink text-sm">{routeLabel}</p>
             <p className="text-xs text-slate-500">
               {searchMeta?.departure_date} · {dirLabel} · {searchMeta?.adult || 1} {t.adults}
             </p>
@@ -376,14 +507,14 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
     );
   }
   return (
-    <div className="bg-slate-900 rounded-2xl p-5 shadow-xl relative z-50">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 relative z-50">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-black text-white text-sm">Ubah Pencarian</h3>
-        <button onClick={() => setCollapsed(true)} className="text-white/60 hover:text-white transition-colors">
+        <h3 className="font-black text-brand-ink text-sm">Ubah Pencarian</h3>
+        <button onClick={() => setCollapsed(true)} className="text-slate-400 hover:text-brand-ink transition-colors">
           <i className="fa-solid fa-xmark"></i>
         </button>
       </div>
-      <FlightSearchForm onSearch={(p) => { onSearch(p); setCollapsed(true); }} loading={loading} initialData={searchMeta} />
+      <FlightSearchForm onSearch={(p) => { onSearch(p); setCollapsed(true); }} loading={loading} initialData={searchMeta} variant="light" />
     </div>
   );
 }
@@ -397,32 +528,30 @@ function FlightLanding({ onSearch, loading }: { onSearch: (p: any) => void; load
   const quickSearch = (dest: string) => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    onSearch({ origin: 'CGK', destination: dest, departure_date: d.toISOString().split('T')[0], adult: 1, child: 0, infant: 0, cabin_class: 'Y', direction: 'OW' });
+    onSearch({ origin: 'CGK', destination: dest, departure_date: formatLocalDate(d), adult: 1, child: 0, infant: 0, cabin_class: 'Y', direction: 'OW' });
   };
 
   return (
     <>
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-orange-600/10 blur-3xl" />
-        <div className="absolute -bottom-32 -left-16 w-80 h-80 rounded-full bg-blue-600/10 blur-3xl" />
-        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-14">
+      <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
           <div className="mb-6 md:mb-8">
-            <p className="text-orange-400 text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-2">
-              <i className="fa-solid fa-plane"></i> {isEN ? 'Flight Search' : 'Pencarian Penerbangan'}
-            </p>
-            <h1 className="text-2xl md:text-4xl font-black text-white leading-tight">{t.landing.title}</h1>
-            <p className="text-slate-400 text-sm md:text-base mt-2">{t.landing.subtitle}</p>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-brand-ink leading-tight tracking-tight">
+              {t.landing.title}
+            </h1>
+            <p className="mt-2 text-sm md:text-base text-brand-neutral font-medium">{t.landing.subtitle}</p>
           </div>
-          <div className="bg-slate-900/70 border border-white/10 rounded-3xl p-5 md:p-6 shadow-2xl backdrop-blur-sm">
-            <FlightSearchForm onSearch={onSearch} loading={loading} />
+
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-floating border border-slate-100/80 p-4 sm:p-6 transition-all">
+            <FlightSearchForm onSearch={onSearch} loading={loading} variant="light" />
           </div>
         </div>
       </section>
 
       <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-8">
         <div className="mb-5">
-          <h2 className="text-lg sm:text-xl font-black text-slate-900">{t.landing.popularTitle}</h2>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1">{t.landing.popularSub}</p>
+          <h2 className="text-lg sm:text-xl font-black text-brand-ink">{t.landing.popularTitle}</h2>
+          <p className="text-brand-neutral text-xs sm:text-sm mt-1">{t.landing.popularSub}</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
           {POPULAR_DESTINATIONS.map(d => (
@@ -452,6 +581,12 @@ function FlightSearchContent() {
   const searchParamsHook = useSearchParams();
   const router = useRouter();
 
+  usePageTitle(
+    searchParamsHook.get('origin') && searchParamsHook.get('destination')
+      ? `Pencarian Pesawat: ${searchParamsHook.get('origin')} → ${searchParamsHook.get('destination')}`
+      : 'Pencarian Pesawat'
+  );
+
   // ── TAMBAHAN: Ref ID Pencarian (Mencegah Bug Race Condition) ──
   const searchIdRef = useRef(0);
 
@@ -478,6 +613,9 @@ function FlightSearchContent() {
     cabin_class:    searchParamsHook.get('cabin_class')    || 'Y',
     direction:      searchParamsHook.get('direction')      || 'OW',
   });
+
+  // Default "hari ini" dihitung sekali saat mount (stabil & idempotent)
+  const [todayDefault] = useState(() => formatLocalDate(new Date()));
 
   // ── Step state (untuk RT & multi-city) ──
   // currentLegStep: 0 = outbound/leg1, 1 = return/leg2, dst.
@@ -508,33 +646,6 @@ function FlightSearchContent() {
   const currentJourneys = useMemo(() => {
     return scheduleResults[currentLegStep] || [];
   }, [scheduleResults, currentLegStep]);
-
-  // ── Auto-search on mount ──
-  useEffect(() => {
-    const origin         = searchParamsHook.get('origin');
-    const destination    = searchParamsHook.get('destination');
-    const departure_date = searchParamsHook.get('departure_date');
-    const direction      = searchParamsHook.get('direction') || 'OW';
-
-    if (origin && destination && departure_date) {
-      const params: any = {
-        origin, destination, departure_date,
-        return_date: searchParamsHook.get('return_date') || undefined,
-        adult:       searchParamsHook.get('adult')       || 1,
-        child:       searchParamsHook.get('child')       || 0,
-        infant:      searchParamsHook.get('infant')      || 0,
-        cabin_class: searchParamsHook.get('cabin_class') || 'Y',
-        direction,
-      };
-      // Multi-kota: decode routes dari query
-      const routesRaw = searchParamsHook.get('routes');
-      if (direction === 'Multi' && routesRaw) {
-        try { params.routes = JSON.parse(routesRaw); } catch {}
-      }
-      handleSearch(params);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // ── handleSearch: search semua provider secara paralel ──
   const handleSearch = async (params: any) => {
@@ -601,8 +712,8 @@ function FlightSearchContent() {
               const oldFare = updatedExisting[existingIdx].segments?.[0]?.fares?.[0]?.service_charge_summary?.[0];
               const newFare = newJ.segments?.[0]?.fares?.[0]?.service_charge_summary?.[0];
 
-              const oldPrice = (oldFare?.base_fare || 0) + (oldFare?.base_tax || 0);
-              const newPrice = (newFare?.base_fare || 0) + (newFare?.base_tax || 0);
+              const oldPrice = calcFarePerPax(oldFare);
+              const newPrice = calcFarePerPax(newFare);
 
               // Jika harga yang baru lebih murah (dan valid), timpa yang lama
               if (newPrice > 0 && (newPrice < oldPrice || oldPrice === 0)) {
@@ -660,17 +771,48 @@ function FlightSearchContent() {
     }
   };
 
+  // ── Auto-search on mount ──
+  useEffect(() => {
+    const origin         = searchParamsHook.get('origin');
+    const destination    = searchParamsHook.get('destination');
+    const departure_date = searchParamsHook.get('departure_date');
+    const direction      = searchParamsHook.get('direction') || 'OW';
+    const routesRaw      = searchParamsHook.get('routes');
+
+    const isMulti = direction === 'Multi' && routesRaw;
+    const isOWRT  = origin && destination && departure_date;
+
+    if (isMulti || isOWRT) {
+      const params: any = {
+        origin:       origin       || undefined,
+        destination:  destination  || undefined,
+        departure_date: departure_date || undefined,
+        return_date:  searchParamsHook.get('return_date')  || undefined,
+        adult:        searchParamsHook.get('adult')        || 1,
+        child:        searchParamsHook.get('child')        || 0,
+        infant:       searchParamsHook.get('infant')       || 0,
+        cabin_class:  searchParamsHook.get('cabin_class')  || 'Y',
+        direction,
+      };
+      if (isMulti) {
+        try { params.routes = JSON.parse(routesRaw); } catch {}
+      }
+      handleSearch(params);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Airline list dari current leg ──
   const airlineList = useMemo(() => {
     const map = new Map<string, { name: string; code: string; count: number }>();
     currentJourneys.forEach(j => {
       const seg  = j.segments?.[0];
       const code = seg?.carrier_code || '';
-      const name = seg?.carrier_name || code;
       if (!code) return;
+      const name = CARRIER_CODE_TO_AIRLINE[code] || seg?.carrier_name || code;
       const ex = map.get(code);
       if (ex) ex.count++;
-      else map.set(code, { name: name.split(' ')[0], code, count: 1 });
+      else map.set(code, { name, code, count: 1 });
     });
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
   }, [currentJourneys]);
@@ -682,7 +824,7 @@ function FlightSearchContent() {
     currentJourneys.forEach(j => {
       const fare    = j.segments?.[0]?.fares?.[0];
       const summary = fare?.service_charge_summary?.[0];
-      const price   = ((summary?.base_fare || 0) + (summary?.base_tax || 0));
+      const price   = calcFarePerPax(summary);
       if (price > 0) { min = Math.min(min, price); max = Math.max(max, price); }
     });
     return { min: min === Infinity ? 0 : min, max };
@@ -707,7 +849,7 @@ function FlightSearchContent() {
       arr = arr.filter(j => {
         const fare    = j.segments?.[0]?.fares?.[0];
         const summary = fare?.service_charge_summary?.[0];
-        const price   = (summary?.base_fare || 0) + (summary?.base_tax || 0);
+        const price   = calcFarePerPax(summary);
         return price <= filterMaxPrice;
       });
     }
@@ -725,8 +867,8 @@ function FlightSearchContent() {
     arr.sort((a, b) => {
       const fa = a.segments?.[0]?.fares?.[0]?.service_charge_summary?.[0];
       const fb = b.segments?.[0]?.fares?.[0]?.service_charge_summary?.[0];
-      const pA = (fa?.base_fare || 0) + (fa?.base_tax || 0);
-      const pB = (fb?.base_fare || 0) + (fb?.base_tax || 0);
+      const pA = calcFarePerPax(fa);
+      const pB = calcFarePerPax(fb);
       const tA = new Date(a.segments?.[0]?.departure_date || 0).getTime();
       const tB = new Date(b.segments?.[0]?.departure_date || 0).getTime();
       if (sortBy === 'price_asc')  return pA - pB;
@@ -746,7 +888,7 @@ function FlightSearchContent() {
     filtered.forEach((j, i) => {
       const fare    = j.segments?.[0]?.fares?.[0];
       const summary = fare?.service_charge_summary?.[0];
-      const price   = (summary?.base_fare || 0) + (summary?.base_tax || 0);
+      const price   = calcFarePerPax(summary);
       if (price > 0 && price < bestPrice) {
         bestPrice = price;
         bestIdx = i;
@@ -917,46 +1059,52 @@ function FlightSearchContent() {
   }, [isRT, isMulti, currentLegStep, searchMeta]);
 
   const isSearching = loading || providersDone < providersTotal;
+  const hasResults = currentJourneys.length > 0;
+  const noResultsAfterSearch = !isSearching && hasSearched && !hasResults && !error;
 
   return (
-    <div className="bg-[#f4f6fb] min-h-screen pt-20">
+    <div className="bg-brand-bgLight min-h-screen pt-20">
 
       {!hasSearched ? (
         <FlightLanding onSearch={handleSearch} loading={isSearching} />
       ) : (
       <>
       {/* ─── Route Banner ──────────────────────────────────────────────────── */}
-      <div className="bg-blue-800 text-white">
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
+      <div className="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex items-center gap-3 flex-1">
-            <div className="text-sm font-black">
-              {isMulti
-                ? tf.multiCity
-                : `${searchMeta.origin || 'CGK'} → ${searchMeta.destination || 'DPS'}`}
+            <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
+              <i className="fa-solid fa-plane text-orange-400 text-sm"></i>
             </div>
-            {!isMulti && (
-              <>
-                <span className="text-blue-300">·</span>
-                <span className="text-sm text-blue-100">{searchMeta.departure_date}</span>
-                {isRT && searchMeta.return_date && (
-                  <><span className="text-blue-300">→</span><span className="text-sm text-blue-100">{searchMeta.return_date}</span></>
-                )}
-                <span className="text-blue-300">·</span>
-                <span className="text-sm text-blue-100">
-                  {searchMeta.adult || 1} {tf.passengers} · {isRT ? tf.roundTrip : tf.oneWay}
-                </span>
-              </>
-            )}
+            <div>
+              <div className="text-sm font-black">
+                {isMulti
+                  ? tf.multiCity
+                  : `${searchMeta.origin || 'CGK'} → ${searchMeta.destination || 'DPS'}`}
+              </div>
+              {!isMulti && (
+                <div className="flex items-center gap-2 text-xs text-white/60 mt-0.5">
+                  <span>{searchMeta.departure_date}</span>
+                  {isRT && searchMeta.return_date && (
+                    <><span>→</span><span>{searchMeta.return_date}</span></>
+                  )}
+                  <span>·</span>
+                  <span>{searchMeta.adult || 1} {tf.passengers}</span>
+                  <span>·</span>
+                  <span>{isRT ? tf.roundTrip : tf.oneWay}</span>
+                </div>
+              )}
+            </div>
           </div>
           {!isMulti && (
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
               {[-2, -1, 0, 1, 2].map(offset => {
-                const d = new Date(searchMeta.departure_date || Date.now());
+                const d = new Date(searchMeta.departure_date || todayDefault);
                 d.setDate(d.getDate() + offset);
-                const dateStr = d.toISOString().split('T')[0];
+                const dateStr = formatLocalDate(d);
                 return (
                   <button key={offset} onClick={() => handleSearch({ ...searchMeta, departure_date: dateStr })}
-                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${offset === 0 ? 'bg-white text-blue-800' : 'bg-blue-700 text-blue-100 hover:bg-blue-600'}`}>
+                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${offset === 0 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>
                     {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
                   </button>
                 );
@@ -966,28 +1114,18 @@ function FlightSearchContent() {
         </div>
       </div>
 
-      <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-5">
-        {/* Compact search bar */}
-        <div className="mb-5">
+      {/* ─── Sticky Compact Search Bar ─────────────────────────────────────── */}
+      <div data-compact-search className="sticky top-0 z-[900] bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3">
           <CompactSearchBar searchMeta={searchMeta} onSearch={handleSearch} loading={isSearching} />
         </div>
+      </div>
 
-        {!isSearching && currentJourneys.length > 0 && (
-          <div className="mb-5 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-black text-slate-900">Pilihan penerbangan siap dibandingkan</p>
-              <p className="text-xs text-slate-500 mt-1">{searchMeta?.direction === 'RT' ? tf.roundTrip : searchMeta?.direction === 'Multi' ? tf.multiCity : tf.oneWay} · {searchMeta?.origin} → {searchMeta?.destination}</p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">
-              <span className="rounded-full bg-orange-50 px-2.5 py-1 text-orange-700">Harga termurah tersedia</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1">Filter cepat untuk transit & maskapai</span>
-            </div>
-          </div>
-        )}
-
+      {/* ─── Content below sticky bar ──────────────────────────────────────── */}
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 pt-5 pb-10">
         {/* ─── Step indicator untuk RT & Multi ──────────────────────────── */}
         {(isRT || isMulti) && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-4 mb-5">
             <div className="flex items-center gap-2 overflow-x-auto">
               {Array.from({ length: totalLegs }).map((_, i) => {
                 const isActive  = i === currentLegStep;
@@ -1029,7 +1167,7 @@ function FlightSearchContent() {
         <div className="flex flex-col lg:flex-row gap-5 items-start">
 
           {/* Mobile filter toggle */}
-          {!isSearching && currentJourneys.length > 0 && (
+          {!isSearching && !noResultsAfterSearch && currentJourneys.length > 0 && (
             <div className="lg:hidden w-full">
               <button
                 onClick={() => setMobileFilterOpen(!mobileFilterOpen)}
@@ -1048,12 +1186,14 @@ function FlightSearchContent() {
           )}
 
           {/* ─── Sidebar Filter ──────────────────────────────────────────── */}
+          {isSearching && currentJourneys.length === 0 && <FilterSkeleton />}
+          {!isSearching && !noResultsAfterSearch && currentJourneys.length > 0 && (
           <div className={`${mobileFilterOpen ? 'block' : 'hidden'} lg:block w-full lg:w-64 shrink-0 space-y-4`}>
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden sticky top-24">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden sticky top-24">
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <i className="fa-solid fa-sliders text-orange-500 text-sm"></i>
-                  <h3 className="font-black text-slate-800 text-sm">{t.filterTitle}</h3>
+                  <h3 className="font-black text-brand-ink text-sm">{t.filterTitle}</h3>
                 </div>
                 <button
                   onClick={() => { setFilterTransit([]); setFilterAirlines([]); setFilterMaxPrice(null); setFilterDepartureTime([]); setSortBy('price_asc'); }}
@@ -1061,7 +1201,7 @@ function FlightSearchContent() {
                 >{t.resetFilter}</button>
               </div>
 
-              <div className="p-4 space-y-5 max-h-[calc(100vh-180px)] overflow-y-auto">
+              <div className="p-4 space-y-5">
                 {/* Price Range */}
                 {priceRange.max > 0 && (
                   <div>
@@ -1113,7 +1253,7 @@ function FlightSearchContent() {
                         <input type="checkbox" checked={filterTransit.includes(opt.id)}
                           onChange={() => toggleFilter(filterTransit, opt.id, setFilterTransit)}
                           className="w-4 h-4 rounded text-orange-600 border-slate-300 focus:ring-orange-500" />
-                        <span className="text-sm text-slate-600 group-hover:text-slate-900 font-medium">{opt.label}</span>
+                        <span className="text-sm text-brand-neutral group-hover:text-brand-ink font-medium">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1132,7 +1272,7 @@ function FlightSearchContent() {
                             <input type="checkbox" checked={filterAirlines.includes(airline.code)}
                               onChange={() => toggleFilter(filterAirlines, airline.code, setFilterAirlines)}
                               className="w-4 h-4 rounded text-orange-600 border-slate-300 focus:ring-orange-500" />
-                            <span className="text-sm text-slate-600 group-hover:text-slate-900 font-medium">{airline.name}</span>
+                            <span className="text-sm text-brand-neutral group-hover:text-brand-ink font-medium">{airline.name}</span>
                           </div>
                           <span className="text-[10px] text-slate-400 font-bold bg-slate-100 px-1.5 py-0.5 rounded">{airline.count}</span>
                         </label>
@@ -1178,7 +1318,7 @@ function FlightSearchContent() {
                       <label key={opt.id} className="flex items-center gap-2.5 cursor-pointer group">
                         <input type="radio" name="sortBy" checked={sortBy === opt.id} onChange={() => setSortBy(opt.id as any)}
                           className="w-4 h-4 text-orange-600 border-slate-300 focus:ring-orange-500" />
-                        <span className="text-sm text-slate-600 group-hover:text-slate-900 font-medium">{opt.label}</span>
+                        <span className="text-sm text-brand-neutral group-hover:text-brand-ink font-medium">{opt.label}</span>
                       </label>
                     ))}
                   </div>
@@ -1186,6 +1326,7 @@ function FlightSearchContent() {
               </div>
             </div>
           </div>
+          )}
 
           {/* ─── Results ─────────────────────────────────────────────────── */}
           <div className="flex-1 min-w-0 space-y-3">
@@ -1193,7 +1334,6 @@ function FlightSearchContent() {
             {/* Progress bar saat search paralel */}
             {isSearching && providersDone < providersTotal && (
               <ProviderProgress
-                providers={searchedProviders}
                 done={providersDone}
                 total={providersTotal}
               />
@@ -1202,8 +1342,8 @@ function FlightSearchContent() {
             {/* Summary */}
             {!isSearching && currentJourneys.length > 0 && (
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-600">
-                  <span className="font-black text-slate-900">{filtered.length}</span> {t.flightsFound}
+                <p className="text-sm font-semibold text-brand-neutral">
+                  <span className="font-black text-brand-ink">{filtered.length}</span> {t.flightsFound}
                   {(isRT || isMulti) && <span className="ml-2 text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full">Leg {currentLegStep + 1}/{totalLegs}</span>}
                 </p>
                 <div className="flex gap-2">
@@ -1223,24 +1363,12 @@ function FlightSearchContent() {
             {isSearching && currentJourneys.length > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 text-xs text-blue-700 font-semibold flex items-center gap-2 mb-2">
                 <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
-                Menampilkan {currentJourneys.length} hasil... masih mencari di {providersTotal - providersDone} maskapai lagi
+                Menampilkan {currentJourneys.length} hasil... masih mencari penerbangan lainnya
               </div>
             )}
 
             {error && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl flex items-start gap-3 shadow-sm">
-                <i className="fa-solid fa-wifi text-red-500 mt-1"></i>
-                <div className="flex-1">
-                  <h3 className="font-bold text-red-800">Pencarian Gagal</h3>
-                  <p className="text-sm text-red-600 mt-1">{error}</p>
-                  <button
-                    onClick={() => handleSearch(searchMeta)}
-                    className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors"
-                  >
-                    <i className="fa-solid fa-rotate-right"></i> Coba Lagi
-                  </button>
-                </div>
-              </div>
+              <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} onRetry={() => handleSearch(searchMeta)} />
             )}
 
             {filtered.map((j, i) => (
@@ -1258,7 +1386,7 @@ function FlightSearchContent() {
                 <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <i className="fa-solid fa-plane-slash text-3xl text-slate-300"></i>
                 </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">Tidak Ada Hasil Filter</h3>
+                <h3 className="text-lg font-black text-brand-ink mb-2">Tidak Ada Hasil Filter</h3>
                 <p className="text-slate-500 text-sm">Coba ubah filter atau reset pilihan.</p>
                 <button onClick={() => { setFilterTransit([]); setFilterAirlines([]); setFilterDepartureTime([]); }}
                   className="mt-4 px-6 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-all">
@@ -1268,13 +1396,7 @@ function FlightSearchContent() {
             )}
 
             {!isSearching && currentJourneys.length === 0 && !error && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <i className="fa-solid fa-magnifying-glass text-3xl text-slate-300"></i>
-                </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">{t.noResult}</h3>
-                <p className="text-slate-500 text-sm">{t.noResultSub}</p>
-              </div>
+              <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} />
             )}
           </div>
         </div>
@@ -1298,6 +1420,12 @@ function FlightSearchContent() {
           to { transform: translateX(0); opacity: 1; }
         }
         .animate-slide-in-right { animation: slide-in-right 0.3s ease-out; }
+
+        /* Saat halaman hasil pencarian flight: navbar ikut terscroll,
+           hanya "Ubah Pencarian" yang sticky di atas. */
+        body:has([data-compact-search]) header.fixed {
+          position: absolute;
+        }
       `}</style>
     </div>
   );
@@ -1306,7 +1434,7 @@ function FlightSearchContent() {
 export default function FlightSearchPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-screen bg-[#f4f6fb]">
+      <div className="flex items-center justify-center h-screen bg-brand-bgLight">
         <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-600 rounded-full animate-spin" />
       </div>
     }>

@@ -11,7 +11,7 @@ export interface VerifyHotelPriceInput {
     hotel_id?: string;
     adult?: number | string;
     child?: number | string;
-    child_ages?: (number | string)[];
+    child_ages?: number[];
     room?: number | string;
     nationality?: string;
   } | null;
@@ -22,6 +22,8 @@ export interface HotelPriceResult {
   priceTotal: number;
   provider: string;
   priceChanged?: boolean;
+  scheduleLocked?: boolean; // true jika 4014 — schedule sudah terprovision, harga dari request asli dipertahankan
+  sequence?: string | number; // sequence dari provision response — DIPERLUKAN untuk booked action (4014 jika tanpa sequence)
 }
 
 export type HotelPriceErrorCode = 'SESSION_EXPIRED' | 'UNAVAILABLE' | 'UNVERIFIABLE';
@@ -38,8 +40,11 @@ export class HotelPriceError extends Error {
 const orbisCodeOf = (err: unknown): number | undefined =>
   (err as { orbisCode?: number })?.orbisCode;
 
+// 4014 DIHAPUS dari sini: 4014 = "jadwal sudah terkunci" (schedule already locked oleh
+// provision sebelumnya), BUKAN cache miss. Jika dianggap cache miss, verifyHotelPrice
+// akan terus retry provision → memicu4014 berulang → booking gagal.
 const isCacheMissCode = (code?: number) =>
-  code === 4021 || code === 4011 || code === 4014 || code === 4023;
+  code === 4021 || code === 4011 || code === 4023;
 
 const isSessionExpiredCode = (code?: number) => code === 4003 || code === 1002;
 
@@ -65,18 +70,36 @@ async function provisionOnce(hotel_code: string, code: string, provider: string)
     if (!Number.isFinite(priceTotal) || priceTotal <= 0) {
       throw new HotelPriceError('UNVERIFIABLE', 'Harga kamar tidak valid dari Orbis.');
     }
-    return { priceCode: code, priceTotal, provider: effectiveProvider };
+    return { priceCode: code, priceTotal, provider: effectiveProvider, sequence: data?.sequence };
   } catch (err) {
     if (err instanceof HotelPriceError) throw err;
     const codeNumber = orbisCodeOf(err);
+    // 4014 = "jadwal sudah terkunci" — schedule sudah diproses oleh provision sebelumnya
+    // (mis. dari frontend checkout page). Schedule SAH dan bisa dipakai untuk booked.
+    // Kita return scheduleLocked=true agar booking route mempertahankan harga asli dari request.
+    // FIX: sebelumnya price_code dipotong ke bagian integer saja (`.split('~')[0]`) di sini,
+    // mengikuti asumsi lama bahwa action `booked` butuh price_code berformat int-only. Itu
+    // asumsi yang sama yang menyebabkan bug di createBooking (lib/orbis.ts) — dan karena
+    // banyak price_code berbagi prefix integer yang sama, hasil potongannya bentrok antar
+    // booking berbeda. Sekarang price_code UTUH dipertahankan, konsisten dengan apa yang
+    // sudah dikirim ke provision/get_cancellation_policy dan terbukti berhasil.
+    if (codeNumber === 4014) {
+      console.warn('[Hotel Price] 4014 received — schedule already locked, treating as valid provision');
+      return { priceCode: String(code), priceTotal: 0, provider, priceChanged: false, scheduleLocked: true };
+    }
     if (codeNumber === 4006) {
       // 4006: harga berubah, respons masih membawa data harga terbaru.
-      const res = (err as { orbisResponse?: { price_total?: number; price_code?: string; provider?: string } })?.orbisResponse;
+      const res = (err as { orbisResponse?: { price_total?: number; price_code?: string; provider?: string; sequence?: string | number } })?.orbisResponse;
       const priceTotal = Number(res?.price_total);
       if (Number.isFinite(priceTotal) && priceTotal > 0) {
-        const freshCode = res?.price_code != null ? String(res.price_code) : code;
+        const rawNewCode = res?.price_code != null ? String(res.price_code) : code;
         const freshProvider = res?.provider ? String(res.provider) : provider;
-        return { priceCode: freshCode, priceTotal, provider: freshProvider, priceChanged: true };
+        // FIX: filter format int-only (`/^\d+~/`) dihapus — itu berasal dari asumsi lama
+        // yang sama dengan bug createBooking (lib/orbis.ts), bahwa booked butuh price_code
+        // berformat "{int}~{float}". price_code UTUH dari respons 4006 dipakai apa adanya
+        // (format vendor apapun, mis. "RM_xxx~..."), sama seperti provision/get_details
+        // menerimanya apa adanya.
+        return { priceCode: rawNewCode, priceTotal, provider: freshProvider, priceChanged: true, sequence: res?.sequence };
       }
       throw new HotelPriceError('UNVERIFIABLE', 'Harga kamar berubah dan tidak dapat diverifikasi.');
     }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { flightAPI, getOrbisSignature, OrbisSchedule, OrbisPassenger, OrbisPassengerIdentity } from '@/lib/orbis';
 import { createSnapTransaction } from '@/lib/midtrans';
 import { bookingStore } from '@/lib/store';
@@ -9,8 +8,19 @@ import { getMarkup, applyFlatMarkup } from '@/lib/markup';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { generateBookingId } from '@/lib/security';
 import { checkSubmittedPrice } from '@/lib/price-check';
+import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 
 export const maxDuration = 90;
+
+function resolveAirlineName(name: string): string {
+  if (!name) return '';
+  const trimmed = name.trim();
+  const upper = trimmed.toUpperCase();
+  if (CARRIER_CODE_TO_AIRLINE[upper]) return CARRIER_CODE_TO_AIRLINE[upper];
+  const lower = trimmed.toLowerCase();
+  if (PROVIDER_ID_TO_LABEL[lower]) return PROVIDER_ID_TO_LABEL[lower];
+  return trimmed;
+}
 
 function errorResponse(message: string, status = 422, extra?: object) {
   return NextResponse.json({ success: false, error: message, ...extra }, { status });
@@ -24,8 +34,17 @@ function isSameOwner(existingUserId: string | null | undefined, currentUserId: s
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  const userId: string | null = session?.user.id ?? null;
+  try {
+  return await POSTHandler(req);
+  } catch (err: any) {
+    console.error('[Flight Book] UNHANDLED ERROR:', err?.message);
+    return NextResponse.json({ success: false, error: err?.message || 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+async function POSTHandler(req: NextRequest) {
+  const session = await getSession(req);
+  const userId: string | null = session?.user?.id ?? null;
   const ip = getClientIp(req as unknown as Request);
   const rateLimit = await checkRateLimit(`booking:flight:${ip}`, 'booking');
   if (!rateLimit.allowed) {
@@ -65,6 +84,8 @@ export async function POST(req: NextRequest) {
     selectedSeats,
     is_locked_before,
     cabin_class,
+    coupon_code,
+    discount_amount,
   } = validation.data;
 
   // ── STEP 0: Price Revalidation (fail-closed) ──────────────────────────────
@@ -75,16 +96,18 @@ export async function POST(req: NextRequest) {
       adult: Number(adult) || 1,
       child: Number(child) || 0,
       infant: Number(infant) || 0,
-      provider: schedules[0]?.provider || 'citilink',
       schedules: schedules as OrbisSchedule[],
-      is_combo_price: !!is_combo_price,
       promo_codes: [],
     });
 
+    console.log('[Flight Book] Price revalidation OK, refreshed:', priceData?.total_price);
+
     const priceCheck = checkSubmittedPrice({
       submitted: total_amount,
-      refreshed: priceData?.total_amount,
+      refreshed: priceData?.total_price,
+      lowerBoundOnly: true,
     });
+
 
     if (priceCheck.kind === 'changed') {
       return NextResponse.json(
@@ -115,194 +138,282 @@ export async function POST(req: NextRequest) {
   const markedUpAmount = applyFlatMarkup(total_amount, markup.flight, paxCount);
   console.log(`[Flight Book] Markup applied: Rp${markup.flight} x ${paxCount} pax = +Rp${markup.flight * paxCount} | ${total_amount} → ${markedUpAmount}`);
 
+  // ── STEP 0.6: Validate & Apply Coupon ──────────────────────────────────────
+  let finalAmount = markedUpAmount;
+  let validCouponCode: string | null = null;
+  let validDiscountAmount = 0;
+
+  if (coupon_code) {
+    try {
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      const coupon = await prisma.coupon.findFirst({
+        where: { code: { equals: coupon_code, mode: 'insensitive' } },
+      });
+
+      if (coupon && coupon.isActive) {
+        const now = new Date();
+        const validStart = !coupon.startDate || coupon.startDate <= now;
+        const validEnd = !coupon.endDate || coupon.endDate >= now;
+        const validUsage = coupon.maxUsage === null || coupon.usedCount < coupon.maxUsage;
+        const validCategory = coupon.category === 'all' || coupon.category === 'flight';
+
+        if (validStart && validEnd && validUsage && validCategory) {
+          let disc = 0;
+          if (coupon.type === 'percentage') {
+            disc = Math.round(markedUpAmount * (coupon.value / 100));
+            if (coupon.maxDiscount !== null && disc > coupon.maxDiscount) disc = coupon.maxDiscount;
+          } else {
+            disc = Math.min(coupon.value, markedUpAmount);
+          }
+          if (disc > 0) {
+            validCouponCode = coupon.code.toUpperCase();
+            validDiscountAmount = disc;
+            finalAmount = Math.max(0, markedUpAmount - disc);
+            console.log(`[Flight Book] Coupon ${validCouponCode}: -Rp${disc} → final Rp${finalAmount}`);
+          }
+        }
+      }
+      await prisma.$disconnect();
+    } catch (e: any) {
+      console.error('[Flight Book] Coupon validation error:', e.message);
+    }
+  }
+
   // ── STEP 1–5: Alur booking di sesi maskapai ───────────────────────────────
   // Dibungkus fungsi agar bisa diulang SEKALI memakai sesi baru ketika sesi
   // global masih memegang order lama (booking jadwal yang sama = duplicate).
+  // UPDATE: Juga retry otomatis jika signature expired (4003) di tengah flow
+  // sehingga step berikutnya gagal 4011 (session state hilang).
   const runOrbisBookingFlow = async (opts: { forceLock: boolean }) => {
-    // STEP 1: sell_journeys (selalu re-lock saat sesi baru)
-    if (opts.forceLock || !is_locked_before) {
+    const executeFlow = async (forceLock: boolean) => {
+      // STEP 1: sell_journeys (selalu re-lock saat sesi baru)
+      if (forceLock || !is_locked_before) {
+        try {
+          await flightAPI.sellJourneys({
+            adult: Number(adult) || 1,
+            child: Number(child) || 0,
+            infant: Number(infant) || 0,
+            schedules: schedules as OrbisSchedule[],
+            promo_codes: [],
+          });
+          console.log('[Flight Book] sell_journeys OK');
+        } catch (e: any) {
+          const code = e?.orbisCode;
+          const msg = e.message || '';
+          if (code === 4014 || msg.includes('dikunci sebelumnya') || msg.includes('called this function before')) {
+            console.log('[Flight Book] sell_journeys 4014 — already locked, continue.');
+          } else if (code === 4011 || msg.includes('Missing Requirements') || msg.includes('kedaluwarsa')) {
+            throw Object.assign(new Error('SESSION_EXPIRED'), { orbisError: 'SESSION_EXPIRED', orbisCode: code });
+          } else if (msg.includes('Schedule is not available') || msg.includes('fare class')) {
+            throw Object.assign(new Error('FARE_UNAVAILABLE'), { orbisError: 'FARE_UNAVAILABLE', orbisCode: code, status: 422 });
+          } else {
+            throw Object.assign(new Error(`Gagal mengunci tiket: ${msg}`), { status: 422 });
+          }
+        }
+      }
+
+      // STEP 2: update_contacts
       try {
-        await flightAPI.sellJourneys({
-          adult: Number(adult) || 1,
-          child: Number(child) || 0,
-          infant: Number(infant) || 0,
-          cabin_class: cabin_class || 'Y',
-          schedules: schedules as OrbisSchedule[],
-          is_combo_price: !!is_combo_price,
-          promo_codes: [],
+        await flightAPI.updateContacts({
+          booker: {
+            title: booker.title || 'MR',
+            first_name: booker.first_name,
+            last_name: booker.last_name || '',
+            email: booker.email,
+            calling_code: booker.calling_code || '62',
+            mobile: booker.mobile || '',
+            nationality_code: booker.nationality_code || 'ID',
+            is_also_booker: true,
+          },
+          contacts: (contacts || [booker]).map((c: any) => ({
+            title: c.title || 'MR',
+            first_name: c.first_name,
+            last_name: c.last_name || '',
+            email: c.email,
+            calling_code: c.calling_code || '62',
+            mobile: c.mobile || '',
+            nationality_code: c.nationality_code || 'ID',
+            is_also_booker: false,
+          })),
         });
-        console.log('[Flight Book] sell_journeys OK');
+        console.log('[Flight Book] update_contacts OK');
       } catch (e: any) {
         const code = e?.orbisCode;
         const msg = e.message || '';
-        if (code === 4014 || msg.includes('dikunci sebelumnya') || msg.includes('called this function before')) {
-          console.log('[Flight Book] sell_journeys 4014 — already locked, continue.');
-        } else if (code === 4011 || msg.includes('Missing Requirements') || msg.includes('kedaluwarsa')) {
-          throw Object.assign(new Error('Sesi maskapai berakhir.'), { orbisError: 'SESSION_EXPIRED', status: 410 });
+        if (code === 4014 || msg.includes('called this function before')) {
+          console.log('[Flight Book] update_contacts 4014 — already updated, continue.');
+        } else if (code === 4011 || msg.includes('kedaluwarsa')) {
+          throw Object.assign(new Error('SESSION_EXPIRED'), { orbisError: 'SESSION_EXPIRED', orbisCode: code });
         } else {
-          throw Object.assign(new Error(`Gagal mengunci tiket: ${msg}`), { status: 422 });
+          throw Object.assign(new Error(`Gagal menyimpan kontak: ${msg}`), { status: 422 });
         }
       }
-    }
 
-    // STEP 2: update_contacts
-    try {
-      await flightAPI.updateContacts({
-        booker: {
-          title: booker.title || 'MR',
-          first_name: booker.first_name,
-          last_name: booker.last_name || '',
-          email: booker.email,
-          calling_code: booker.calling_code || '62',
-          mobile: booker.mobile || '',
-          nationality_code: booker.nationality_code || 'ID',
-          is_also_booker: true,
-        },
-        contacts: (contacts || [booker]).map((c: any) => ({
-          title: c.title || 'MR',
-          first_name: c.first_name,
-          last_name: c.last_name || '',
-          email: c.email,
-          calling_code: c.calling_code || '62',
-          mobile: c.mobile || '',
-          nationality_code: c.nationality_code || 'ID',
-          is_also_booker: false,
-        })),
-      });
-      console.log('[Flight Book] update_contacts OK');
-    } catch (e: any) {
-      const code = e?.orbisCode;
-      const msg = e.message || '';
-      if (code === 4014 || msg.includes('called this function before')) {
-        console.log('[Flight Book] update_contacts 4014 — already updated, continue.');
-      } else if (code === 4011 || msg.includes('kedaluwarsa')) {
-        throw Object.assign(new Error('Sesi maskapai berakhir.'), { orbisError: 'SESSION_EXPIRED', status: 410 });
-      } else {
-        throw Object.assign(new Error(`Gagal menyimpan kontak: ${msg}`), { status: 422 });
-      }
-    }
+      // STEP 3: update_passengers
+      try {
+        const formattedPassengers: OrbisPassenger[] = passengers.map((p: any, idx: number) => {
+          const identType: string = p.identity?.identity_type || 'ktp';
+          let identity: OrbisPassengerIdentity | undefined;
 
-    // STEP 3: update_passengers
-    try {
-      const formattedPassengers: OrbisPassenger[] = passengers.map((p: any, idx: number) => {
-        const identType: string = p.identity?.identity_type || 'ktp';
-        let identity: OrbisPassengerIdentity | undefined;
-
-        if (p.identity?.identity_number) {
-          if (identType === 'passport') {
-            if (!p.identity.identity_expdate) {
-              throw Object.assign(new Error(`Tanggal kadaluarsa paspor penumpang ke-${idx + 1} (${p.first_name}) wajib diisi.`), { clientError: true });
+          if (p.identity?.identity_number) {
+            if (identType === 'passport') {
+              if (!p.identity.identity_expdate) {
+                throw Object.assign(new Error(`Tanggal kadaluarsa paspor penumpang ke-${idx + 1} (${p.first_name}) wajib diisi.`), { clientError: true });
+              }
+              identity = {
+                identity_type: 'passport',
+                identity_number: p.identity.identity_number,
+                identity_expdate: p.identity.identity_expdate,
+                identity_country_of_issued_code: p.identity.identity_country_of_issued_code || 'ID',
+              };
+            } else {
+              identity = {
+                identity_type: identType as OrbisPassengerIdentity['identity_type'],
+                identity_number: p.identity.identity_number,
+                identity_expdate: '',
+                identity_country_of_issued_code: '',
+              };
             }
-            identity = {
-              identity_type: 'passport',
-              identity_number: p.identity.identity_number,
-              identity_expdate: p.identity.identity_expdate,
-              identity_country_of_issued_code: p.identity.identity_country_of_issued_code || 'ID',
-            };
-          } else {
-            identity = {
-              identity_type: identType as OrbisPassengerIdentity['identity_type'],
-              identity_number: p.identity.identity_number,
-              identity_expdate: '',
-              identity_country_of_issued_code: '',
-            };
           }
-        }
 
-        return {
-          passenger_number: idx,
-          type: p.pax_type || 'ADT',
-          title: p.title || 'MR',
-          first_name: p.first_name,
-          last_name: p.last_name || p.first_name,
-          birth_date: p.birth_date,
-          nationality: p.nationality_code || 'ID',
-          pax_type: p.pax_type as 'ADT' | 'CHD' | 'INF',
-          nationality_code: p.nationality_code || 'ID',
-          ...(identity && { identity }),
-        };
-      });
-
-      await flightAPI.updatePassengers({ passengers: formattedPassengers });
-      console.log('[Flight Book] update_passengers OK');
-    } catch (e: any) {
-      if (e.clientError) throw Object.assign(new Error(e.message), { status: 422 });
-      const code = e?.orbisCode;
-      const msg = e.message || '';
-      if (code === 4014 || msg.includes('called this function before')) {
-        console.log('[Flight Book] update_passengers 4014 — already updated, continue.');
-      } else if (code === 4011 || msg.includes('kedaluwarsa')) {
-        throw Object.assign(new Error('Sesi maskapai berakhir.'), { orbisError: 'SESSION_EXPIRED', status: 410 });
-      } else {
-        throw Object.assign(new Error(`Gagal menyimpan penumpang: ${msg}`), { status: 422 });
-      }
-    }
-
-    // STEP 4: assign_seats (Opsional, non-fatal)
-    if (selectedSeats && selectedSeats.length > 0) {
-      try {
-        const formattedSeatRequest = selectedSeats.map((seatReq: any) => ({
-          segment_code: String(seatReq.segment_code),
-          passengers: seatReq.passengers.map((paxSeat: any) => ({
-            passenger_number: Number(paxSeat.passenger_number),
-            seat_code: String(paxSeat.seat_code)
-          }))
-        }));
-
-        await flightAPI.assignSeats({
-          provider: schedules?.[0]?.provider || 'citilink',
-          segment_seat_request: formattedSeatRequest
+          return {
+            title: p.title || 'MR',
+            first_name: p.first_name,
+            last_name: p.last_name || p.first_name,
+            birth_date: p.birth_date,
+            pax_type: p.pax_type || 'ADT',
+            ...(p.gender && { gender: p.gender }),
+            nationality_code: p.nationality_code || 'ID',
+            ...(identity && { identity }),
+          };
         });
-        console.log('[Flight Book] assign_seats OK');
-      } catch (e: any) {
-        console.warn('[Flight Book] assign_seats failed (continuing without seats):', e.message);
-      }
-    }
 
-    // STEP 4b: sell SSR bagasi (Opsional, non-fatal)
-    if (body.selectedBaggage && body.selectedBaggage.ssr_code && body.selectedBaggage.ssr_code !== 'NOBAG') {
-      try {
-        const journeyCode = body.selectedBaggage.journey_code || '';
-        const ssrCode = body.selectedBaggage.ssr_code;
-        const adultCount = Number(adult) || 1;
-        const provider = (schedules as any[])?.[0]?.provider || 'citilink';
-
-        await flightAPI.sellSsrs({
-          sell_ssrs_request: [{
-            provider,
-            sell_ssrs: [{
-              journey_code: journeyCode,
-              availability_type: 'baggage',
-              passengers: Array.from({ length: adultCount }, (_, i) => ({
-                passenger_number: i,
-                ssr_code: ssrCode,
-              })),
-            }],
-          }],
-        });
-        console.log('[Flight Book] sell_ssrs bagasi OK:', ssrCode);
+        await flightAPI.updatePassengers({ passengers: formattedPassengers });
+        console.log('[Flight Book] update_passengers OK');
       } catch (e: any) {
+        if (e.clientError) throw Object.assign(new Error(e.message), { status: 422 });
         const code = e?.orbisCode;
-        console.warn(`[Flight Book] sell_ssrs bagasi failed (non-fatal) [${code}]:`, e.message);
+        const msg = e.message || '';
+        if (code === 4014 || msg.includes('called this function before')) {
+          console.log('[Flight Book] update_passengers 4014 — already updated, continue.');
+        } else if (code === 4011 || msg.includes('kedaluwarsa')) {
+          throw Object.assign(new Error('SESSION_EXPIRED'), { orbisError: 'SESSION_EXPIRED', orbisCode: code });
+        } else if (code === 4013 || msg.includes('passport required') || msg.includes('Identity passport')) {
+          throw Object.assign(new Error('PASSPORT_REQUIRED'), { orbisError: 'PASSPORT_REQUIRED', orbisCode: code, status: 422 });
+        } else {
+          throw Object.assign(new Error(`Gagal menyimpan penumpang: ${msg}`), { status: 422 });
+        }
       }
-    }
 
-    // STEP 5: commit_booking
-    let bookingData: any = null;
+      // STEP 4: sell SSR bagasi (Opsional, non-fatal) — §3.15 — must be BEFORE assign_seats per doc flow
+      if (body.selectedBaggage && body.selectedBaggage.ssr_code && body.selectedBaggage.ssr_code !== 'NOBAG') {
+        try {
+          const journeyCode = body.selectedBaggage.journey_code || '';
+          const ssrCode = body.selectedBaggage.ssr_code;
+          const adultCount = Number(adult) || 1;
+          const provider = (schedules as any[])?.[0]?.provider || 'citilink';
+
+          await flightAPI.sellSsrs({
+            sell_ssrs_request: [{
+              provider,
+              sell_ssrs: [{
+                journey_code: journeyCode,
+                availability_type: 'baggage',
+                passengers: Array.from({ length: adultCount }, (_, i) => ({
+                  passenger_number: i,
+                  ssr_code: ssrCode,
+                })),
+              }],
+            }],
+          });
+          console.log('[Flight Book] sell_ssrs bagasi OK:', ssrCode);
+        } catch (e: any) {
+          const code = e?.orbisCode;
+          console.warn(`[Flight Book] sell_ssrs bagasi failed (non-fatal) [${code}]:`, e.message);
+        }
+      }
+
+      // STEP 4b: sell SSR makanan (Opsional, non-fatal) — §3.15
+      if (body.selectedMeal && body.selectedMeal.ssr_code) {
+        try {
+          const journeyCode = body.selectedMeal.journey_code || '';
+          const ssrCode = body.selectedMeal.ssr_code;
+          const paxCount = (Number(adult) || 1) + (Number(child) || 0);
+          const provider = (schedules as any[])?.[0]?.provider || 'citilink';
+
+          await flightAPI.sellSsrs({
+            sell_ssrs_request: [{
+              provider,
+              sell_ssrs: [{
+                journey_code: journeyCode,
+                availability_type: 'meal',
+                passengers: Array.from({ length: paxCount }, (_, i) => ({
+                  passenger_number: i,
+                  ssr_code: ssrCode,
+                })),
+              }],
+            }],
+          });
+          console.log('[Flight Book] sell_ssrs makanan OK:', ssrCode);
+        } catch (e: any) {
+          const code = e?.orbisCode;
+          console.warn(`[Flight Book] sell_ssrs makanan failed (non-fatal) [${code}]:`, e.message);
+        }
+      }
+
+      // STEP 5: assign_seats (Opsional, non-fatal) — §3.17 — must be AFTER sell_ssrs per doc flow
+      if (selectedSeats && selectedSeats.length > 0) {
+        try {
+          const provider = schedules?.[0]?.provider || 'citilink';
+          const formattedSeatRequest = selectedSeats.map((seatReq: any) => ({
+            segment_code: String(seatReq.segment_code),
+            provider,
+            passengers: seatReq.passengers.map((paxSeat: any) => ({
+              passenger_number: Number(paxSeat.passenger_number),
+              seat_code: String(paxSeat.seat_code)
+            }))
+          }));
+
+          await flightAPI.assignSeats({
+            segment_seat_request: formattedSeatRequest
+          });
+          console.log('[Flight Book] assign_seats OK');
+        } catch (e: any) {
+          console.warn('[Flight Book] assign_seats failed (continuing without seats):', e.message);
+        }
+      }
+
+      // STEP 5: commit_booking
+      let bookingData: any = null;
+      try {
+        bookingData = await flightAPI.commitBooking({ force_issued: false });
+        console.log('[Flight Book] commit_booking | order_number:', bookingData?.order_number);
+      } catch (e: any) {
+        throw Object.assign(new Error(`Konfirmasi pemesanan gagal: ${e.message}`), { status: 422 });
+      }
+
+      const orderNumber = bookingData?.order_number;
+      const pnr = bookingData?.pnr;
+      const bookingState = bookingData?.state;
+
+      if (!orderNumber) throw Object.assign(new Error('Nomor pesanan tidak diterima dari maskapai.'), { status: 500 });
+
+      return { bookingData, orderNumber, pnr, bookingState };
+    };
+
+    // ── Auto-retry: jika sesi expired (4011) karena signature refresh di
+    //    tengah flow, refresh signature dan ulangi seluruh flow sekali.
     try {
-      bookingData = await flightAPI.commitBooking({ force_issued: false });
-      console.log('[Flight Book] commit_booking | order_number:', bookingData?.order_number);
+      return await executeFlow(opts.forceLock);
     } catch (e: any) {
-      throw Object.assign(new Error(`Konfirmasi pemesanan gagal: ${e.message}`), { status: 422 });
+      if (e.orbisError === 'SESSION_EXPIRED') {
+        console.warn('[Flight Book] Session expired during flow, refreshing signature and retrying once...');
+        await getOrbisSignature(true).catch(() => {});
+        return await executeFlow(true);
+      }
+      throw e;
     }
-
-    const orderNumber = bookingData?.order_number;
-    const pnr = bookingData?.pnr;
-    const bookingState = bookingData?.state;
-
-    if (!orderNumber) throw Object.assign(new Error('Nomor pesanan tidak diterima dari maskapai.'), { status: 500 });
-
-    return { bookingData, orderNumber, pnr, bookingState };
   };
 
   const isLegitRetry = (existing: any) =>
@@ -386,13 +497,13 @@ export async function POST(req: NextRequest) {
   try {
     snap = await createSnapTransaction({
       orderId,
-      amount: markedUpAmount,
+      amount: finalAmount,
       customerName: `${booker.first_name} ${booker.last_name || ''}`.trim(),
       customerEmail: booker.email,
       customerPhone: `${booker.calling_code || '62'}${booker.mobile || ''}`,
       itemDetails: [{
         id: orderId,
-        price: Math.round(markedUpAmount),
+        price: Math.round(finalAmount),
         quantity: 1,
         name: `Tiket Pesawat: ${route_label || `${origin || ''} → ${destination || ''}`}`,
       }],
@@ -419,14 +530,14 @@ export async function POST(req: NextRequest) {
       orderNumber,
       bookingType: 'flight',
       status: 'pending_payment',
-      totalAmount: markedUpAmount,
+      totalAmount: finalAmount,
       currency: 'IDR',
       routeLabel: route_label || `${origin || ''} → ${destination || ''}`,
       origin,
       destination,
       departureDate: departure_date,
       flightNumber: flight_number,
-      airlineName: airline_name,
+      airlineName: resolveAirlineName(airline_name || ''),
       snapToken: snap.token,
       snapRedirectUrl: snap.redirect_url,
       pnr,
@@ -439,6 +550,10 @@ export async function POST(req: NextRequest) {
         arrival_date_from_search: arrival_date || null,
         selectedBaggage: baggagePayload || undefined,
       },
+      ...(validCouponCode && {
+        couponCode: validCouponCode,
+        discountAmount: validDiscountAmount,
+      }),
     });
     console.log('[Flight Book] Saved to DB | orderId:', orderId);
   } catch (e: any) {

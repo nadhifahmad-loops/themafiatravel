@@ -19,7 +19,6 @@ export default function EditEmailPage() {
   const ta = i18n.account[language];
   const tc = i18n.common[language];
 
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [originalEmail, setOriginalEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,7 +36,6 @@ export default function EditEmailPage() {
         const res = await fetch('/api/user/profile');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
-        setName(data.user.name || '');
         setEmail(data.user.email || '');
         setOriginalEmail(data.user.email || '');
         setLoaded(true);

@@ -5,8 +5,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import QRCode from 'react-qr-code';
 import { useLanguage } from '@/contexts/LanguageContext';
-import Image from 'next/image';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
+import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
+import { getVendorLogo } from '@/lib/vendor-logo';
+import TrainSeatPicker from '@/components/train/TrainSeatPicker';
 
 const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -28,11 +31,37 @@ function nightCount(ci: string, co: string) {
   const diff = new Date(co).getTime() - new Date(ci).getTime();
   return Math.max(1, Math.round(diff / 86400000));
 }
+function resolveAirlineName(name: string): string {
+  if (!name) return '';
+  const trimmed = name.trim();
+  // 1) Full match langsung
+  const upper = trimmed.toUpperCase();
+  if (CARRIER_CODE_TO_AIRLINE[upper]) return CARRIER_CODE_TO_AIRLINE[upper];
+  // 2) Provider ID match
+  const lower = trimmed.toLowerCase();
+  if (PROVIDER_ID_TO_LABEL[lower]) return PROVIDER_ID_TO_LABEL[lower];
+  // 3) Split by spasi → ambil bagian pertama
+  const parts = trimmed.split(/\s+/);
+  if (parts.length > 1) {
+    const upperFirst = (parts[0] || '').toUpperCase();
+    if (CARRIER_CODE_TO_AIRLINE[upperFirst]) return CARRIER_CODE_TO_AIRLINE[upperFirst];
+  }
+  // 4) Tanpa spasi (misal "QZ806") → coba 2-3 karakter pertama
+  for (const len of [3, 2]) {
+    if (trimmed.length > len) {
+      const code = trimmed.substring(0, len).toUpperCase();
+      if (CARRIER_CODE_TO_AIRLINE[code]) return CARRIER_CODE_TO_AIRLINE[code];
+    }
+  }
+  return trimmed;
+}
 
 function getCountdown(createdAt: string) {
-  const deadline = new Date(new Date(createdAt).getTime() + PAYMENT_TIMEOUT_MS);
-  const now = Date.now();
-  const remaining = deadline.getTime() - now;
+  if (!createdAt) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
+  const created = typeof createdAt === 'string' ? new Date(createdAt).getTime() : new Date(String(createdAt)).getTime();
+  if (isNaN(created)) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
+  const deadline = created + PAYMENT_TIMEOUT_MS;
+  const remaining = deadline - Date.now();
   if (remaining <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
   const hours = Math.floor(remaining / 3600000);
   const minutes = Math.floor((remaining % 3600000) / 60000);
@@ -41,12 +70,34 @@ function getCountdown(createdAt: string) {
 }
 
 function PaymentCountdown({ createdAt }: { createdAt: string }) {
-  const [cd, setCd] = useState(() => getCountdown(createdAt));
+  const [cd, setCd] = useState({ expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 });
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    setCd(getCountdown(createdAt));
     const timer = setInterval(() => setCd(getCountdown(createdAt)), 1000);
     return () => clearInterval(timer);
   }, [createdAt]);
+
+  if (!mounted) {
+    return (
+      <div className="rounded-xl p-4 bg-amber-50 border border-amber-200 animate-pulse">
+        <p className="text-xs font-semibold text-slate-500 mb-2">Selesaikan pembayaran dalam</p>
+        <div className="flex items-center gap-3">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="text-center">
+                <div className="text-2xl font-black tabular-nums text-slate-800">00</div>
+                <div className="text-[10px] text-slate-400 font-semibold uppercase">{['Jam', 'Menit', 'Detik'][i]}</div>
+              </div>
+              {i < 2 && <span className="text-lg font-bold text-slate-300">:</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (cd.expired) {
     return (
@@ -112,6 +163,12 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   const [paying, setPaying] = useState(false);
   const [checking, setChecking] = useState(false);
 
+  usePageTitle(
+    booking
+      ? `Detail Pesanan: ${booking.orderNumber || booking.id}`
+      : 'Detail Pesanan'
+  );
+
   const fetchBooking = async () => {
     const r = await fetch(`/api/bookings/${id}`);
     const json = await r.json();
@@ -164,25 +221,26 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
     try {
       const html2pdf = (await import('html2pdf.js')).default;
       await html2pdf().set({
-        margin: 0, filename: `Dokumen_${booking.orderNumber || booking.id}.pdf`,
-        image: { type: 'jpeg', quality: 1 },
-        html2canvas: { scale: 3, useCORS: true, backgroundColor: '#ffffff' },
+        margin: [0, 0, 0, 0],
+        filename: `TMT_${booking.orderNumber || booking.id}_${Date.now()}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 4, useCORS: true, backgroundColor: '#ffffff', letterRendering: true, logging: false },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       }).from(el).save();
     } finally { setDownloading(false); }
   };
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+    <div className="min-h-screen flex items-center justify-center bg-brand-bgLight">
       <div className="text-center space-y-3">
-        <div className="w-8 h-8 border-[3px] border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto"/>
+        <div className="w-8 h-8 border-[3px] border-brand-orange border-t-transparent rounded-full animate-spin mx-auto"/>
         <p className="text-slate-400 text-sm">{t.loading}</p>
       </div>
     </div>
   );
 
   if (!booking) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+    <div className="min-h-screen flex items-center justify-center bg-brand-bgLight">
       <div className="text-center">
         <p className="text-slate-500 font-semibold">{fetchError || t.notFound}</p>
         <Link href="/bookings" className="inline-block mt-4 text-sm text-slate-600 underline">{t.backToList}</Link>
@@ -233,6 +291,20 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
         if (pNum && seat) seatMapByPax[pNum] = seat;
       }
     }
+
+    // Train (KAI): kursi hasil assign otomatis ada di provider_bookings[].journeys[].seats
+    if (isTrain) {
+      for (const pb of providerBookings) {
+        const journeys = Array.isArray(pb?.journeys) ? pb.journeys : [];
+        for (const j of journeys) {
+          const jSeats = Array.isArray(j?.seats) ? j.seats : [];
+          for (const s of jSeats) {
+            const pNum = Number(s.passenger_sequence);
+            if (pNum && (s.seat || s.seat_code)) seatMapByPax[pNum] = s.seat || `Kursi ${s.seat_code}`;
+          }
+        }
+      }
+    }
   }
 
   // Enrich passengers: fill seat from seatMapByPax if missing in passengerData
@@ -252,7 +324,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   const destCode = booking.destination || '';
   const originName = originDisplayName || originCode;
   const destName = destDisplayName || destCode;
-  const itemName = isTrain ? (booking.airlineName || 'Kereta Api') : isHotel ? (booking.hotelName || 'Hotel') : isInsurance ? (booking.hotelName || 'Asuransi') : (booking.airlineName || 'Maskapai');
+  const itemName = isTrain ? resolveAirlineName(booking.airlineName || '') || 'Kereta Api' : isHotel ? (booking.hotelName || 'Hotel') : isInsurance ? (booking.hotelName || 'Asuransi') : resolveAirlineName(booking.airlineName || '') || 'Maskapai';
   const itemCode = booking.flightNumber || '';
   const subclass = bookingDataRaw?.cabin_class || bookingDataRaw?.subclass || bookingDataRaw?.roomType || '';
   const refundable = bookingDataRaw?.refundable === true || bookingDataRaw?.is_refundable === true;
@@ -260,25 +332,48 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   const st = STATUS_CONFIG[status] || { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* NAVBAR */}
-      <nav className="sticky top-0 z-50 bg-white border-b border-slate-200">
-        <div className="max-w-[800px] mx-auto h-14 flex items-center justify-between px-5">
-          <Link href="/bookings" className="text-sm text-slate-500 hover:text-slate-800 transition-colors">← {t.back}</Link>
-          <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">{t.detail} {bType}</p>
-          <div className="w-12" />
+    <div className="min-h-screen bg-brand-bgLight">
+      {/* ── Header Hero ── */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 pt-24 pb-6 px-4">
+        <div className="max-w-5xl mx-auto">
+          <Link href="/bookings" className="inline-flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors mb-4">
+            <i className="fa-solid fa-arrow-left text-xs"></i>
+            {t.back}
+          </Link>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-white/50 text-xs font-medium uppercase tracking-wider mb-1">{t.detail} {bType}</p>
+              <h1 className="text-xl font-bold text-white">{booking.orderNumber || booking.id}</h1>
+              {isTransport && booking.pnr && (
+                <p className="text-white/40 text-sm mt-1">PNR: <span className="text-white/70 font-mono font-semibold">{booking.pnr}</span></p>
+              )}
+            </div>
+            <div className="text-right">
+              <p className="text-white/50 text-xs">{tc.total}</p>
+              <p className="text-white font-bold text-lg">{fmtIDR(booking.totalAmount)}</p>
+              <span className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${st.bg} ${st.text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`}></span>
+                {statusLabel(status)}
+              </span>
+            </div>
+          </div>
         </div>
-      </nav>
+      </div>
 
-      <div className="max-w-[800px] mx-auto px-5 pt-8 pb-20 space-y-4">
+      <div className="max-w-5xl mx-auto px-4 -mt-3 pb-16 space-y-4">
 
-        {/* Payment status banner */}
+        {/* Status Banner */}
         {isPending && !isExpired && (
-          <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-bold text-slate-800">{t.statusMap.pending_payment}</p>
-                <p className="text-xs text-slate-400 mt-0.5">Selesaikan pembayaran untuk mengkonfirmasi pesanan Anda.</p>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                  <i className="fa-solid fa-clock text-amber-600"></i>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{t.statusMap.pending_payment}</p>
+                  <p className="text-xs text-slate-400">Selesaikan pembayaran untuk mengkonfirmasi pesanan</p>
+                </div>
               </div>
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${st.bg} ${st.text}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`}></span>
@@ -286,17 +381,11 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
               </span>
             </div>
             <PaymentCountdown createdAt={booking.createdAt} />
-            {checking && (
-              <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
-                Memeriksa status pembayaran...
-              </div>
-            )}
             {canPay && (
               <button
                 onClick={handlePayNow}
                 disabled={paying}
-                className="w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-sm rounded-lg transition-all active:scale-[0.98]"
+                className="w-full mt-4 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl transition-all active:scale-[0.98]"
               >
                 {paying ? 'Mengarahkan ke pembayaran...' : `${t.payNow} ${fmtIDR(booking.totalAmount)}`}
               </button>
@@ -305,29 +394,49 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
         )}
 
         {isExpired && (
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between mb-3">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                <i className="fa-solid fa-circle-xmark text-red-500"></i>
+              </div>
               <div>
                 <p className="text-sm font-bold text-red-600">Pembayaran Kedaluwarsa</p>
-                <p className="text-xs text-slate-400 mt-0.5">Waktu pembayaran telah habis.</p>
+                <p className="text-xs text-slate-400">Waktu pembayaran telah habis</p>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                Kedaluwarsa
-              </span>
             </div>
-            <Link href="/" className="block w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-lg transition-all text-center active:scale-[0.98]">
+            <Link href="/" className="block w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl transition-all text-center">
               Buat Pesanan Baru
             </Link>
           </div>
         )}
 
         {isFailed && (
-          <div className="bg-white rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-bold text-red-600">{status === 'cancelled' ? t.statusMap.cancelled : t.statusMap.payment_failed}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{status === 'cancelled' ? 'Pesanan ini telah dibatalkan.' : 'Pembayaran tidak berhasil diproses.'}</p>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                <i className={`fa-solid ${status === 'cancelled' ? 'fa-ban' : 'fa-circle-exclamation'} text-red-500`}></i>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-800">{status === 'cancelled' ? t.statusMap.cancelled : t.statusMap.payment_failed}</p>
+                <p className="text-xs text-slate-400">{status === 'cancelled' ? 'Pesanan ini telah dibatalkan' : 'Pembayaran tidak berhasil diproses'}</p>
+              </div>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${st.bg} ${st.text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`}></span>
+                {statusLabel(status)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {(status === 'refund_requested' || status === 'refund') && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-5">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 ${status === 'refund_requested' ? 'bg-orange-100' : 'bg-purple-100'} rounded-xl flex items-center justify-center`}>
+                <i className={`fa-solid fa-rotate-left ${status === 'refund_requested' ? 'text-orange-500' : 'text-purple-500'}`}></i>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-800">{statusLabel(status)}</p>
+                <p className="text-xs text-slate-400">{status === 'refund_requested' ? 'Permintaan refund sedang kami proses' : 'Dana refund telah dikembalikan'}</p>
               </div>
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${st.bg} ${st.text}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`}></span>
@@ -338,16 +447,16 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
         )}
 
         {isPaid && (
-          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-5">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <div className="bg-white rounded-2xl border border-emerald-200 shadow-sm p-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                <i className="fa-solid fa-check-circle text-emerald-500"></i>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-emerald-800">{status === 'issued' ? 'Tiket Sudah Diterbitkan' : 'Pembayaran Terkonfirmasi'}</p>
-                <p className="text-xs text-emerald-600 mt-0.5">{status === 'issued' ? 'E-tiket/voucher Anda sudah siap untuk diunduh.' : 'Pembayaran Anda sudah kami terima dan terverifikasi.'}</p>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-emerald-700">{status === 'issued' ? 'Tiket Sudah Diterbitkan' : 'Pembayaran Terkonfirmasi'}</p>
+                <p className="text-xs text-emerald-600/70">{status === 'issued' ? 'E-tiket/voucher Anda sudah siap' : 'Pembayaran sudah kami terima'}</p>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 flex-shrink-0">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                 {statusLabel(status)}
               </span>
@@ -355,157 +464,199 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
           </div>
         )}
 
-        {/* Main card */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          {/* Header */}
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Booking ID</p>
-              <p className="text-lg font-black text-slate-800 mt-0.5">{booking.orderNumber || booking.id}</p>
-              {isTransport && booking.pnr && (
-                <p className="text-xs text-slate-400 mt-0.5">PNR: <span className="font-bold text-slate-600">{booking.pnr}</span></p>
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{tc.total}</p>
-              <p className="text-lg font-black text-slate-800 mt-0.5">{fmtIDR(booking.totalAmount)}</p>
-            </div>
-          </div>
-
-          {/* Vendor */}
-          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {isFlight && booking.provider ? (
-                <img src={`/images/airlines/${booking.provider.toLowerCase()}.png`} alt={itemName} className="h-8 w-auto object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
-              ) : (
-                <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
-                  {isTrain ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="14" rx="2"/><path d="M4 11h16"/><path d="M12 3v8"/><circle cx="8" cy="19" r="2"/><circle cx="16" cy="19" r="2"/></svg>
-                  ) : isHotel ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14"/><path d="M9 21V13h6v8"/><path d="M3 9h18"/></svg>
-                  ) : isInsurance ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
-                  )}
-                </div>
-              )}
-              <div>
-                <p className="text-sm font-bold text-slate-800">{itemName}</p>
-                {itemCode && <p className="text-[11px] text-slate-400">{itemCode}{subclass ? ` — ${subclass}` : ''}</p>}
+        {/* Vendor / Airline Card */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-[0_10px_30px_-5px_rgba(31,29,22,0.06)] overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <i className="fa-solid fa-building text-brand-blue"></i>
+              {isTrain ? t.train.title : isHotel ? t.hotel.title : isInsurance ? t.insurance.title : t.flight.title}
+            </p>
+            <div className="flex items-center gap-4">
+              {(() => {
+                const logo = getVendorLogo(booking.bookingType, booking.provider || '', booking.airlineName || '');
+                return logo ? (
+                  <img
+                    src={logo}
+                    alt={itemName}
+                    className="h-10 w-auto object-contain"
+                    onError={e => (e.currentTarget.style.display = 'none')}
+                  />
+                ) : (
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                    isTrain ? 'bg-emerald-100' : isHotel ? 'bg-purple-100' : 'bg-orange-100'
+                  }`}>
+                    <i className={`fa-solid ${isTrain ? 'fa-train' : isHotel ? 'fa-bed' : 'fa-shield-halved'} ${
+                      isTrain ? 'text-emerald-600' : isHotel ? 'text-purple-600' : 'text-orange-600'
+                    } text-lg`}></i>
+                  </div>
+                );
+              })()}
+              <div className="flex-1">
+                <p className="font-bold text-slate-800">{itemName}</p>
+                {itemCode && <p className="text-sm text-slate-500">{itemCode}</p>}
+                {subclass && <p className="text-xs text-slate-400 mt-0.5">{subclass}</p>}
               </div>
+              {isTransport && (
+                <span className={`text-xs font-semibold px-3 py-1 rounded-lg ${refundable ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  {refundable ? t.refundable : t.nonRefundable}
+                </span>
+              )}
             </div>
-            {isTransport && (
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${refundable ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                {refundable ? t.refundable : t.nonRefundable}
-              </span>
-            )}
           </div>
 
           {/* Route / Period */}
           <div className="px-5 py-5">
-            <p className="text-xs font-semibold text-slate-400 mb-3">{isHotel || isInsurance ? t.periodBooking : fmtDate(startDate)}</p>
+            <p className="text-xs font-semibold text-slate-400 mb-4">{isHotel || isInsurance ? t.periodBooking : fmtDate(startDate)}</p>
 
             {isTransport ? (
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <p className="text-2xl font-black text-slate-900">{fmtTime(startDate)}</p>
-                  <p className="text-sm font-bold text-slate-600 mt-1">{originCode}</p>
-                  <p className="text-[11px] text-slate-400">{originName}</p>
+                  <p className="text-3xl font-black text-slate-900 tabular-nums">{fmtTime(startDate)}</p>
+                  <p className="text-sm font-bold text-slate-700 mt-1">{originCode}</p>
+                  <p className="text-xs text-slate-400 truncate">{originName}</p>
                 </div>
                 <div className="flex-1 flex flex-col items-center">
-                  <p className="text-[11px] text-slate-400 font-semibold mb-2">{fmtDuration(startDate, endDate)}</p>
+                  <p className="text-xs text-slate-400 font-medium mb-3">{fmtDuration(startDate, endDate)}</p>
                   <div className="w-full h-px bg-slate-200 relative">
-                    <div className="absolute left-0 top-[-3px] w-2 h-2 rounded-full bg-slate-800"></div>
-                    <div className="absolute right-0 top-[-3px] w-2 h-2 rounded-full border-2 border-slate-800 bg-white"></div>
+                    <div className="absolute left-0 top-[-3px] w-2.5 h-2.5 rounded-full bg-slate-800"></div>
+                    <div className="absolute right-0 top-[-3px] w-2.5 h-2.5 rounded-full border-2 border-slate-800 bg-white"></div>
+                    {isFlight && (
+                      <div className="absolute left-1/2 top-[-8px] -translate-x-1/2">
+                        <i className="fa-solid fa-plane text-slate-400 text-xs rotate-0"></i>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-2">{segmentCount <= 1 ? t.direct : `${segmentCount - 1} Transit`}</p>
+                  <p className="text-[11px] text-slate-400 mt-3">{segmentCount <= 1 ? t.direct : `${segmentCount - 1} Transit`}</p>
                 </div>
                 <div className="flex-1 text-right">
-                  <p className="text-2xl font-black text-slate-900">{fmtTime(endDate)}</p>
-                  <p className="text-sm font-bold text-slate-600 mt-1">{destCode}</p>
-                  <p className="text-[11px] text-slate-400">{destName}</p>
+                  <p className="text-3xl font-black text-slate-900 tabular-nums">{fmtTime(endDate)}</p>
+                  <p className="text-sm font-bold text-slate-700 mt-1">{destCode}</p>
+                  <p className="text-xs text-slate-400 truncate">{destName}</p>
                 </div>
               </div>
             ) : (
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <p className="text-lg font-black text-slate-900">{fmtDateShort(startDate)}</p>
-                  <p className="text-xs font-bold text-slate-600 mt-1">{isHotel ? t.hotel.checkin : t.starts}</p>
+                  <p className="text-xl font-black text-slate-900">{fmtDateShort(startDate)}</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">{isHotel ? t.hotel.checkin : t.starts}</p>
                 </div>
                 <div className="flex-1 flex flex-col items-center">
                   <div className="w-full h-px bg-slate-200 relative">
-                    <div className="absolute left-0 top-[-3px] w-2 h-2 rounded-full bg-slate-800"></div>
-                    <div className="absolute right-0 top-[-3px] w-2 h-2 rounded-full border-2 border-slate-800 bg-white"></div>
+                    <div className="absolute left-0 top-[-3px] w-2.5 h-2.5 rounded-full bg-slate-800"></div>
+                    <div className="absolute right-0 top-[-3px] w-2.5 h-2.5 rounded-full border-2 border-slate-800 bg-white"></div>
                   </div>
+                  {isHotel && (
+                    <p className="text-xs text-slate-400 mt-2">{nightCount(startDate, endDate)} malam</p>
+                  )}
                 </div>
                 <div className="flex-1 text-right">
-                  <p className="text-lg font-black text-slate-900">{fmtDateShort(endDate)}</p>
-                  <p className="text-xs font-bold text-slate-600 mt-1">{isHotel ? t.hotel.checkout : t.ends}</p>
+                  <p className="text-xl font-black text-slate-900">{fmtDateShort(endDate)}</p>
+                  <p className="text-xs font-bold text-slate-500 mt-1">{isHotel ? t.hotel.checkout : t.ends}</p>
                 </div>
               </div>
             )}
-
-            {/* Info chips */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-5">
-              {isFlight && baggageAllowance && <InfoRow label={t.baggage} value={baggageAllowance} />}
-              {isTrain && subclass && <InfoRow label={t.classType} value={subclass} />}
-              {isHotel && subclass && <InfoRow label={t.roomType} value={subclass} />}
-              {isInsurance && <InfoRow label={t.protection} value={bookingDataRaw?.coverage || 'Full Trip'} />}
-              <InfoRow label={isHotel ? t.guests : t.passengers} value={`${passengers.length || 1} ${t.people}`} />
-              <InfoRow label={t.orderNo} value={booking.id} />
-            </div>
           </div>
 
-          {/* Passengers */}
-          {passengers.length > 0 && isPaid && (
-            <div className="px-5 pb-5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">{isHotel ? t.guestData : t.passengerData}</p>
-              <div className="space-y-2">
-                {passengers.map((p: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-xs font-bold text-slate-500">{i + 1}</div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">{[p.title, p.first_name, p.last_name].filter(Boolean).join(' ')}</p>
-                        <p className="text-[11px] text-slate-400">{p.pax_type === 'ADT' ? t.adult : p.pax_type === 'CHD' ? t.child : t.infant}</p>
-                      </div>
+          {/* Info Chips */}
+          <div className="px-5 pb-5">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {isFlight && baggageAllowance && <InfoRow icon="fa-briefcase" label={t.baggage} value={baggageAllowance} />}
+              {isTrain && subclass && <InfoRow icon="fa-chair" label={t.classType} value={subclass} />}
+              {isHotel && subclass && <InfoRow icon="fa-bed" label={t.roomType} value={subclass} />}
+              {isInsurance && <InfoRow icon="fa-shield-halved" label={t.protection} value={bookingDataRaw?.coverage || 'Full Trip'} />}
+              <InfoRow icon={isHotel ? 'fa-users' : 'fa-user-group'} label={isHotel ? t.guests : t.passengers} value={`${passengers.length || 1} ${t.people}`} />
+              {booking.paymentType && <InfoRow icon="fa-credit-card" label={language === 'ID' ? 'Metode Bayar' : 'Payment'} value={booking.paymentType.replace('_', ' ')} />}
+              {booking.paidAt && <InfoRow icon="fa-circle-check" label={language === 'ID' ? 'Dibayar' : 'Paid'} value={fmtDateShort(booking.paidAt)} />}
+              <InfoRow icon="fa-calendar-days" label={t.createdAt} value={fmtDateShort(booking.createdAt)} />
+              <InfoRow icon="fa-hashtag" label={t.orderNo} value={booking.id} />
+            </div>
+          </div>
+        </div>
+
+        {/* Passengers */}
+        {passengers.length > 0 && isPaid && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <i className={`fa-solid ${isHotel ? 'fa-users' : 'fa-user-group'} text-brand-blue`}></i>
+                {isHotel ? t.guestData : t.passengerData}
+              </p>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {passengers.map((p: any, i: number) => (
+                <div key={i} className="px-5 py-3.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 bg-brand-blue/10 rounded-xl flex items-center justify-center text-sm font-extrabold text-brand-blue shrink-0">
+                      {i + 1}
                     </div>
-                    {isTransport && (
-                      <div className="text-right">
-                        <p className="text-[10px] text-slate-400 font-semibold">E-Ticket</p>                        <p className="text-xs font-bold text-slate-600 font-mono">{p.ticket_number || booking.pnr || '-'}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{[p.title, p.first_name, p.last_name].filter(Boolean).join(' ')}</p>
+                      <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
+                        {p.pax_type === 'ADT' ? t.adult : p.pax_type === 'CHD' ? t.child : t.infant}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {isTransport && p.ticket_number && (
+                      <div>
+                        <p className="text-[10px] text-slate-400">E-Ticket</p>
+                        <p className="text-xs font-bold text-slate-600 font-mono">{p.ticket_number}</p>
+                      </div>
+                    )}
+                    {p.seat && (
+                      <div className={p.ticket_number ? 'mt-1' : ''}>
+                        <p className="text-[10px] text-slate-400">Kursi</p>
+                        <span className="inline-block text-[11px] font-bold text-white bg-brand-orange px-2 py-0.5 rounded-md font-mono">
+                          {p.seat}
+                        </span>
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Action buttons */}
-        <div className="flex gap-3">
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3">
           {canDownload && (
             <button
               onClick={handleDownloadPDF}
               disabled={downloading}
-              className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-sm rounded-lg transition-all active:scale-[0.98]"
+              className="flex-1 py-3.5 bg-gradient-to-r from-brand-orange to-orange-dark hover:opacity-90 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-glow-orange"
             >
-              {downloading ? t.preparingDoc : t.downloadPdf}
+              {downloading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  {t.preparingDoc}
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-download text-xs"></i>
+                  {t.downloadPdf}
+                </>
+              )}
             </button>
           )}
           {canCancel && (
             <Link
               href={`/bookings/${id}/cancel`}
-              className="flex-1 py-3 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-sm rounded-lg transition-all text-center"
+              className="flex-1 py-3.5 border-2 border-red-200 text-red-500 hover:bg-red-50 font-bold text-sm rounded-xl transition-all text-center"
             >
+              <i className="fa-solid fa-ban text-xs mr-1.5"></i>
               {t.cancelBooking}
             </Link>
           )}
-          {!canPay && !canDownload && !canCancel && !isExpired && !isFailed && (
-            <div className="flex-1 py-3 bg-slate-50 border border-slate-200 text-slate-400 font-bold text-sm rounded-lg text-center">
-              Tidak ada aksi tersedia
-            </div>
+          {isTrain && isPaid && booking.orderNumber && (
+            <TrainSeatPicker
+              orderId={booking.id}
+              providerBookings={Array.isArray(bookingDataRaw?.provider_bookings)
+                ? (bookingDataRaw.provider_bookings as Array<Record<string, unknown>>)
+                : []}
+              passengers={passengers}
+              onSaved={fetchBooking}
+            />
           )}
         </div>
       </div>
@@ -519,30 +670,57 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ icon, label, value }: { icon?: string; label: string; value: string }) {
   return (
-    <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
-      <p className="text-[10px] text-slate-400 font-semibold uppercase">{label}</p>
-      <p className="text-xs font-bold text-slate-700 mt-0.5">{value || '-'}</p>
+    <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 min-w-0">
+      <div className="flex items-center gap-1.5 mb-1">
+        {icon && <i className={`fa-solid ${icon} text-[10px] text-brand-blue shrink-0`}></i>}
+        <p className="text-[10px] text-slate-400 font-bold uppercase truncate">{label}</p>
+      </div>
+      <p className="text-xs font-bold text-slate-700 truncate">{value || '-'}</p>
     </div>
   );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────── */
-/* PDF TEMPLATES — Traveloka-style E-Ticket                                     */
+/* PDF TEMPLATES — Professional E-Ticket with Security Features                 */
 /* ────────────────────────────────────────────────────────────────────────────── */
 
-const DC = { primary: '#EA580C', primaryDark: '#C2410C', dark: '#111827', primaryLight: '#FFF7ED', primaryBorder: '#FED7AA', light: '#F9FAFB', border: '#E5E7EB', muted: '#6B7280', text: '#111827', white: '#FFFFFF', greenBg: '#ECFDF5', green: '#059669', greenBorder: '#A7F3D0' };
+const DC = { primary: '#EA580C', primaryDark: '#C2410C', dark: '#111827', primaryLight: '#FFF7ED', primaryBorder: '#FED7AA', light: '#F9FAFB', border: '#E5E7EB', muted: '#6B7280', text: '#111827', white: '#FFFFFF', greenBg: '#ECFDF5', green: '#059669', greenBorder: '#A7F3D0', blueBg: '#EFF6FF', blue: '#2563EB', blueBorder: '#BFDBFE' };
+
+function genVerificationHash(id: string): string {
+  let hash = 0;
+  const str = `TMT-VERIFY-${id}-2024`;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+  return `TMT-${hex.slice(0, 4)}-${hex.slice(4)}`;
+}
 
 function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBaggage, isTransport, isFlight, isTrain, isHotel, isInsurance, startDate, endDate, originCode, destCode, originName, destName, itemName, itemCode, subclass, baggageAllowance, segmentCount, bookingDataRaw, refundable }: any) {
   const { language } = useLanguage();
   const t = i18n.bookingDetail[language];
   const bookingId = booking.orderNumber || booking.id;
+  const verHash = genVerificationHash(booking.id);
+  const printTime = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+
+  const watermarkBg = `repeating-linear-gradient(-45deg, transparent, transparent 40px, rgba(234,88,12,0.02) 40px, rgba(234,88,12,0.02) 42px)`;
+  const securityPattern = `radial-gradient(circle at 20% 80%, rgba(234,88,12,0.03) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(234,88,12,0.02) 0%, transparent 50%), radial-gradient(circle at 50% 50%, rgba(234,88,12,0.01) 0%, transparent 70%)`;
 
   const wrapper = (children: React.ReactNode) => (
     <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', pointerEvents: 'none' }}>
-      <div id="ticket-print" style={{ width: '210mm', minHeight: '297mm', background: '#F3F4F6', fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif", fontSize: '13px', color: DC.text, padding: '0' }}>
-        {children}
+      <div id="ticket-print" style={{ width: '210mm', minHeight: '297mm', background: `#F8FAFC`, fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif", fontSize: '13px', color: DC.text, padding: '0', position: 'relative', overflow: 'hidden' }}>
+        {/* Security watermark background */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: watermarkBg, pointerEvents: 'none', zIndex: 0 }}></div>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: securityPattern, pointerEvents: 'none', zIndex: 0 }}></div>
+        {/* Microprint line - top */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: `repeating-linear-gradient(90deg, ${DC.primary} 0px, ${DC.primary} 2px, transparent 2px, transparent 6px)`, zIndex: 1 }}></div>
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -555,124 +733,147 @@ function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBagg
 
     return wrapper(
       <>
-        {/* ── BLUE CURVED HEADER ── */}
-        <div style={{ background: DC.primary, padding: '32px 40px 56px', borderRadius: '0 0 32px 32px', position: 'relative' }}>
+        {/* ── HEADER ── */}
+        <div style={{ background: `linear-gradient(135deg, ${DC.primary} 0%, ${DC.primaryDark} 100%)`, padding: '28px 36px 38px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '160px', height: '160px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }}></div>
+          <div style={{ position: 'absolute', bottom: '-60px', left: '-20px', width: '120px', height: '120px', borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }}></div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '2px' }}>{isFlight ? t.eTicketFlight : t.eTicketTrain}</div>
-              <div style={{ fontSize: '24px', fontWeight: 800, color: DC.white, marginTop: '6px' }}>Departure Flight</div>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '3px' }}>E-Ticket Flight</div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: DC.white, marginTop: '4px', letterSpacing: '-0.5px' }}>Boarding Pass</div>
             </div>
-            <img src="/images/logo.png" alt="The Mafia Travel" crossOrigin="anonymous" style={{ height: '40px', width: '40px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <div style={{ textAlign: 'right' }}>
+              <img src="/images/logo.png" alt="The Mafia Travel" crossOrigin="anonymous" style={{ height: '36px', width: '36px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+              <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginTop: '4px', fontWeight: 600 }}>THE MAFIA TRAVEL</div>
+            </div>
+          </div>
+
+          {/* Order number badge */}
+          <div style={{ marginTop: '14px', display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '6px 14px' }}>
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>ORDER</span>
+            <span style={{ fontSize: '13px', color: DC.white, fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.5px' }}>{bookingId}</span>
           </div>
         </div>
 
-        {/* ── SINGLE UNIFIED CARD ── */}
-        <div style={{ margin: '-32px 28px 28px', background: DC.white, borderRadius: '16px', border: `1px solid ${DC.border}`, overflow: 'hidden', position: 'relative', zIndex: 2 }}>
+        {/* ── MAIN CARD ── */}
+        <div style={{ margin: '-24px 24px 0', background: DC.white, borderRadius: '16px', border: `1px solid ${DC.border}`, overflow: 'hidden', position: 'relative', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
 
-          {/* Airline info bar */}
-          <div style={{ padding: '18px 24px', borderBottom: `1px solid ${DC.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Airline + Status bar — perfectly centered */}
+          <div style={{ padding: '14px 24px', borderBottom: `1px dashed ${DC.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              {booking.provider && <img src={`/images/airlines/${booking.provider.toLowerCase()}.png`} alt={itemName} crossOrigin="anonymous" style={{ height: '28px', width: 'auto', objectFit: 'contain' }} />}
+              {(() => {
+                const logo = getVendorLogo(booking.bookingType, booking.provider || '', booking.airlineName || '');
+                return logo ? (
+                  <img src={logo} alt={itemName} crossOrigin="anonymous" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} onError={e => { e.currentTarget.style.display = 'none'; }} />
+                ) : null;
+              })()}
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 700 }}>{itemName}</div>
-                {subclass && <div style={{ fontSize: '12px', color: DC.muted }}>{subclass}</div>}
+                <div style={{ fontSize: '15px', fontWeight: 800, color: DC.dark, lineHeight: 1.2 }}>{itemName}</div>
+                {subclass && <div style={{ fontSize: '11px', color: DC.muted, marginTop: '2px' }}>{subclass}</div>}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               {booking.pnr && (
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.bookingCode}</div>
-                  <div style={{ fontSize: '16px', fontWeight: 800, fontFamily: 'monospace', color: DC.primary, letterSpacing: '1px' }}>{booking.pnr}</div>
+                  <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.bookingCode}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: DC.primary, letterSpacing: '2px', marginTop: '2px' }}>{booking.pnr}</div>
                 </div>
               )}
-              <div style={{ background: DC.greenBg, border: `1px solid ${DC.greenBorder}`, borderRadius: '20px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px', verticalAlign: 'middle' }}>
+              <div style={{ background: DC.greenBg, border: `1.5px solid ${DC.greenBorder}`, borderRadius: '8px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px', verticalAlign: 'middle' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DC.green} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: DC.green, textTransform: 'uppercase', lineHeight: 1 }}>{booking.status === 'issued' ? t.statusMap.issued : t.statusMap.paid}</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: DC.green, textTransform: 'uppercase', lineHeight: 1 }}>{booking.status === 'issued' ? t.statusMap.issued : t.statusMap.paid}</span>
               </div>
             </div>
           </div>
 
-          {/* Flight route */}
-          <div style={{ padding: '28px 32px', borderBottom: `1px solid ${DC.border}` }}>
-            <div style={{ fontSize: '11px', color: DC.muted, fontWeight: 600, marginBottom: '4px' }}>{fmtDate(startDate)}</div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px' }}>
+          {/* Flight Route */}
+          <div style={{ padding: '28px 32px', borderBottom: `1px dashed ${DC.border}` }}>
+            <div style={{ fontSize: '11px', color: DC.muted, fontWeight: 700, marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{fmtDate(startDate)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               {/* Departure */}
-              <div style={{ textAlign: 'center', minWidth: '100px' }}>
-                <div style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1 }}>{fmtTime(startDate)}</div>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: DC.text, marginTop: '8px' }}>{originCode}</div>
-                <div style={{ fontSize: '12px', color: DC.muted, marginTop: '4px' }}>{originName}</div>
-                {terminal_dep && <div style={{ fontSize: '10px', color: DC.muted, marginTop: '2px' }}>{terminal_dep}</div>}
+              <div style={{ textAlign: 'center', minWidth: '110px' }}>
+                <div style={{ fontSize: '36px', fontWeight: 900, lineHeight: 1, color: DC.dark, letterSpacing: '-1px' }}>{fmtTime(startDate)}</div>
+                <div style={{ fontSize: '22px', fontWeight: 800, color: DC.primary, marginTop: '10px' }}>{originCode}</div>
+                <div style={{ fontSize: '11px', color: DC.muted, marginTop: '4px', maxWidth: '120px' }}>{originName}</div>
+                {terminal_dep && <div style={{ fontSize: '9px', color: DC.muted, marginTop: '2px', fontWeight: 600 }}>{terminal_dep}</div>}
               </div>
-              {/* Plane + line */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 16px' }}>
-                <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 600, marginBottom: '8px' }}>{fmtDuration(startDate, endDate)}</div>
-                <div style={{ width: '100%', position: 'relative', height: '20px' }}>
-                  <div style={{ position: 'absolute', top: '9px', left: '8px', right: '8px', height: '2px', background: DC.border }}></div>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill={DC.primary} style={{ position: 'absolute', left: '50%', top: '0', transform: 'translateX(-50%)' }}>
+
+              {/* Flight path */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 20px' }}>
+                <div style={{ fontSize: '11px', color: DC.muted, fontWeight: 700, marginBottom: '10px' }}>{fmtDuration(startDate, endDate)}</div>
+                <div style={{ width: '100%', position: 'relative', height: '24px' }}>
+                  {/* Dashed line */}
+                  <div style={{ position: 'absolute', top: '11px', left: '12px', right: '12px', height: '2px', background: `repeating-linear-gradient(90deg, ${DC.border} 0px, ${DC.border} 6px, transparent 6px, transparent 10px)` }}></div>
+                  {/* Plane icon */}
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill={DC.primary} style={{ position: 'absolute', left: '50%', top: '0', transform: 'translateX(-50%) rotate(0deg)' }}>
                     <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
                   </svg>
-                  <div style={{ position: 'absolute', left: '4px', top: '6px', width: '8px', height: '8px', borderRadius: '50%', background: DC.primary }}></div>
-                  <div style={{ position: 'absolute', right: '4px', top: '6px', width: '8px', height: '8px', borderRadius: '50%', border: `2px solid ${DC.primary}`, background: DC.white }}></div>
+                  {/* Dots */}
+                  <div style={{ position: 'absolute', left: '4px', top: '8px', width: '10px', height: '10px', borderRadius: '50%', background: DC.primary }}></div>
+                  <div style={{ position: 'absolute', right: '4px', top: '8px', width: '10px', height: '10px', borderRadius: '50%', border: `2.5px solid ${DC.primary}`, background: DC.white }}></div>
                 </div>
-                <div style={{ fontSize: '10px', color: DC.muted, marginTop: '6px' }}>{segmentCount <= 1 ? t.direct : `${segmentCount - 1} Transit`}</div>
+                <div style={{ fontSize: '10px', color: DC.muted, marginTop: '8px', fontWeight: 600 }}>{segmentCount <= 1 ? t.direct : `${segmentCount - 1} Transit`}</div>
               </div>
+
               {/* Arrival */}
-              <div style={{ textAlign: 'center', minWidth: '100px' }}>
-                <div style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1 }}>{fmtTime(endDate)}</div>
-                <div style={{ fontSize: '20px', fontWeight: 700, color: DC.text, marginTop: '8px' }}>{destCode}</div>
-                <div style={{ fontSize: '12px', color: DC.muted, marginTop: '4px' }}>{destName}</div>
-                {terminal_arr && <div style={{ fontSize: '10px', color: DC.muted, marginTop: '2px' }}>{terminal_arr}</div>}
+              <div style={{ textAlign: 'center', minWidth: '110px' }}>
+                <div style={{ fontSize: '36px', fontWeight: 900, lineHeight: 1, color: DC.dark, letterSpacing: '-1px' }}>{fmtTime(endDate)}</div>
+                <div style={{ fontSize: '22px', fontWeight: 800, color: DC.primary, marginTop: '10px' }}>{destCode}</div>
+                <div style={{ fontSize: '11px', color: DC.muted, marginTop: '4px', maxWidth: '120px' }}>{destName}</div>
+                {terminal_arr && <div style={{ fontSize: '9px', color: DC.muted, marginTop: '2px', fontWeight: 600 }}>{terminal_arr}</div>}
               </div>
             </div>
           </div>
 
-          {/* Booking info strip */}
-          <div style={{ padding: '14px 24px', borderBottom: passengers.length > 0 ? `1px solid ${DC.border}` : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '32px' }}>
+          {/* Info Strip */}
+          <div style={{ padding: '14px 24px', borderBottom: passengers.length > 0 ? `1px dashed ${DC.border}` : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FAFBFC' }}>
+            <div style={{ display: 'flex', gap: '28px' }}>
               {passengers[0]?.ticket_number && (
                 <div>
-                  <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.eTicketNo}</div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, fontFamily: 'monospace', marginTop: '2px' }}>{passengers[0].ticket_number}</div>
+                  <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.eTicketNo}</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, fontFamily: 'monospace', marginTop: '3px', color: DC.dark }}>{passengers[0].ticket_number}</div>
                 </div>
               )}
               {baggageAllowance && (
                 <div>
-                  <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.baggage}</div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{baggageAllowance}</div>
+                  <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.baggage}</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: DC.dark }}>{baggageAllowance}</div>
                 </div>
               )}
               {subclass && (
                 <div>
-                  <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.classType}</div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{subclass}</div>
+                  <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.classType}</div>
+                  <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: DC.dark }}>{subclass}</div>
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '10px', fontWeight: 600, color: refundable ? DC.green : '#DC2626' }}>{refundable ? t.refundable : t.nonRefundable}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: refundable ? DC.greenBg : '#FEF2F2', padding: '4px 10px', borderRadius: '6px', border: `1px solid ${refundable ? DC.greenBorder : '#FECACA'}` }}>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: refundable ? DC.green : '#DC2626' }}>{refundable ? t.refundable : t.nonRefundable}</span>
             </div>
           </div>
 
-          {/* Important notices */}
-          <div style={{ padding: '16px 24px', display: 'flex', gap: '16px', borderBottom: `1px solid ${DC.border}` }}>
+          {/* Important Notices */}
+          <div style={{ padding: '14px 24px', display: 'flex', gap: '12px', borderBottom: `1px dashed ${DC.border}` }}>
             {[
-              { svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="15" r="1.5" fill={DC.primary}/></svg>, title: 'Identitas', desc: t.showId },
-              { svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>, title: t.hotel.checkin, desc: t.checkinNotice },
-              { svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>, title: 'Zona Waktu', desc: t.localTime },
+              { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="7" cy="15" r="1.5" fill={DC.primary}/></svg>, title: 'Identitas', desc: 'Tunjukkan dokumen ini dan identitas resmi saat keberangkatan.' },
+              { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/><path d="M12 2v1"/><path d="M12 21v1"/></svg>, title: 'Waktu', desc: 'Check-in ditutup 45-90 menit sebelum jadwal.' },
+              { icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>, title: 'Zona Waktu', desc: 'Waktu yang tertera adalah waktu setempat tujuan.' },
             ].map((item, i) => (
-              <div key={i} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: DC.primaryLight, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{item.svg}</div>
-                <div>
-                  <div style={{ fontSize: '10px', fontWeight: 700 }}>{item.title}</div>
-                  <div style={{ fontSize: '9px', color: DC.muted, marginTop: '1px', lineHeight: 1.3 }}>{item.desc}</div>
+              <div key={i} style={{ flex: 1, display: 'flex', alignItems: 'flex-start', gap: '10px', background: DC.primaryLight, borderRadius: '10px', padding: '12px 14px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: DC.white, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>{item.icon}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: DC.dark, lineHeight: 1.3 }}>{item.title}</div>
+                  <div style={{ fontSize: '9px', color: DC.muted, marginTop: '3px', lineHeight: 1.4 }}>{item.desc}</div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* TABEL PENUMPANG */}
+          {/* Passenger Table */}
           {enrichedPassengers.length > 0 && (
-            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${DC.border}` }}>
+            <div style={{ padding: '16px 24px', borderBottom: `1px dashed ${DC.border}` }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: DC.muted, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>{isHotel ? t.guestData : t.passengerData}</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
                 <thead>
                   <tr>
@@ -694,7 +895,7 @@ function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBagg
                   {enrichedPassengers.map((p: any, i: number) => (
                     <tr key={i}>
                       <td style={{ padding: '10px 6px', textAlign: 'center', fontWeight: 800, color: DC.primary, borderBottom: `1px solid ${DC.border}` }}>{i + 1}</td>
-                      <td style={{ padding: '10px 6px', fontWeight: 700, textTransform: 'uppercase', color: DC.dark, borderBottom: `1px solid ${DC.border}` }}>{[p.title, p.first_name, p.last_name].filter(Boolean).join(' ')}</td>
+                      <td style={{ padding: '10px 6px', fontWeight: 700, textTransform: 'uppercase', color: DC.dark, borderBottom: `1px solid ${DC.border}`, fontSize: '11px' }}>{[p.title, p.first_name, p.last_name].filter(Boolean).join(' ')}</td>
                       <td style={{ padding: '10px 6px', color: DC.muted, fontWeight: 600, borderBottom: `1px solid ${DC.border}` }}>{p.pax_type === 'ADT' ? t.adult : p.pax_type === 'CHD' ? t.child : t.infant}</td>
                       {enrichedPassengers.some((pp: any) => pp.ticket_number || booking.pnr) && (
                         <td style={{ padding: '10px 6px', color: DC.dark, fontFamily: 'monospace', fontWeight: 700, fontSize: '11px', borderBottom: `1px solid ${DC.border}` }}>{p.ticket_number || booking.pnr || '-'}</td>
@@ -715,20 +916,37 @@ function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBagg
           )}
 
           {/* Footer */}
-          <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: '13px', fontWeight: 700 }}>{t.help24h}</div>
-              <div style={{ fontSize: '12px', color: DC.muted, marginTop: '6px', lineHeight: 1.8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>0804-1500-308</span></div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><span>support@themafiatravel.com</span></div>
+          <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: DC.dark }}>{t.help24h}</div>
+              <div style={{ fontSize: '11px', color: DC.muted, marginTop: '6px', lineHeight: 2 }}>
+                <div>📞 0804-1500-308</div>
+                <div>✉️ support@themafiatravel.com</div>
               </div>
-              <div style={{ fontSize: '10px', color: DC.muted, marginTop: '8px', fontStyle: 'italic' }}>Tunjukkan e-ticket ini melalui smartphone Anda. Tidak perlu mencetak.</div>
+              <div style={{ fontSize: '9px', color: DC.muted, marginTop: '8px', fontStyle: 'italic' }}>Tunjukkan e-ticket ini melalui smartphone Anda. Tidak perlu mencetak.</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <QRCode value={`https://themafiatravel.com/verify/${booking.id}`} size={64} style={{ padding: '4px', background: 'white', border: `1px solid ${DC.border}`, borderRadius: '8px' }} />
-              <div style={{ fontSize: '8px', color: DC.muted, marginTop: '4px' }}>{t.scanVerify}</div>
+              <QRCode value={`https://themafiatravel.com/verify/${booking.id}`} size={72} style={{ padding: '4px', background: 'white', border: `1px solid ${DC.border}`, borderRadius: '10px' }} />
+              <div style={{ fontSize: '8px', color: DC.muted, marginTop: '4px', fontWeight: 600 }}>{t.scanVerify}</div>
             </div>
           </div>
+        </div>
+
+        {/* ── SECURITY FOOTER STRIP ── */}
+        <div style={{ margin: '16px 24px 24px', padding: '14px 20px', background: DC.dark, borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px' }}>Verification Code</div>
+            <div style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'monospace', color: DC.white, letterSpacing: '2px', marginTop: '3px' }}>{verHash}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px' }}>Diterbitkan</div>
+            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', marginTop: '3px' }}>{printTime} WIB</div>
+          </div>
+        </div>
+
+        {/* Microprint line */}
+        <div style={{ fontSize: '4px', color: 'rgba(234,88,12,0.15)', textAlign: 'center', letterSpacing: '0.5px', padding: '0 24px', wordBreak: 'break-all', lineHeight: 1.5 }}>
+          {'THE MAFIA TRAVEL • DOKUMEN RESMI • '.repeat(20)}
         </div>
       </>
     );
@@ -737,84 +955,97 @@ function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBagg
   if (isTrain) {
     return wrapper(
       <>
-        <div style={{ background: DC.primary, padding: '32px 40px 56px', borderRadius: '0 0 32px 32px' }}>
+        {/* ── HEADER ── */}
+        <div style={{ background: `linear-gradient(135deg, #059669 0%, #047857 100%)`, padding: '28px 36px 38px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '160px', height: '160px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }}></div>
+          <div style={{ position: 'absolute', bottom: '-60px', left: '-20px', width: '120px', height: '120px', borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }}></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '2px' }}>{isFlight ? t.eTicketFlight : t.eTicketTrain}</div>
-              <div style={{ fontSize: '24px', fontWeight: 800, color: DC.white, marginTop: '6px' }}>Departure Train</div>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '3px' }}>E-Ticket Train</div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: DC.white, marginTop: '4px', letterSpacing: '-0.5px' }}>Boarding Pass</div>
             </div>
-            <img src="/images/logo.png" alt="The Mafia Travel" crossOrigin="anonymous" style={{ height: '40px', width: '40px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <div style={{ textAlign: 'right' }}>
+              <img src="/images/logo.png" alt="The Mafia Travel" crossOrigin="anonymous" style={{ height: '36px', width: '36px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+              <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginTop: '4px', fontWeight: 600 }}>THE MAFIA TRAVEL</div>
+            </div>
+          </div>
+          <div style={{ marginTop: '14px', display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '6px 14px' }}>
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>ORDER</span>
+            <span style={{ fontSize: '13px', color: DC.white, fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.5px' }}>{bookingId}</span>
           </div>
         </div>
 
-        {/* ── SINGLE UNIFIED CARD ── */}
-        <div style={{ margin: '-32px 28px 28px', background: DC.white, borderRadius: '16px', border: `1px solid ${DC.border}`, overflow: 'hidden', position: 'relative', zIndex: 2 }}>
-          <div style={{ padding: '18px 24px', borderBottom: `1px solid ${DC.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* ── MAIN CARD ── */}
+        <div style={{ margin: '-24px 24px 0', background: DC.white, borderRadius: '16px', border: `1px solid ${DC.border}`, overflow: 'hidden', position: 'relative', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+          {/* Train info bar */}
+          <div style={{ padding: '16px 24px', borderBottom: `1px dashed ${DC.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#FFF7ED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="14" rx="2"/><path d="M4 11h16"/><path d="M12 3v8"/><circle cx="8" cy="19" r="2"/><circle cx="16" cy="19" r="2"/><path d="M6 17l-2 4"/><path d="M18 17l2 4"/></svg>
-                </div>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#ECFDF5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="14" rx="2"/><path d="M4 11h16"/><path d="M12 3v8"/><circle cx="8" cy="19" r="2"/><circle cx="16" cy="19" r="2"/><path d="M6 17l-2 4"/><path d="M18 17l2 4"/></svg>
+              </div>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 700 }}>{itemName}</div>
-                <div style={{ fontSize: '12px', color: DC.muted }}>{subclass || 'Ekonomi'}</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: DC.dark, lineHeight: 1.2 }}>{itemName}</div>
+                <div style={{ fontSize: '11px', color: DC.muted, marginTop: '2px' }}>{subclass || 'Ekonomi'}</div>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
               {booking.pnr && (
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.bookingCode}</div>
-                  <div style={{ fontSize: '16px', fontWeight: 800, fontFamily: 'monospace', color: DC.primary, letterSpacing: '1px' }}>{booking.pnr}</div>
+                  <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.bookingCode}</div>
+                  <div style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: '#059669', letterSpacing: '2px', marginTop: '2px' }}>{booking.pnr}</div>
                 </div>
               )}
-              <div style={{ background: DC.greenBg, border: `1px solid ${DC.greenBorder}`, borderRadius: '20px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px', verticalAlign: 'middle' }}>
+              <div style={{ background: DC.greenBg, border: `1.5px solid ${DC.greenBorder}`, borderRadius: '8px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px', verticalAlign: 'middle' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DC.green} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: DC.green, textTransform: 'uppercase', lineHeight: 1 }}>{booking.status === 'issued' ? t.statusMap.issued : t.statusMap.paid}</span>
+                <span style={{ fontSize: '11px', fontWeight: 800, color: DC.green, textTransform: 'uppercase', lineHeight: 1 }}>{booking.status === 'issued' ? t.statusMap.issued : t.statusMap.paid}</span>
               </div>
             </div>
           </div>
 
-          <div style={{ padding: '28px 32px', borderBottom: `1px solid ${DC.border}` }}>
-            <div style={{ fontSize: '11px', color: DC.muted, fontWeight: 600, marginBottom: '4px' }}>{fmtDate(startDate)}</div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px' }}>
-              <div style={{ textAlign: 'center', minWidth: '100px' }}>
-                <div style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1 }}>{fmtTime(startDate)}</div>
-                <div style={{ fontSize: '20px', fontWeight: 700, marginTop: '8px' }}>{originCode}</div>
-                <div style={{ fontSize: '12px', color: DC.muted, marginTop: '4px' }}>{originName}</div>
+          {/* Route */}
+          <div style={{ padding: '28px 32px', borderBottom: `1px dashed ${DC.border}` }}>
+            <div style={{ fontSize: '11px', color: DC.muted, fontWeight: 700, marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{fmtDate(startDate)}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ textAlign: 'center', minWidth: '110px' }}>
+                <div style={{ fontSize: '36px', fontWeight: 900, lineHeight: 1, color: DC.dark, letterSpacing: '-1px' }}>{fmtTime(startDate)}</div>
+                <div style={{ fontSize: '22px', fontWeight: 800, color: '#059669', marginTop: '10px' }}>{originCode}</div>
+                <div style={{ fontSize: '11px', color: DC.muted, marginTop: '4px' }}>{originName}</div>
               </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 16px' }}>
-                <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 600, marginBottom: '8px' }}>{fmtDuration(startDate, endDate)}</div>
-                <div style={{ width: '100%', position: 'relative', height: '20px' }}>
-                  <div style={{ position: 'absolute', top: '9px', left: '8px', right: '8px', height: '2px', background: DC.border }}></div>
-                  <div style={{ position: 'absolute', left: '4px', top: '6px', width: '8px', height: '8px', borderRadius: '50%', background: DC.primary }}></div>
-                  <div style={{ position: 'absolute', right: '4px', top: '6px', width: '8px', height: '8px', borderRadius: '50%', border: `2px solid ${DC.primary}`, background: DC.white }}></div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 20px' }}>
+                <div style={{ width: '100%', position: 'relative', height: '24px' }}>
+                  <div style={{ position: 'absolute', top: '11px', left: '12px', right: '12px', height: '2px', background: `repeating-linear-gradient(90deg, ${DC.border} 0px, ${DC.border} 6px, transparent 6px, transparent 10px)` }}></div>
+                  <div style={{ position: 'absolute', left: '4px', top: '8px', width: '10px', height: '10px', borderRadius: '50%', background: '#059669' }}></div>
+                  <div style={{ position: 'absolute', right: '4px', top: '8px', width: '10px', height: '10px', borderRadius: '50%', border: '2.5px solid #059669', background: DC.white }}></div>
                 </div>
               </div>
-              <div style={{ textAlign: 'center', minWidth: '100px' }}>
-                <div style={{ fontSize: '32px', fontWeight: 800, lineHeight: 1 }}>{fmtTime(endDate)}</div>
-                <div style={{ fontSize: '20px', fontWeight: 700, marginTop: '8px' }}>{destCode}</div>
-                <div style={{ fontSize: '12px', color: DC.muted, marginTop: '4px' }}>{destName}</div>
+              <div style={{ textAlign: 'center', minWidth: '110px' }}>
+                <div style={{ fontSize: '36px', fontWeight: 900, lineHeight: 1, color: DC.dark, letterSpacing: '-1px' }}>{fmtTime(endDate)}</div>
+                <div style={{ fontSize: '22px', fontWeight: 800, color: '#059669', marginTop: '10px' }}>{destCode}</div>
+                <div style={{ fontSize: '11px', color: DC.muted, marginTop: '4px' }}>{destName}</div>
               </div>
             </div>
           </div>
 
-          <div style={{ padding: '14px 24px', display: 'flex', gap: '32px' }}>
+          {/* Info strip */}
+          <div style={{ padding: '14px 24px', display: 'flex', gap: '28px', background: '#FAFBFC', borderBottom: `1px dashed ${DC.border}` }}>
             <div>
-              <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>{t.date}</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{fmtDateShortPdf(startDate)}</div>
+              <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.date}</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: DC.dark }}>{fmtDateShortPdf(startDate)}</div>
             </div>
             <div>
-              <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>{t.classType}</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{subclass || '-'}</div>
+              <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.classType}</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: DC.dark }}>{subclass || '-'}</div>
             </div>
             <div>
-              <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>Kebijakan</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px', color: refundable ? DC.green : '#DC2626' }}>{refundable ? t.refundable : t.nonRefundable}</div>
+              <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>Kebijakan</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: refundable ? DC.green : '#DC2626' }}>{refundable ? t.refundable : t.nonRefundable}</div>
             </div>
           </div>
 
-          {/* TABEL PENUMPANG */}
+          {/* Passenger table */}
           {enrichedPassengers.length > 0 && (
-            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${DC.border}` }}>
+            <div style={{ padding: '16px 24px', borderBottom: `1px dashed ${DC.border}` }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: DC.muted, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>{t.passengerData}</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
                 <thead>
                   <tr>
@@ -830,8 +1061,8 @@ function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBagg
                 <tbody>
                   {enrichedPassengers.map((p: any, i: number) => (
                     <tr key={i}>
-                      <td style={{ padding: '10px 6px', textAlign: 'center', fontWeight: 800, color: DC.primary, borderBottom: `1px solid ${DC.border}` }}>{i + 1}</td>
-                      <td style={{ padding: '10px 6px', fontWeight: 700, textTransform: 'uppercase', color: DC.dark, borderBottom: `1px solid ${DC.border}` }}>{[p.title, p.first_name, p.last_name].filter(Boolean).join(' ')}</td>
+                      <td style={{ padding: '10px 6px', textAlign: 'center', fontWeight: 800, color: '#059669', borderBottom: `1px solid ${DC.border}` }}>{i + 1}</td>
+                      <td style={{ padding: '10px 6px', fontWeight: 700, textTransform: 'uppercase', color: DC.dark, borderBottom: `1px solid ${DC.border}`, fontSize: '11px' }}>{[p.title, p.first_name, p.last_name].filter(Boolean).join(' ')}</td>
                       <td style={{ padding: '10px 6px', color: DC.muted, fontWeight: 600, borderBottom: `1px solid ${DC.border}` }}>{p.pax_type === 'ADT' ? t.adult : p.pax_type === 'CHD' ? t.child : t.infant}</td>
                       <td style={{ padding: '10px 6px', color: DC.dark, fontFamily: 'monospace', fontWeight: 700, fontSize: '11px', borderBottom: `1px solid ${DC.border}` }}>{p.ticket_number || booking.pnr || '-'}</td>
                       {subclass && (
@@ -844,20 +1075,42 @@ function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBagg
             </div>
           )}
 
-          <div style={{ padding: '20px 24px', borderTop: `1px solid ${DC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: '13px', fontWeight: 700 }}>{t.help24h}</div>
-              <div style={{ fontSize: '12px', color: DC.muted, marginTop: '6px', lineHeight: 1.8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>0804-1500-308</span></div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><span>support@themafiatravel.com</span></div>
+          {/* Footer */}
+          <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: DC.dark }}>{t.help24h}</div>
+              <div style={{ fontSize: '11px', color: DC.muted, marginTop: '6px', lineHeight: 1.8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                  <span>0804-1500-308</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span>support@themafiatravel.com</span>
+                </div>
               </div>
-              <div style={{ fontSize: '10px', color: DC.muted, marginTop: '8px', fontStyle: 'italic' }}>Tunjukkan e-ticket ini melalui smartphone Anda. Tidak perlu mencetak.</div>
+              <div style={{ fontSize: '9px', color: DC.muted, marginTop: '8px', fontStyle: 'italic' }}>Tunjukkan e-ticket ini melalui smartphone Anda. Tidak perlu mencetak.</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <QRCode value={`https://themafiatravel.com/verify/${booking.id}`} size={64} style={{ padding: '4px', background: 'white', border: `1px solid ${DC.border}`, borderRadius: '8px' }} />
-              <div style={{ fontSize: '8px', color: DC.muted, marginTop: '4px' }}>{t.scanVerify}</div>
+              <QRCode value={`https://themafiatravel.com/verify/${booking.id}`} size={72} style={{ padding: '4px', background: 'white', border: `1px solid ${DC.border}`, borderRadius: '10px' }} />
+              <div style={{ fontSize: '8px', color: DC.muted, marginTop: '4px', fontWeight: 600 }}>{t.scanVerify}</div>
             </div>
           </div>
+        </div>
+
+        {/* Security footer */}
+        <div style={{ margin: '16px 24px 24px', padding: '14px 20px', background: DC.dark, borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px' }}>Verification Code</div>
+            <div style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'monospace', color: DC.white, letterSpacing: '2px', marginTop: '3px' }}>{verHash}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px' }}>Diterbitkan</div>
+            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', marginTop: '3px' }}>{printTime} WIB</div>
+          </div>
+        </div>
+        <div style={{ fontSize: '4px', color: 'rgba(234,88,12,0.15)', textAlign: 'center', letterSpacing: '0.5px', padding: '0 24px', wordBreak: 'break-all', lineHeight: 1.5 }}>
+          {'THE MAFIA TRAVEL • DOKUMEN RESMI • '.repeat(20)}
         </div>
       </>
     );
@@ -867,92 +1120,130 @@ function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBagg
     const nights = nightCount(booking.checkinDate, booking.checkoutDate);
     return wrapper(
       <>
-        <div style={{ background: DC.primary, padding: '32px 40px 56px', borderRadius: '0 0 32px 32px' }}>
+        {/* ── HEADER ── */}
+        <div style={{ background: `linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)`, padding: '28px 36px 38px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '160px', height: '160px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }}></div>
+          <div style={{ position: 'absolute', bottom: '-60px', left: '-20px', width: '120px', height: '120px', borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }}></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '2px' }}>{t.voucherHotel}</div>
-              <div style={{ fontSize: '24px', fontWeight: 800, color: DC.white, marginTop: '6px' }}>Hotel Reservation</div>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '3px' }}>Voucher Hotel</div>
+              <div style={{ fontSize: '26px', fontWeight: 900, color: DC.white, marginTop: '4px', letterSpacing: '-0.5px' }}>Booking Confirmation</div>
             </div>
-            <img src="/images/logo.png" alt="The Mafia Travel" crossOrigin="anonymous" style={{ height: '40px', width: '40px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <div style={{ textAlign: 'right' }}>
+              <img src="/images/logo.png" alt="The Mafia Travel" crossOrigin="anonymous" style={{ height: '36px', width: '36px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+              <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginTop: '4px', fontWeight: 600 }}>THE MAFIA TRAVEL</div>
+            </div>
+          </div>
+          <div style={{ marginTop: '14px', display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '6px 14px' }}>
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>ORDER</span>
+            <span style={{ fontSize: '13px', color: DC.white, fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.5px' }}>{bookingId}</span>
           </div>
         </div>
 
-        {/* ── SINGLE UNIFIED CARD ── */}
-        <div style={{ margin: '-32px 28px 28px', background: DC.white, borderRadius: '16px', border: `1px solid ${DC.border}`, overflow: 'hidden', position: 'relative', zIndex: 2 }}>
-          <div style={{ padding: '18px 24px', borderBottom: `1px solid ${DC.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* ── MAIN CARD ── */}
+        <div style={{ margin: '-24px 24px 0', background: DC.white, borderRadius: '16px', border: `1px solid ${DC.border}`, overflow: 'hidden', position: 'relative', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+          {/* Hotel info bar */}
+          <div style={{ padding: '16px 24px', borderBottom: `1px dashed ${DC.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#FFF7ED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14"/><path d="M9 21V13h6v8"/><path d="M3 9h18"/></svg>
-                </div>
+              <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: '#F5F3FF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14"/><path d="M9 21V13h6v8"/><path d="M3 9h18"/></svg>
+              </div>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 700 }}>{itemName}</div>
-                <div style={{ fontSize: '12px', color: DC.muted }}>{subclass || 'Standard Room'}</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: DC.dark, lineHeight: 1.2 }}>{itemName}</div>
+                <div style={{ fontSize: '11px', color: DC.muted, marginTop: '2px' }}>{subclass || 'Standard Room'}</div>
               </div>
             </div>
-            <div style={{ background: DC.greenBg, border: `1px solid ${DC.greenBorder}`, borderRadius: '20px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px', verticalAlign: 'middle' }}>
+            <div style={{ background: DC.greenBg, border: `1.5px solid ${DC.greenBorder}`, borderRadius: '8px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px', verticalAlign: 'middle' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DC.green} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: DC.green, textTransform: 'uppercase', lineHeight: 1 }}>{t.statusMap.paid}</span>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: DC.green, textTransform: 'uppercase', lineHeight: 1 }}>{t.statusMap.paid}</span>
             </div>
           </div>
 
-          <div style={{ padding: '28px 32px', borderBottom: `1px solid ${DC.border}` }}>
+          {/* Check-in / Check-out */}
+          <div style={{ padding: '28px 32px', borderBottom: `1px dashed ${DC.border}` }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ textAlign: 'center', minWidth: '120px' }}>
-                <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.hotel.checkin}</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '8px' }}>{fmtDateShortPdf(booking.checkinDate)}</div>
-                <div style={{ fontSize: '11px', color: DC.muted, marginTop: '4px' }}>Mulai pukul 14:00</div>
+              <div style={{ textAlign: 'center', minWidth: '130px' }}>
+                <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.hotel.checkin}</div>
+                <div style={{ fontSize: '26px', fontWeight: 900, marginTop: '10px', color: DC.dark }}>{fmtDateShortPdf(booking.checkinDate)}</div>
+                <div style={{ fontSize: '10px', color: DC.muted, marginTop: '4px', fontWeight: 600 }}>Mulai pukul 14:00</div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 16px' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: DC.primary }}>{nights}</div>
-                <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 600 }}>{t.hotel.night}</div>
-                <div style={{ width: '100%', position: 'relative', height: '20px', marginTop: '4px' }}>
-                  <div style={{ position: 'absolute', top: '9px', left: '8px', right: '8px', height: '2px', background: DC.border }}></div>
-                  <div style={{ position: 'absolute', left: '4px', top: '6px', width: '8px', height: '8px', borderRadius: '50%', background: DC.primary }}></div>
-                  <div style={{ position: 'absolute', right: '4px', top: '6px', width: '8px', height: '8px', borderRadius: '50%', border: `2px solid ${DC.primary}`, background: DC.white }}></div>
+                <div style={{ fontSize: '22px', fontWeight: 900, color: '#7C3AED' }}>{nights}</div>
+                <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 700 }}>{t.hotel.night}</div>
+                <div style={{ width: '100%', position: 'relative', height: '24px', marginTop: '4px' }}>
+                  <div style={{ position: 'absolute', top: '11px', left: '12px', right: '12px', height: '2px', background: `repeating-linear-gradient(90deg, ${DC.border} 0px, ${DC.border} 6px, transparent 6px, transparent 10px)` }}></div>
+                  <div style={{ position: 'absolute', left: '4px', top: '8px', width: '10px', height: '10px', borderRadius: '50%', background: '#7C3AED' }}></div>
+                  <div style={{ position: 'absolute', right: '4px', top: '8px', width: '10px', height: '10px', borderRadius: '50%', border: '2.5px solid #7C3AED', background: DC.white }}></div>
                 </div>
               </div>
-              <div style={{ textAlign: 'center', minWidth: '120px' }}>
-                <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.hotel.checkout}</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '8px' }}>{fmtDateShortPdf(booking.checkoutDate)}</div>
-                <div style={{ fontSize: '11px', color: DC.muted, marginTop: '4px' }}>Sebelum pukul 12:00</div>
+              <div style={{ textAlign: 'center', minWidth: '130px' }}>
+                <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.hotel.checkout}</div>
+                <div style={{ fontSize: '26px', fontWeight: 900, marginTop: '10px', color: DC.dark }}>{fmtDateShortPdf(booking.checkoutDate)}</div>
+                <div style={{ fontSize: '10px', color: DC.muted, marginTop: '4px', fontWeight: 600 }}>Sebelum pukul 12:00</div>
               </div>
             </div>
           </div>
 
-          <div style={{ padding: '14px 24px', borderBottom: `1px solid ${DC.border}`, display: 'flex', gap: '32px' }}>
+          {/* Info strip */}
+          <div style={{ padding: '14px 24px', borderBottom: `1px dashed ${DC.border}`, display: 'flex', gap: '28px', background: '#FAFBFC' }}>
             <div>
-              <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>{t.hotel.guest}</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{passengers.length || 1} {t.people}</div>
+              <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.hotel.guest}</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: DC.dark }}>{passengers.length || 1} {t.people}</div>
             </div>
             <div>
-              <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>{t.totalAmount}</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{fmtIDR(booking.totalAmount)}</div>
+              <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.totalAmount}</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: DC.dark }}>{fmtIDR(booking.totalAmount)}</div>
             </div>
             <div>
-              <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>{t.orderNo}</div>
-              <div style={{ fontSize: '14px', fontWeight: 700, fontFamily: 'monospace', marginTop: '2px' }}>{booking.id}</div>
+              <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.orderNo}</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, fontFamily: 'monospace', marginTop: '3px', color: DC.dark }}>{booking.id}</div>
             </div>
           </div>
 
           {/* Notice */}
-          <div style={{ padding: '14px 24px', background: DC.greenBg, borderBottom: `1px solid ${DC.border}` }}>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: '#065F46' }}>Mohon simpan dokumen ini sebagai bukti voucher hotel Anda. Tunjukkan saat check-in.</div>
+          <div style={{ padding: '14px 24px', background: '#F5F3FF', borderBottom: `1px dashed ${DC.border}` }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#5B21B6', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14"/><path d="M9 21V13h6v8"/><path d="M3 9h18"/></svg>
+              Mohon simpan dokumen ini sebagai bukti voucher hotel Anda. Tunjukkan saat check-in.
+            </div>
           </div>
 
-          <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: '13px', fontWeight: 700 }}>{t.help24h}</div>
-              <div style={{ fontSize: '12px', color: DC.muted, marginTop: '6px', lineHeight: 1.8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>0804-1500-308</span></div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><span>support@themafiatravel.com</span></div>
+          {/* Footer */}
+          <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: DC.dark }}>{t.help24h}</div>
+              <div style={{ fontSize: '11px', color: DC.muted, marginTop: '6px', lineHeight: 1.8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                  <span>0804-1500-308</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                  <span>support@themafiatravel.com</span>
+                </div>
               </div>
-              <div style={{ fontSize: '10px', color: DC.muted, marginTop: '8px', fontStyle: 'italic' }}>Tunjukkan voucher ini melalui smartphone Anda. Tidak perlu mencetak.</div>
+              <div style={{ fontSize: '9px', color: DC.muted, marginTop: '8px', fontStyle: 'italic' }}>Tunjukkan voucher ini melalui smartphone Anda. Tidak perlu mencetak.</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <QRCode value={`https://themafiatravel.com/verify/${booking.id}`} size={64} style={{ padding: '4px', background: 'white', border: `1px solid ${DC.border}`, borderRadius: '8px' }} />
-              <div style={{ fontSize: '8px', color: DC.muted, marginTop: '4px' }}>{t.scanVerify}</div>
+              <QRCode value={`https://themafiatravel.com/verify/${booking.id}`} size={72} style={{ padding: '4px', background: 'white', border: `1px solid ${DC.border}`, borderRadius: '10px' }} />
+              <div style={{ fontSize: '8px', color: DC.muted, marginTop: '4px', fontWeight: 600 }}>{t.scanVerify}</div>
             </div>
           </div>
+        </div>
+
+        {/* Security footer */}
+        <div style={{ margin: '16px 24px 24px', padding: '14px 20px', background: DC.dark, borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px' }}>Verification Code</div>
+            <div style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'monospace', color: DC.white, letterSpacing: '2px', marginTop: '3px' }}>{verHash}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px' }}>Diterbitkan</div>
+            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', marginTop: '3px' }}>{printTime} WIB</div>
+          </div>
+        </div>
+        <div style={{ fontSize: '4px', color: 'rgba(234,88,12,0.15)', textAlign: 'center', letterSpacing: '0.5px', padding: '0 24px', wordBreak: 'break-all', lineHeight: 1.5 }}>
+          {'THE MAFIA TRAVEL • DOKUMEN RESMI • '.repeat(20)}
         </div>
       </>
     );
@@ -961,88 +1252,126 @@ function PdfTemplate({ booking, bType, passengers, enrichedPassengers, savedBagg
   // Insurance
   return wrapper(
     <>
-      <div style={{ background: DC.primary, padding: '32px 40px 56px', borderRadius: '0 0 32px 32px' }}>
+      {/* ── HEADER ── */}
+      <div style={{ background: `linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)`, padding: '28px 36px 38px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '160px', height: '160px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }}></div>
+        <div style={{ position: 'absolute', bottom: '-60px', left: '-20px', width: '120px', height: '120px', borderRadius: '50%', background: 'rgba(255,255,255,0.04)' }}></div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '2px' }}>{t.policyInsurance}</div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: DC.white, marginTop: '6px' }}>Travel Insurance</div>
+            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '3px' }}>{t.policyInsurance}</div>
+            <div style={{ fontSize: '26px', fontWeight: 900, color: DC.white, marginTop: '4px', letterSpacing: '-0.5px' }}>Insurance Policy</div>
           </div>
-          <img src="/images/logo.png" alt="The Mafia Travel" crossOrigin="anonymous" style={{ height: '40px', width: '40px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+          <div style={{ textAlign: 'right' }}>
+            <img src="/images/logo.png" alt="The Mafia Travel" crossOrigin="anonymous" style={{ height: '36px', width: '36px', objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.5)', marginTop: '4px', fontWeight: 600 }}>THE MAFIA TRAVEL</div>
+          </div>
+        </div>
+        <div style={{ marginTop: '14px', display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.15)', borderRadius: '8px', padding: '6px 14px' }}>
+          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>POLIS</span>
+          <span style={{ fontSize: '13px', color: DC.white, fontWeight: 800, fontFamily: 'monospace', letterSpacing: '0.5px' }}>{bookingId}</span>
         </div>
       </div>
 
-      {/* ── SINGLE UNIFIED CARD ── */}
-      <div style={{ margin: '-32px 28px 28px', background: DC.white, borderRadius: '16px', border: `1px solid ${DC.border}`, overflow: 'hidden', position: 'relative', zIndex: 2 }}>
-        <div style={{ padding: '18px 24px', borderBottom: `1px solid ${DC.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* ── MAIN CARD ── */}
+      <div style={{ margin: '-24px 24px 0', background: DC.white, borderRadius: '16px', border: `1px solid ${DC.border}`, overflow: 'hidden', position: 'relative', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+        {/* Insurance info bar */}
+        <div style={{ padding: '16px 24px', borderBottom: `1px dashed ${DC.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#FFF7ED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={DC.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
-                </div>
+            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: DC.blueBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+            </div>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 700 }}>{itemName}</div>
-              <div style={{ fontSize: '12px', color: DC.muted }}>{bookingDataRaw?.coverage || 'Full Trip Protection'}</div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: DC.dark, lineHeight: 1.2 }}>{itemName}</div>
+              <div style={{ fontSize: '11px', color: DC.muted, marginTop: '2px' }}>{bookingDataRaw?.coverage || 'Full Trip Protection'}</div>
             </div>
           </div>
-          <div style={{ background: DC.greenBg, border: `1px solid ${DC.greenBorder}`, borderRadius: '20px', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: '6px', verticalAlign: 'middle' }}>
+          <div style={{ background: DC.greenBg, border: `1.5px solid ${DC.greenBorder}`, borderRadius: '8px', padding: '7px 14px', display: 'flex', alignItems: 'center', gap: '6px', verticalAlign: 'middle' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={DC.green} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: DC.green, textTransform: 'uppercase', lineHeight: 1 }}>Active</span>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: DC.green, textTransform: 'uppercase', lineHeight: 1 }}>Active</span>
           </div>
         </div>
 
-        <div style={{ padding: '28px 32px', borderBottom: `1px solid ${DC.border}` }}>
+        {/* Coverage period */}
+        <div style={{ padding: '28px 32px', borderBottom: `1px dashed ${DC.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ textAlign: 'center', minWidth: '140px' }}>
-              <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tanggal Mulai</div>
-              <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '8px' }}>{fmtDateShortPdf(booking.checkinDate || startDate)}</div>
+              <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>Tanggal Mulai</div>
+              <div style={{ fontSize: '22px', fontWeight: 900, marginTop: '10px', color: DC.dark }}>{fmtDateShortPdf(booking.checkinDate || startDate)}</div>
             </div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 16px' }}>
-              <div style={{ width: '100%', position: 'relative', height: '20px' }}>
-                <div style={{ position: 'absolute', top: '9px', left: '8px', right: '8px', height: '2px', background: DC.border }}></div>
-                <div style={{ position: 'absolute', left: '4px', top: '6px', width: '8px', height: '8px', borderRadius: '50%', background: DC.primary }}></div>
-                <div style={{ position: 'absolute', right: '4px', top: '6px', width: '8px', height: '8px', borderRadius: '50%', border: `2px solid ${DC.primary}`, background: DC.white }}></div>
+              <div style={{ width: '100%', position: 'relative', height: '24px' }}>
+                <div style={{ position: 'absolute', top: '11px', left: '12px', right: '12px', height: '2px', background: `repeating-linear-gradient(90deg, ${DC.border} 0px, ${DC.border} 6px, transparent 6px, transparent 10px)` }}></div>
+                <div style={{ position: 'absolute', left: '4px', top: '8px', width: '10px', height: '10px', borderRadius: '50%', background: '#2563EB' }}></div>
+                <div style={{ position: 'absolute', right: '4px', top: '8px', width: '10px', height: '10px', borderRadius: '50%', border: '2.5px solid #2563EB', background: DC.white }}></div>
               </div>
             </div>
             <div style={{ textAlign: 'center', minWidth: '140px' }}>
-              <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tanggal Berakhir</div>
-              <div style={{ fontSize: '20px', fontWeight: 800, marginTop: '8px' }}>{fmtDateShortPdf(booking.checkoutDate || endDate)}</div>
+              <div style={{ fontSize: '10px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>Tanggal Berakhir</div>
+              <div style={{ fontSize: '22px', fontWeight: 900, marginTop: '10px', color: DC.dark }}>{fmtDateShortPdf(booking.checkoutDate || endDate)}</div>
             </div>
           </div>
         </div>
 
-        <div style={{ padding: '14px 24px', borderBottom: `1px solid ${DC.border}`, display: 'flex', gap: '32px' }}>
+        {/* Info strip */}
+        <div style={{ padding: '14px 24px', borderBottom: `1px dashed ${DC.border}`, display: 'flex', gap: '28px', background: '#FAFBFC' }}>
           <div>
-            <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>{t.insurance.insured}</div>
-            <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{passengers.length || 1} {t.people}</div>
+            <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>{t.insurance.insured}</div>
+            <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: DC.dark }}>{passengers.length || 1} {t.people}</div>
           </div>
           <div>
-            <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>Total Premi</div>
-            <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '2px' }}>{fmtIDR(booking.totalAmount)}</div>
+            <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>Total Premi</div>
+            <div style={{ fontSize: '13px', fontWeight: 800, marginTop: '3px', color: DC.dark }}>{fmtIDR(booking.totalAmount)}</div>
           </div>
           <div>
-            <div style={{ fontSize: '9px', color: DC.muted, fontWeight: 600, textTransform: 'uppercase' }}>No. Polis</div>
-            <div style={{ fontSize: '14px', fontWeight: 700, fontFamily: 'monospace', marginTop: '2px' }}>{booking.id}</div>
+            <div style={{ fontSize: '8px', color: DC.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>No. Polis</div>
+            <div style={{ fontSize: '13px', fontWeight: 800, fontFamily: 'monospace', marginTop: '3px', color: DC.dark }}>{booking.id}</div>
           </div>
         </div>
 
         {/* Notice */}
-        <div style={{ padding: '14px 24px', background: DC.primaryLight, borderBottom: `1px solid ${DC.border}` }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#9A3412' }}>Simpan dokumen ini sebagai bukti polis asuransi Anda. Untuk klaim, hubungi layanan bantuan 24 jam kami.</div>
+        <div style={{ padding: '14px 24px', background: DC.blueBg, borderBottom: `1px dashed ${DC.border}` }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#1E40AF', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+            Simpan dokumen ini sebagai bukti polis asuransi Anda. Untuk klaim, hubungi layanan bantuan 24 jam kami.
+          </div>
         </div>
 
-        <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 700 }}>{t.help24h}</div>
-            <div style={{ fontSize: '12px', color: DC.muted, marginTop: '6px', lineHeight: 1.8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>0804-1500-308</span></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg><span>support@themafiatravel.com</span></div>
+        {/* Footer */}
+        <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: DC.dark }}>{t.help24h}</div>
+            <div style={{ fontSize: '11px', color: DC.muted, marginTop: '6px', lineHeight: 1.8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <span>0804-1500-308</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={DC.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                <span>support@themafiatravel.com</span>
+              </div>
             </div>
-            <div style={{ fontSize: '10px', color: DC.muted, marginTop: '8px', fontStyle: 'italic' }}>Tunjukkan dokumen ini melalui smartphone Anda. Tidak perlu mencetak.</div>
+            <div style={{ fontSize: '9px', color: DC.muted, marginTop: '8px', fontStyle: 'italic' }}>Tunjukkan dokumen ini melalui smartphone Anda. Tidak perlu mencetak.</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <QRCode value={`https://themafiatravel.com/verify/${booking.id}`} size={64} style={{ padding: '4px', background: 'white', border: `1px solid ${DC.border}`, borderRadius: '8px' }} />
-            <div style={{ fontSize: '8px', color: DC.muted, marginTop: '4px' }}>Scan untuk verifikasi</div>
+            <QRCode value={`https://themafiatravel.com/verify/${booking.id}`} size={72} style={{ padding: '4px', background: 'white', border: `1px solid ${DC.border}`, borderRadius: '10px' }} />
+            <div style={{ fontSize: '8px', color: DC.muted, marginTop: '4px', fontWeight: 600 }}>Scan untuk verifikasi</div>
           </div>
         </div>
+      </div>
+
+      {/* Security footer */}
+      <div style={{ margin: '16px 24px 24px', padding: '14px 20px', background: DC.dark, borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px' }}>Verification Code</div>
+          <div style={{ fontSize: '14px', fontWeight: 900, fontFamily: 'monospace', color: DC.white, letterSpacing: '2px', marginTop: '3px' }}>{verHash}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.4)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px' }}>Diterbitkan</div>
+          <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)', marginTop: '3px' }}>{printTime} WIB</div>
+        </div>
+      </div>
+      <div style={{ fontSize: '4px', color: 'rgba(234,88,12,0.15)', textAlign: 'center', letterSpacing: '0.5px', padding: '0 24px', wordBreak: 'break-all', lineHeight: 1.5 }}>
+        {'THE MAFIA TRAVEL • DOKUMEN RESMI • '.repeat(20)}
       </div>
     </>
   );

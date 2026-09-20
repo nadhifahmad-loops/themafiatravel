@@ -108,11 +108,11 @@ export default function UsersClient({ initialUsers }: { initialUsers: AdminUser[
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Manajemen User</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Kelola data pelanggan dan hak akses admin.</p>
+          <h1 className="text-xl font-bold text-brand-ink">Manajemen User</h1>
+          <p className="text-brand-neutral text-sm mt-0.5">Kelola data pelanggan dan hak akses admin.</p>
         </div>
-        <div className="text-sm text-slate-500">
-          Total: <span className="font-bold text-slate-800">{users.length}</span> user
+        <div className="text-sm text-brand-neutral">
+          Total: <span className="font-bold text-brand-ink">{users.length}</span> user
         </div>
       </div>
 
@@ -245,7 +245,7 @@ export default function UsersClient({ initialUsers }: { initialUsers: AdminUser[
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[1200] flex items-center justify-center p-4" onClick={() => setConfirmDelete(null)}>
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-slate-800 text-lg">Hapus User</h3>
+              <h3 className="font-bold text-brand-ink text-lg">Hapus User</h3>
               <button onClick={() => setConfirmDelete(null)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200">
                 <X className="w-4 h-4" />
               </button>

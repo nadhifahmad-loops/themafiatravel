@@ -6,6 +6,7 @@ import TrainSearchForm from '@/components/train/TrainSearchForm';
 import TrainCard from '@/components/train/TrainCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtIDR(n: number) {
@@ -34,12 +35,78 @@ const POPULAR_TRAIN_ROUTES = [
   { origin: 'YK',  destination: 'SGU', name: 'Yogyakarta – Surabaya', nameEN: 'Yogyakarta – Surabaya', price: 95000,  img: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=600&q=80' },
 ];
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// ─── No Results with Alternatives ───────────────────────────────────────────
+function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMeta: any; onSearch: (p: any) => void; onRetry?: () => void }) {
+  const { language } = useLanguage();
+  const t = i18n.trainSearch[language];
+  const isEN = language === 'EN';
+
+  const quickTrain = (route: typeof POPULAR_TRAIN_ROUTES[0]) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateStr = formatLocalDate(tomorrow);
+    onSearch({
+      journey_list: [{ origin: route.origin, destination: route.destination, depart: dateStr }],
+      adult: searchMeta?.adult || 1,
+      child: searchMeta?.child || 0,
+      direction: 'OW',
+    });
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+      {/* No results header */}
+      <div className="px-6 py-10 text-center">
+        <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <i className="fa-solid fa-train text-3xl text-orange-300"></i>
+        </div>
+        <h3 className="font-black text-brand-ink text-lg mb-1.5">{t.noResultTitle}</h3>
+        <p className="text-slate-400 text-sm max-w-md mx-auto">{t.noResultDesc}</p>
+        {onRetry && (
+          <button onClick={onRetry} className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-colors">
+            <i className="fa-solid fa-rotate-right"></i> Coba Lagi
+          </button>
+        )}
+      </div>
+
+      {/* Alternative routes */}
+      <div className="border-t border-slate-100 bg-slate-50 px-6 py-6">
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">{t.alternativeTitle}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {POPULAR_TRAIN_ROUTES.filter(d => !(d.origin === searchMeta?.journey_list?.[0]?.origin && d.destination === searchMeta?.journey_list?.[0]?.destination)).map(d => (
+            <button key={`${d.origin}-${d.destination}`} onClick={() => quickTrain(d)}
+              className="group relative overflow-hidden rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
+              <div className="aspect-[16/10] relative">
+                <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-2.5">
+                  <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
+                  <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
+                    Mulai dari Rp {(d.price / 1000).toLocaleString('id-ID')}K
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
 function SkeletonLoader() {
   return (
     <div className="space-y-3">
       {[1, 2, 3, 4, 5].map(i => (
-        <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col md:flex-row gap-4 animate-pulse">
+        <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 flex flex-col md:flex-row gap-4 animate-pulse">
           <div className="flex items-center gap-3 md:w-48">
             <div className="w-12 h-12 bg-orange-100 rounded-xl"></div>
             <div className="space-y-2">
@@ -63,6 +130,45 @@ function SkeletonLoader() {
   );
 }
 
+// ─── Filter Skeleton ────────────────────────────────────────────────────────
+function FilterSkeleton() {
+  return (
+    <div className="w-full lg:w-64 shrink-0 lg:sticky lg:top-24 lg:self-start">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden animate-pulse">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+          <div className="w-4 h-4 bg-slate-200 rounded"></div>
+          <div className="h-3 w-12 bg-slate-200 rounded"></div>
+        </div>
+        <div className="p-4 space-y-5">
+          {/* Departure time */}
+          <div>
+            <div className="h-2 w-24 bg-slate-200 rounded mb-3"></div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[1,2,3].map(i => <div key={i} className="h-14 bg-slate-100 rounded-xl"></div>)}
+            </div>
+          </div>
+          <div className="h-px bg-slate-100"></div>
+          {/* Cabin class */}
+          <div>
+            <div className="h-2 w-20 bg-slate-200 rounded mb-3"></div>
+            <div className="space-y-2">
+              {[1,2,3].map(i => <div key={i} className="flex items-center gap-3"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-16 bg-slate-100 rounded"></div></div>)}
+            </div>
+          </div>
+          <div className="h-px bg-slate-100"></div>
+          {/* Sort */}
+          <div>
+            <div className="h-2 w-16 bg-slate-200 rounded mb-3"></div>
+            <div className="space-y-2">
+              {[1,2,3].map(i => <div key={i} className="flex items-center gap-3"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-20 bg-slate-100 rounded"></div></div>)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Compact Search Bar ───────────────────────────────────────────────────────
 function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; onSearch: (p: any) => void; loading: boolean }) {
   const { language } = useLanguage();
@@ -76,13 +182,13 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
     const date = searchMeta?.journey_list?.[0]?.departure_date || searchMeta?.depart;
     
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 cursor-pointer" onClick={() => setCollapsed(false)}>
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 cursor-pointer" onClick={() => setCollapsed(false)}>
         <div className="flex items-center gap-3 flex-1">
           <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
             <i className="fa-solid fa-train text-orange-600"></i>
           </div>
           <div>
-            <p className="font-black text-slate-900 text-sm">{origin} → {dest}</p>
+            <p className="font-black text-brand-ink text-sm">{origin} → {dest}</p>
             <p className="text-xs text-slate-500">
               {date} · {dirLabel} · {searchMeta?.adult || 1} {tc.adult}
             </p>
@@ -107,14 +213,14 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
   };
 
   return (
-    <div className="bg-slate-900 rounded-2xl p-5 shadow-xl relative z-50 transition-all">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 relative z-50 transition-all">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-black text-white text-sm">Ubah Pencarian</h3>
-        <button onClick={() => setCollapsed(true)} className="text-white/60 hover:text-white transition-colors">
+        <h3 className="font-black text-brand-ink text-sm">Ubah Pencarian</h3>
+        <button onClick={() => setCollapsed(true)} className="text-slate-400 hover:text-brand-ink transition-colors">
           <i className="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
-      <TrainSearchForm onSearch={(p) => { onSearch(p); setCollapsed(true); }} loading={loading} initialData={formInitial} />
+      <TrainSearchForm onSearch={(p) => { onSearch(p); setCollapsed(true); }} loading={loading} initialData={formInitial} variant="light" />
     </div>
   );
 }
@@ -133,27 +239,25 @@ function TrainLanding({ onSearch, loading }: { onSearch: (p: any) => void; loadi
 
   return (
     <>
-      <section className="relative overflow-hidden bg-gradient-to-br from-orange-700 via-orange-600 to-orange-500">
-        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-32 -left-16 w-80 h-80 rounded-full bg-amber-400/20 blur-3xl" />
-        <div className="relative max-w-[1280px] mx-auto px-4 md:px-8 py-10 md:py-14">
+      <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
           <div className="mb-6 md:mb-8">
-            <p className="text-orange-100 text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-2">
-              <i className="fa-solid fa-train"></i> {isEN ? 'Train Search' : 'Pencarian Kereta'}
-            </p>
-            <h1 className="text-2xl md:text-4xl font-black text-white leading-tight">{t.landing.title}</h1>
-            <p className="text-orange-100/90 text-sm md:text-base mt-2">{t.landing.subtitle}</p>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-brand-ink leading-tight tracking-tight">
+              {t.landing.title}
+            </h1>
+            <p className="mt-2 text-sm md:text-base text-brand-neutral font-medium">{t.landing.subtitle}</p>
           </div>
-          <div className="bg-slate-900/40 border border-white/20 rounded-3xl p-5 md:p-6 shadow-2xl backdrop-blur-sm">
-            <TrainSearchForm onSearch={onSearch} loading={loading} />
+
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-floating border border-slate-100/80 p-4 sm:p-6 transition-all">
+            <TrainSearchForm onSearch={onSearch} loading={loading} variant="light" />
           </div>
         </div>
       </section>
 
       <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-8">
         <div className="mb-5">
-          <h2 className="text-lg sm:text-xl font-black text-slate-900">{t.landing.popularTitle}</h2>
-          <p className="text-slate-500 text-xs sm:text-sm mt-1">{t.landing.popularSub}</p>
+          <h2 className="text-lg sm:text-xl font-black text-brand-ink">{t.landing.popularTitle}</h2>
+          <p className="text-brand-neutral text-xs sm:text-sm mt-1">{t.landing.popularSub}</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
           {POPULAR_TRAIN_ROUTES.map(r => (
@@ -184,6 +288,12 @@ function TrainSearchContent() {
   const searchParamsHook = useSearchParams();
   const router = useRouter();
 
+  usePageTitle(
+    searchParamsHook.get('origin') && searchParamsHook.get('destination')
+      ? `Pencarian Kereta: ${searchParamsHook.get('origin')} → ${searchParamsHook.get('destination')}`
+      : 'Pencarian Kereta'
+  );
+
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -200,6 +310,9 @@ function TrainSearchContent() {
     direction: searchParamsHook.get('direction') || 'OW',
     provider: searchParamsHook.get('provider') || 'kai',
   });
+
+  // Default "hari ini" dihitung sekali saat mount (stabil & idempotent)
+  const [todayDefault] = useState(() => formatLocalDate(new Date()));
 
   // ── Filter & Sort States ──
   const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | 'earliest' | 'latest'>('price_asc');
@@ -269,7 +382,7 @@ function TrainSearchContent() {
 
   const handleSelect = useCallback((journey: any, fare: any) => {
     const summary = fare?.service_charge_summary?.[0];
-    const price = summary?.base_price || summary?.base_fare || 0;
+    const price = summary?.total_price || summary?.base_price || summary?.base_fare || 0;
     const q = new URLSearchParams({
       journey_code: journey.journey_code,
       fare_code: fare.fare_code,
@@ -282,7 +395,7 @@ function TrainSearchContent() {
       elapsed_time: journey.elapsed_time,
       cabin_class: journey.cabin_class,
       class_of_service: journey.class_of_service || '',
-      total_amount: String(Math.round(price * parseInt(searchMeta?.adult || '1'))),
+      total_amount: String(Math.round(price)),
       adult: String(searchMeta.adult || '1'),
       infant: String(searchMeta.infant || '0'),
     }).toString();
@@ -293,6 +406,9 @@ function TrainSearchContent() {
   const allJourneys = useMemo(() => {
     return results?.schedules?.flatMap((s: any) => s.journeys || []) || [];
   }, [results]);
+
+  const hasResults = allJourneys.length > 0;
+  const noResultsAfterSearch = !loading && hasSearched && !hasResults && !error;
 
   // Extract Kelas (Cabin Options) available in result
   const cabinOptions = useMemo(() => {
@@ -358,34 +474,38 @@ function TrainSearchContent() {
   const inDate = searchMeta?.journey_list?.[1]?.departure_date || searchMeta?.return_date;
 
   return (
-    <div className="bg-[#f4f6fb] min-h-screen pt-20">
+    <div className="bg-brand-bgLight min-h-screen pt-20">
       {!hasSearched ? (
         <TrainLanding onSearch={handleSearch} loading={loading} />
       ) : (
       <>
       {/* ─── Route Banner ──────────────────────────────────────────────────── */}
-      <div className="bg-orange-700 text-white">
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3 flex flex-col sm:flex-row sm:items-center gap-2">
+      <div className="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex items-center gap-3 flex-1">
-            <div className="text-sm font-black uppercase">
-              {searchMeta?.journey_list?.[0]?.origin || searchMeta.origin} → {searchMeta?.journey_list?.[0]?.destination || searchMeta.destination}
+            <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
+              <i className="fa-solid fa-train text-orange-400 text-sm"></i>
             </div>
-            <span className="text-orange-300">·</span>
-            <span className="text-sm text-orange-100">{fmtDate(outDate)}</span>
-            {isRT && inDate && (
-              <><span className="text-orange-300">→</span><span className="text-sm text-orange-100">{fmtDate(inDate)}</span></>
-            )}
-            <span className="text-orange-300">·</span>
-            <span className="text-sm text-orange-100">
-              {searchMeta.adult || 1} {tc.adult} · {isRT ? 'Pulang Pergi' : 'Sekali Jalan'}
-            </span>
+            <div>
+              <div className="text-sm font-black">
+                {searchMeta?.journey_list?.[0]?.origin || searchMeta.origin} → {searchMeta?.journey_list?.[0]?.destination || searchMeta.destination}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-white/60 mt-0.5">
+                <span>{fmtDate(outDate)}</span>
+                {isRT && inDate && (
+                  <><span>→</span><span>{fmtDate(inDate)}</span></>
+                )}
+                <span>·</span>
+                <span>{searchMeta.adult || 1} {tc.adult} · {isRT ? 'Pulang Pergi' : 'Sekali Jalan'}</span>
+              </div>
+            </div>
           </div>
           
           {/* Quick Date Navigator (Hanya aktif untuk Oneway agar mudah) */}
           {!isRT && (
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
               {[-2, -1, 0, 1, 2].map(offset => {
-                const d = new Date(outDate || Date.now());
+                const d = new Date(outDate || todayDefault);
                 d.setDate(d.getDate() + offset);
                 const dateStr = d.toISOString().split('T')[0];
                 return (
@@ -395,7 +515,7 @@ function TrainSearchContent() {
                     else params.depart = dateStr;
                     handleSearch(params);
                   }}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${offset === 0 ? 'bg-white text-orange-800' : 'bg-orange-800 text-orange-100 hover:bg-orange-600'}`}>
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${offset === 0 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>
                     {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
                   </button>
                 );
@@ -405,16 +525,19 @@ function TrainSearchContent() {
         </div>
       </div>
 
-      <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-5">
-        {/* ─── Compact Search Bar ──────────────────────────────────────────── */}
-        <div className="mb-5">
+      {/* ─── Sticky Compact Search Bar ─────────────────────────────────────── */}
+      <div data-compact-search className="sticky top-0 z-[900] bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3">
           <CompactSearchBar searchMeta={searchMeta} onSearch={handleSearch} loading={loading} />
         </div>
+      </div>
 
-        {!loading && allJourneys.length > 0 && (
-          <div className="mb-5 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 pt-5 pb-10">
+
+        {!loading && !noResultsAfterSearch && allJourneys.length > 0 && (
+          <div className="mb-5 rounded-2xl border border-slate-100 bg-white p-4 shadow-card flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-sm font-black text-slate-900">Jadwal kereta yang paling relevan</p>
+              <p className="text-sm font-black text-brand-ink">Jadwal kereta yang paling relevan</p>
               <p className="text-xs text-slate-500 mt-1">Bandingkan kelas, waktu berangkat, dan harga dalam satu tampilan yang lebih rapi.</p>
             </div>
             <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">
@@ -428,12 +551,14 @@ function TrainSearchContent() {
         <div className="flex flex-col lg:flex-row gap-5 items-start">
 
           {/* SIDEBAR FILTER */}
+          {loading && <FilterSkeleton />}
+          {!loading && !error && !noResultsAfterSearch && allJourneys.length > 0 && (
           <div className="w-full lg:w-64 shrink-0 space-y-4">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden sticky top-24">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden sticky top-24">
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <i className="fa-solid fa-sliders text-orange-500 text-sm"></i>
-                  <h3 className="font-black text-slate-800 text-sm">{tc.filter}</h3>
+                  <h3 className="font-black text-brand-ink text-sm">{tc.filter}</h3>
                 </div>
                 <button
                   onClick={() => { setFilterCabin([]); setFilterDepartureTime([]); setSortBy('price_asc'); }}
@@ -506,14 +631,15 @@ function TrainSearchContent() {
               </div>
             </div>
           </div>
+          )}
 
           {/* MAIN RESULTS */}
           <div className="flex-1 min-w-0 space-y-3">
             {/* Header Summary */}
-            {!loading && allJourneys.length > 0 && (
-              <div className="flex items-center justify-between bg-white px-5 py-3 border border-slate-200 rounded-2xl shadow-sm">
+            {!loading && !noResultsAfterSearch && allJourneys.length > 0 && (
+              <div className="flex items-center justify-between bg-white px-5 py-3 border border-slate-100 rounded-2xl shadow-card">
                 <p className="text-sm font-semibold text-slate-600">
-                  Menampilkan <span className="font-black text-slate-900">{filteredJourneys.length}</span> jadwal kereta KAI
+                  Menampilkan <span className="font-black text-brand-ink">{filteredJourneys.length}</span> jadwal kereta KAI
                 </p>
                 <div className="flex gap-2">
                   {[{ id: 'price_asc', label: t.sortOptions.price }, { id: 'earliest', label: t.sortOptions.departure }].map(s => (
@@ -529,19 +655,7 @@ function TrainSearchContent() {
             {loading && <SkeletonLoader />}
 
             {error && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-xl flex items-start gap-3 shadow-sm">
-                <i className="fa-solid fa-wifi text-red-500 mt-1"></i>
-                <div className="flex-1">
-                  <h3 className="font-bold text-red-800">Gagal Mencari Tiket Kereta</h3>
-                  <p className="text-sm text-red-600 mt-1">{error}</p>
-                  <button
-                    onClick={() => handleSearch(searchMeta)}
-                    className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors"
-                  >
-                    <i className="fa-solid fa-rotate-right"></i> Coba Lagi
-                  </button>
-                </div>
-              </div>
+              <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} onRetry={() => handleSearch(searchMeta)} />
             )}
 
             {!loading && filteredJourneys.length > 0 && (
@@ -553,11 +667,11 @@ function TrainSearchContent() {
             )}
 
             {!loading && allJourneys.length > 0 && filteredJourneys.length === 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm">
+              <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center shadow-card">
                 <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <i className="fa-solid fa-train text-3xl text-slate-300"></i>
                 </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">Tidak Ada Hasil Filter</h3>
+                <h3 className="text-lg font-black text-brand-ink mb-2">Tidak Ada Hasil Filter</h3>
                 <p className="text-slate-500 text-sm">Coba ubah filter atau reset pilihan.</p>
                 <button onClick={() => { setFilterCabin([]); setFilterDepartureTime([]); setSortBy('price_asc'); }}
                   className="mt-4 px-6 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-all">
@@ -566,20 +680,22 @@ function TrainSearchContent() {
               </div>
             )}
 
-            {!loading && allJourneys.length === 0 && !error && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm">
-                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <i className="fa-solid fa-magnifying-glass text-3xl text-slate-300"></i>
-                </div>
-                <h3 className="text-lg font-black text-slate-900 mb-2">{t.noResult}</h3>
-                <p className="text-slate-500 text-sm">{t.noResultSub}</p>
-              </div>
+            {noResultsAfterSearch && (
+              <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} />
             )}
           </div>
         </div>
       </div>
       </>
       )}
+
+      <style jsx global>{`
+        /* Saat halaman hasil pencarian kereta: navbar ikut terscroll,
+           hanya "Ubah Pencarian" yang sticky di atas. */
+        body:has([data-compact-search]) header.fixed {
+          position: absolute;
+        }
+      `}</style>
     </div>
   );
 }
@@ -587,7 +703,7 @@ function TrainSearchContent() {
 export default function TrainSearchPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-screen bg-[#f4f6fb]">
+      <div className="flex items-center justify-center h-screen bg-brand-bgLight">
         <div className="w-12 h-12 border-4 border-orange-200 border-t-orange-600 rounded-full animate-spin" />
       </div>
     }>

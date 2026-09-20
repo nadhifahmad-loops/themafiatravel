@@ -1,54 +1,94 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Save, Percent, RotateCcw } from 'lucide-react';
+import { Save, RotateCcw, Info } from 'lucide-react';
 
-interface MarkupSettings {
-  flight: number;
-  hotel: number;
-  train: number;
-  insurance: number;
+interface MarkupField {
+  key: string;
+  label: string;
+  icon: string;
+  type: 'flat' | 'percent';
+  value: number;
 }
 
-const DEFAULTS: MarkupSettings = { flight: 50000, hotel: 10, train: 15000, insurance: 5 };
+interface MarkupData {
+  flight: MarkupField;
+  hotel: MarkupField;
+  train: MarkupField;
+  insurance: MarkupField;
+}
+
+const DEFAULT_FIELDS: MarkupField[] = [
+  { key: 'flight', label: 'Pesawat', icon: 'fa-plane', type: 'flat', value: 50000 },
+  { key: 'hotel', label: 'Hotel', icon: 'fa-hotel', type: 'percent', value: 10 },
+  { key: 'train', label: 'Kereta', icon: 'fa-train', type: 'flat', value: 15000 },
+  { key: 'insurance', label: 'Asuransi', icon: 'fa-shield-halved', type: 'percent', value: 5 },
+];
+
+function toMarkupData(raw: any): MarkupData {
+  const fields = DEFAULT_FIELDS.map(f => ({
+    ...f,
+    type: raw[`${f.key}_type`] ?? f.type,
+    value: raw[f.key] ?? f.value,
+  }));
+  const result: any = {};
+  for (const f of fields) result[f.key] = f;
+  return result as MarkupData;
+}
+
+function toRaw(data: MarkupData) {
+  const raw: Record<string, any> = {};
+  const keys = ['flight', 'hotel', 'train', 'insurance'] as const;
+  for (const key of keys) {
+    raw[key] = data[key].value;
+    raw[`${key}_type`] = data[key].type;
+  }
+  return raw;
+}
 
 export default function SettingsPage() {
-  const [markup, setMarkup] = useState<MarkupSettings>(DEFAULTS);
-  const [original, setOriginal] = useState<MarkupSettings>(DEFAULTS);
+  const buildDefault = (): MarkupData => {
+    const result: any = {};
+    for (const f of DEFAULT_FIELDS) result[f.key] = { ...f };
+    return result as MarkupData;
+  };
+
+  const [markup, setMarkup] = useState<MarkupData>(buildDefault);
+  const [original, setOriginal] = useState<MarkupData>(markup);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState<'success' | 'error' | ''>('');
 
   useEffect(() => {
-    fetch('/api/admin/markup')
-      .then((r) => r.json())
-      .then((data) => {
-        const loaded = { flight: data.flight, hotel: data.hotel, train: data.train, insurance: data.insurance };
-        setMarkup(loaded);
-        setOriginal(loaded);
+    fetch('/api/markup')
+      .then(r => r.json())
+      .then(data => {
+        const parsed = toMarkupData(data);
+        setMarkup(parsed);
+        setOriginal(parsed);
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
   }, []);
 
-  const isChanged = JSON.stringify(markup) !== JSON.stringify(original);
+  const isChanged = JSON.stringify(toRaw(markup)) !== JSON.stringify(toRaw(original));
 
   const handleSave = async () => {
     setIsSaving(true);
     setStatusMessage('');
     setStatusType('');
     try {
-      const res = await fetch('/api/admin/markup', {
-        method: 'POST',
+      const res = await fetch('/api/markup', {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(markup),
+        body: JSON.stringify(toRaw(markup)),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setOriginal(markup);
+        setOriginal(structuredClone(markup));
         setStatusType('success');
-        setStatusMessage('Pengaturan markup berhasil disimpan dan berlaku untuk semua booking berikutnya.');
+        setStatusMessage('Markup berhasil disimpan.');
       } else {
         setStatusType('error');
         setStatusMessage(data.error || 'Gagal menyimpan.');
@@ -62,15 +102,47 @@ export default function SettingsPage() {
   };
 
   const handleReset = () => {
-    setMarkup(DEFAULTS);
+    setMarkup(structuredClone(original));
+    setStatusMessage('');
+    setStatusType('');
+  };
+
+  const handleResetDefaults = () => {
+    setMarkup(buildDefault());
+    setStatusMessage('');
+    setStatusType('');
+  };
+
+  const updateValue = (key: string, value: string) => {
+    const num = parseFloat(value);
+    setMarkup(prev => {
+      const next = { ...prev };
+      (next as any)[key] = { ...(next as any)[key], value: isNaN(num) ? 0 : num };
+      return next;
+    });
+  };
+
+  const toggleType = (key: string) => {
+    setMarkup(prev => {
+      const field = (prev as any)[key] as MarkupField;
+      const next = { ...prev };
+      (next as any)[key] = {
+        ...field,
+        type: field.type === 'flat' ? 'percent' : 'flat',
+        value: field.type === 'flat'
+          ? parseFloat((field.value / 100).toFixed(1)) || 1
+          : field.value * 100 || 1000,
+      };
+      return next;
+    });
   };
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl space-y-6 animate-fade-in">
+      <div className="space-y-6 animate-fade-in">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Pengaturan Markup</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Atur margin keuntungan dari harga dasar API mitra B2B Anda.</p>
+          <h1 className="text-xl font-bold text-brand-ink">Pengaturan Markup</h1>
+          <p className="text-brand-neutral text-sm mt-0.5">Atur laba markup dari setiap penjualan tiket.</p>
         </div>
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-10 text-center">
           <div className="w-8 h-8 border-2 border-orange-200 border-t-orange-600 rounded-full animate-spin mx-auto" />
@@ -80,11 +152,13 @@ export default function SettingsPage() {
     );
   }
 
+  const fields = Object.values(markup);
+
   return (
-    <div className="max-w-4xl space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-xl font-bold text-slate-800">Pengaturan Markup</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Atur margin keuntungan dari harga dasar API mitra B2B Anda.</p>
+        <h1 className="text-xl font-bold text-brand-ink">Pengaturan Markup</h1>
+        <p className="text-brand-neutral text-sm mt-0.5">Atur laba markup dari setiap penjualan tiket.</p>
         {statusMessage && (
           <div className={`mt-4 rounded-2xl px-4 py-3 text-sm font-medium ${statusType === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-red-50 text-red-800 border border-red-100'}`}>
             {statusMessage}
@@ -92,110 +166,84 @@ export default function SettingsPage() {
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-4 sm:p-6 space-y-8">
-
-        {/* Flight */}
-        <div>
-          <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Pesawat (Flight)</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Markup per Pax (Rp)</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 font-semibold text-sm pointer-events-none">Rp</span>
-                <input
-                  type="number"
-                  value={markup.flight}
-                  onChange={(e) => setMarkup({ ...markup, flight: Number(e.target.value) })}
-                  className="w-full pl-12 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-bold text-slate-800"
-                />
+      {/* Grid 2 kolom */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {fields.map(field => (
+          <div key={field.key} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center shrink-0">
+                <i className={`fa-solid ${field.icon} text-orange-500`}></i>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">Ditambahkan per pax (penumpang). Contoh: 50000 x 2 pax = +Rp100.000</p>
+              <div>
+                <h3 className="text-sm font-bold text-brand-ink">{field.label}</h3>
+                <p className="text-[11px] text-slate-400">
+                  {field.type === 'flat' ? 'Markup flat per unit' : 'Markup persentase dari harga'}
+                </p>
+              </div>
+            </div>
+
+            {/* Input + Toggle Type */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => toggleType(field.key)}
+                className={`px-3 py-2 rounded-xl text-xs font-bold shrink-0 transition-all ${
+                  field.type === 'flat'
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                }`}
+              >
+                {field.type === 'flat' ? 'Rp' : '%'}
+              </button>
+              <input
+                type="number"
+                min="0"
+                step={field.type === 'flat' ? '1000' : '0.5'}
+                value={field.value}
+                onChange={e => updateValue(field.key, e.target.value)}
+                className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-sm font-bold text-slate-800 text-right"
+              />
+              <span className="text-xs font-semibold text-slate-400 w-8 text-center">
+                {field.type === 'flat' ? '/pax' : '%'}
+              </span>
+            </div>
+
+            {/* Preview */}
+            <div className="mt-3 bg-slate-50 rounded-xl px-3 py-2 text-[11px] text-slate-500">
+              {field.type === 'flat' ? (
+                <>Contoh: Rp {field.value.toLocaleString('id-ID')} × 2 penumpang = <span className="font-bold text-slate-700">Rp {(field.value * 2).toLocaleString('id-ID')}</span></>
+              ) : (
+                <>Contoh: Harga Rp 1.000.000 × {field.value}% = <span className="font-bold text-slate-700">Rp {(1000000 * field.value / 100).toLocaleString('id-ID')}</span></>
+              )}
             </div>
           </div>
-        </div>
+        ))}
+      </div>
 
-        {/* Hotel */}
-        <div>
-          <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Akomodasi (Hotel)</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Markup Global (%)</label>
-              <div className="relative">
-                <Percent className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
-                <input
-                  type="number"
-                  value={markup.hotel}
-                  onChange={(e) => setMarkup({ ...markup, hotel: Number(e.target.value) })}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-bold text-slate-800"
-                />
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">Dihitung dari total harga kamar / malam. Contoh: 10% x Rp500.000 = +Rp50.000</p>
-            </div>
-          </div>
+      {/* Info */}
+      <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-2xl px-4 py-3">
+        <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+        <div className="text-[12px] text-blue-700 leading-relaxed">
+          Klik tombol <strong>Rp</strong> / <strong>%</strong> untuk mengganti tipe markup.
+          <strong> Rp</strong> = markup tetap per unit. <strong> %</strong> = persentase dari harga jual.
+          Markup ditambahkan ke harga dasar sebelum ditampilkan ke pelanggan.
         </div>
+      </div>
 
-        {/* Train */}
-        <div>
-          <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Kereta Api (Train)</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Admin Fee KAI (Rp)</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 font-semibold text-sm pointer-events-none">Rp</span>
-                <input
-                  type="number"
-                  value={markup.train}
-                  onChange={(e) => setMarkup({ ...markup, train: Number(e.target.value) })}
-                  className="w-full pl-12 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-bold text-slate-800"
-                />
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">Flat fee per tiket yang ditambahkan ke harga total.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Insurance */}
-        <div>
-          <h3 className="text-sm font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Asuransi (Insurance)</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-2">Markup Asuransi (%)</label>
-              <div className="relative">
-                <Percent className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
-                <input
-                  type="number"
-                  value={markup.insurance}
-                  onChange={(e) => setMarkup({ ...markup, insurance: Number(e.target.value) })}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-bold text-slate-800"
-                />
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">Markup persentase asuransi yang ditambahkan ke premi.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-          <p className="text-xs font-bold text-slate-600 mb-3">Contoh Perhitungan</p>
-          <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-500">
-            <div>Flight: Rp1.000.000 x 2 pax</div>
-            <div className="font-semibold text-slate-700">= Rp{(1000000 + markup.flight * 2).toLocaleString('id-ID')}</div>
-            <div>Hotel: Rp500.000 / malam</div>
-            <div className="font-semibold text-slate-700">= Rp{Math.round(500000 * (1 + markup.hotel / 100)).toLocaleString('id-ID')}</div>
-            <div>Train: Rp350.000 / tiket</div>
-            <div className="font-semibold text-slate-700">= Rp{(350000 + markup.train).toLocaleString('id-ID')}</div>
-            <div>Insurance: Rp80.000 / polis</div>
-            <div className="font-semibold text-slate-700">= Rp{Math.round(80000 * (1 + markup.insurance / 100)).toLocaleString('id-ID')}</div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
+      {/* Actions */}
+      <div className="flex items-center justify-between pt-2">
+        <button
+          onClick={handleResetDefaults}
+          className="flex items-center gap-2 px-4 py-2 text-slate-400 text-xs font-semibold rounded-xl hover:bg-slate-100 hover:text-slate-600 transition-colors"
+        >
+          <RotateCcw className="w-3.5 h-3.5" /> Reset Default
+        </button>
+        <div className="flex items-center gap-3">
           <button
             onClick={handleReset}
-            className="flex items-center gap-2 px-4 py-2 text-slate-500 text-sm font-semibold rounded-xl hover:bg-slate-100 transition-colors"
+            disabled={!isChanged}
+            className="flex items-center gap-2 px-4 py-2 text-slate-500 text-sm font-semibold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <RotateCcw className="w-4 h-4" /> Reset Default
+            Batal
           </button>
           <button
             onClick={handleSave}
@@ -206,7 +254,6 @@ export default function SettingsPage() {
             {isSaving ? 'Menyimpan...' : isChanged ? 'Simpan Perubahan' : 'Tidak Ada Perubahan'}
           </button>
         </div>
-
       </div>
     </div>
   );

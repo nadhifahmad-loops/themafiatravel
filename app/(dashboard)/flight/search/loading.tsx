@@ -1,6 +1,6 @@
 export default function FlightSearchLoading() {
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-brand-bgLight p-6">
       <div className="max-w-6xl mx-auto space-y-5">
         {[1, 2, 3, 4, 5].map((item) => (
           <div

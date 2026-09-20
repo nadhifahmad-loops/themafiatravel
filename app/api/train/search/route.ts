@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { trainAPI } from '@/lib/orbis';
-import { trainSearchSchema, validateBody } from '@/lib/validate';
+import { trainSearchSchema, validateBody, handleOrbisError } from '@/lib/validate';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+
+// FIX: samakan dengan hotel/book & train/book — search KAI lewat Orbis bisa
+// lambat, dan tanpa maxDuration eksplisit platform bisa memutus request
+// sebelum vendor sempat balas.
+export const maxDuration = 90;
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -51,8 +56,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, data });
 
   } catch (e: any) {
-    console.error('[TRAIN SEARCH ERROR]', e.message);
-    const status = e.orbisCode ? 422 : 500;
-    return NextResponse.json({ success: false, error: e.message }, { status });
+    // FIX: sebelumnya SEMUA error Orbis (termasuk "tidak ada jadwal utk
+    // rute/tanggal ini" atau provider KAI lagi unavailable) langsung
+    // dilempar sebagai error 422/500, jadi pencarian kereta selalu
+    // tampil "gagal" walau sebenarnya cuma tidak ada hasil. Sekarang
+    // didegradasi jadi hasil kosong ({ schedules: [] }, sesuai bentuk
+    // response.response pada search RESP di dokumentasi KAI Rodextrip),
+    // dan error yang benar-benar bug (request tidak valid, sesi, dst)
+    // tetap dilempar apa adanya.
+    return handleOrbisError(e, 'TRAIN SEARCH', { schedules: [] });
   }
 }

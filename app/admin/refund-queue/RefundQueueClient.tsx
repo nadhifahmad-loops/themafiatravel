@@ -145,8 +145,8 @@ export default function RefundQueueClient({
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-2">
-        <h1 className="text-xl font-bold text-slate-800">Antrian Refund</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-xl font-bold text-brand-ink">Antrian Refund</h1>
+        <p className="text-brand-neutral text-sm">
           Refund otomatis diproses langsung; refund manual masuk antrian review dan menunggu eksekusi admin.
         </p>
       </div>

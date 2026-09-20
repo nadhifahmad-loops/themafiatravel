@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { insuranceAPI } from '@/lib/orbis';
+import { revalidateInsurancePrice } from '@/lib/insurance-quote';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
@@ -27,40 +27,32 @@ export async function POST(req: NextRequest) {
 
     const paxCount = body.adult || body.pax || 1;
 
-    // Bangun array age sesuai age_type
-    let ageArray: string[];
-    const ageType: 'age' | 'birth_date' = body.age_type || 'birth_date';
-
-    if (body.age && Array.isArray(body.age) && body.age.length > 0) {
-      ageArray = body.age;
-    } else if (ageType === 'birth_date') {
-      // Default: tanggal lahir 30 tahun lalu
-      const defaultBirth = new Date();
-      defaultBirth.setFullYear(defaultBirth.getFullYear() - 30);
-      const bd = defaultBirth.toISOString().split('T')[0];
-      ageArray = Array(paxCount).fill(bd);
-    } else {
-      ageArray = Array(paxCount).fill('30');
+    if (!body.date_start || !body.date_end) {
+      return NextResponse.json({ error: 'Tanggal perjalanan wajib diisi untuk validasi harga.' }, { status: 400 });
     }
 
-    const payload = {
-      data: insuranceData,
+    const quote = await revalidateInsurancePrice({
+      productCode: insuranceData.product_code,
+      provider: insuranceData.provider,
+      carrierCode: insuranceData.carrier_code,
+      dateStart: body.date_start,
+      dateEnd: body.date_end,
       pax: paxCount,
-      package: body.package || 1,
-      age: ageArray,
-      age_type: ageType,
-      adult: paxCount,
-      ...(body.child && body.child > 0 ? { child: body.child } : {}),
-      ...(body.infant && body.infant > 0 ? { infant: body.infant } : {}),
-    };
+      destination: body.destination,
+      destinationArea: body.destination_area,
+      isSenior: body.is_senior,
+      international: body.international,
+      type: body.type,
+      productType: body.product_type,
+    });
+    if (!quote.price) {
+      return NextResponse.json({ error: 'Harga paket sudah tidak tersedia. Silakan cari ulang.' }, { status: 409 });
+    }
+    return NextResponse.json({ success: true, data: quote.product, meta: { searchedArea: quote.area } });
 
-    console.log('[INSURANCE SELL PAYLOAD]:', JSON.stringify(payload, null, 2));
-
-    const data = await insuranceAPI.sellInsurance(payload);
-    return NextResponse.json({ success: true, data });
-
-  } catch (e: any) {
-    console.error('[INSURANCE SELL ERROR]:', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Gagal memvalidasi harga asuransi.';
+    console.error('[INSURANCE PRICE ERROR]:', e);
+    return NextResponse.json({ error: message }, { status: 503 });
   }
 }

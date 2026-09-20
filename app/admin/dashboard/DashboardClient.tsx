@@ -82,8 +82,8 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-slate-800">Selamat Datang 👋</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Berikut ringkasan operasional The Mafia Travel hari ini, {format(new Date(), 'EEEE, dd MMMM yyyy', { locale: localeId })}.</p>
+        <h1 className="text-xl font-bold text-brand-ink">Selamat Datang 👋</h1>
+        <p className="text-brand-neutral text-sm mt-0.5">Berikut ringkasan operasional The Mafia Travel hari ini, {format(new Date(), 'EEEE, dd MMMM yyyy', { locale: localeId })}.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -92,15 +92,15 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
           return (
             <div key={card.label} className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-slate-500 text-xs font-medium">{card.label}</p>
-                  <p className="text-slate-400 text-[11px]">{card.sub}</p>
-                </div>
+          <div>
+            <p className="text-brand-neutral text-xs font-medium">{card.label}</p>
+            <p className="text-slate-400 text-[11px]">{card.sub}</p>
+          </div>
                 <div className={`w-9 h-9 rounded-xl ${card.iconBg} flex items-center justify-center`}>
                   <Icon className={`w-4.5 h-4.5 ${card.iconColor}`} strokeWidth={2} />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-slate-800 mt-3 tracking-tight">{card.value}</p>
+              <p className="text-2xl font-bold text-brand-ink mt-3 tracking-tight">{card.value}</p>
               <div className="flex items-center gap-1 mt-2">
                 {card.badgeUp ? <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500" /> : <ArrowDownRight className="w-3.5 h-3.5 text-amber-500" />}
                 <span className={`text-xs font-medium ${card.badgeUp ? 'text-emerald-600' : 'text-amber-600'}`}>{card.badge}</span>
@@ -114,7 +114,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
         <div className="xl:col-span-2 bg-white rounded-2xl border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="text-sm font-semibold text-slate-800">Tren Pemesanan</h2>
+              <h2 className="text-sm font-semibold text-brand-ink">Tren Pemesanan</h2>
               <p className="text-slate-400 text-xs mt-0.5">7 Hari Terakhir</p>
             </div>
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
@@ -151,7 +151,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
 
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 p-5">
-            <h3 className="text-sm font-semibold text-slate-800 mb-4">Breakdown Tipe</h3>
+            <h3 className="text-sm font-semibold text-brand-ink mb-4">Breakdown Tipe</h3>
             {[
               { label: 'Pesawat', icon: Plane, pct: 58, color: 'bg-blue-500' },
               { label: 'Hotel', icon: Hotel, pct: 24, color: 'bg-violet-500' },
@@ -183,10 +183,10 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-800">Pesanan Terbaru</h2>
-            <p className="text-slate-400 text-xs mt-0.5">5 transaksi terkini</p>
-          </div>
+            <div>
+              <h2 className="text-sm font-semibold text-brand-ink">Pesanan Terbaru</h2>
+              <p className="text-slate-400 text-xs mt-0.5">5 transaksi terkini</p>
+            </div>
           <a href="/admin/bookings" className="text-xs text-orange-500 font-semibold hover:text-orange-600 transition-colors">Lihat Semua →</a>
         </div>
         <div className="overflow-x-auto">
@@ -210,7 +210,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                   <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="px-5 py-3.5">
                       <div>
-                        <p className="font-semibold text-slate-800 text-xs">{b.id}</p>
+                        <p className="font-semibold text-brand-ink text-xs">{b.id}</p>
                         {b.pnr && <p className="text-slate-400 text-[11px]">{b.pnr}</p>}
                       </div>
                     </td>
@@ -225,7 +225,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-xs text-slate-600 hidden md:table-cell">{route}</td>
-                    <td className="px-5 py-3.5 text-right"><p className="font-semibold text-slate-800 text-xs">{formatRupiah(b.totalAmount)}</p></td>
+                    <td className="px-5 py-3.5 text-right">                    <p className="font-semibold text-brand-ink text-xs">{formatRupiah(b.totalAmount)}</p></td>
                     <td className="px-5 py-3.5 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold ${badge.cls}`}>{badge.label}</span>
                     </td>

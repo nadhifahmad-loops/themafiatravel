@@ -53,7 +53,7 @@ export async function checkRateLimit(
     auth: { points: 5, duration: 300 },         // 5 requests per 5 minutes
     login: { points: 5, duration: 300 },        // 5 percobaan login per 5 menit (per IP + email)
     loginIp: { points: 30, duration: 300 },     // 30 percobaan login per IP per 5 menit
-    booking: { points: 3, duration: 60 },       // 3 requests per minute
+    booking: { points: 30, duration: 60 },      // 30 requests per minute (untuk polling)
     general: { points: 30, duration: 60 },      // 30 requests per minute
   };
 

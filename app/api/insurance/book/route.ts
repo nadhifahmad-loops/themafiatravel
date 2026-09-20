@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { insuranceAPI } from '@/lib/orbis';
+import { revalidateInsurancePrice } from '@/lib/insurance-quote';
 import { createSnapTransaction } from '@/lib/midtrans';
 import { bookingStore } from '@/lib/store';
 import { insuranceBookSchema, validateBody, apiError } from '@/lib/validate';
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
       total_amount,
       product_name,
       product_code,
+      package: packageId,
       date_start,
       date_end,
     } = validation.data;
@@ -57,24 +59,21 @@ export async function POST(req: NextRequest) {
     }
     try {
       const paxCount = Array.isArray(passengers) && passengers.length > 0 ? passengers.length : 1;
-      const defaultBirth = new Date();
-      defaultBirth.setFullYear(defaultBirth.getFullYear() - 30);
-      const fallbackBd = defaultBirth.toISOString().split('T')[0];
-      const ageArray = (passengers || [])
-        .map((p: any) => p.birth_date || fallbackBd)
-        .slice(0, paxCount);
-      while (ageArray.length < paxCount) ageArray.push(fallbackBd);
-
-      const quote = await insuranceAPI.sellInsurance({
-        data: { product_code, provider, carrier_code: carrier_code || provider },
+      const quote = await revalidateInsurancePrice({
+        productCode: product_code,
+        provider,
+        carrierCode: carrier_code,
+        dateStart: date_start || '',
+        dateEnd: date_end || '',
         pax: paxCount,
-        package: 1,
-        age: ageArray,
-        age_type: 'birth_date',
-        adult: paxCount,
+        destination: body.destination,
+        destinationArea: body.destination_area,
+        isSenior: body.is_senior,
+        international: body.international,
+        type: body.type,
+        productType: body.product_type,
       });
-      const quoted = Array.isArray(quote) ? quote[0] : quote;
-      const realPrice = quoted?.total_price;
+      const realPrice = quote.price;
 
       const priceCheck = checkSubmittedPrice({ submitted: total_amount, refreshed: realPrice, lowerBoundOnly: true });
 
@@ -95,7 +94,40 @@ export async function POST(req: NextRequest) {
       return apiError('Harga premi tidak dapat diverifikasi saat ini. Silakan coba lagi beberapa saat.', 503, { error: 'PRICE_UNVERIFIABLE' });
     }
 
-    // 1. Commit Booking ke API Asuransi Orbis
+    // 1. Bentuk sesi sell insurance sebelum commit_booking.
+    // Availability hanya membaca katalog; Orbis membutuhkan sell_insurance
+    // pada sesi yang sama sebelum data peserta dapat di-commit.
+    try {
+      const today = new Date();
+      const ageArray = passengers.map((passenger: any) => {
+        const birthDate = new Date(passenger.birth_date || '1996-01-01');
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const birthdayNotReached = today.getMonth() < birthDate.getMonth()
+          || (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate());
+        if (birthdayNotReached) age -= 1;
+        return Math.max(0, age);
+      });
+
+      const sellPayload = {
+        data: {
+          product_code,
+          provider,
+          carrier_code: carrier_code || provider,
+        },
+        pax: passengers.length,
+        package: Number(packageId) || 1,
+        age: ageArray,
+        age_type: 'age',
+        adult: passengers.length,
+      } as const;
+      console.log('[INSURANCE] Sell insurance payload:', JSON.stringify(sellPayload));
+      await insuranceAPI.sellInsurance(sellPayload);
+    } catch (e: any) {
+      console.error('[INSURANCE] Sell insurance error:', e.message);
+      return apiError(`Gagal menyiapkan paket asuransi: ${e.message}`, 422);
+    }
+
+    // 2. Commit Booking ke API Asuransi Orbis
     let bookingData: any = null;
     try {
       const commitPayload = {
@@ -119,6 +151,45 @@ export async function POST(req: NextRequest) {
     const markedUpAmount = applyPercentMarkup(total_amount, markup.insurance);
     console.log(`[Insurance Book] Markup applied: ${markup.insurance}% = ${total_amount} → ${markedUpAmount}`);
 
+    // Coupon validation
+    let finalAmount = markedUpAmount;
+    let validCouponCode: string | null = null;
+    let validDiscountAmount = 0;
+
+    if (body.coupon_code) {
+      try {
+        const { PrismaClient } = await import('@prisma/client');
+        const prisma = new PrismaClient();
+        const coupon = await prisma.coupon.findFirst({
+          where: { code: { equals: body.coupon_code, mode: 'insensitive' } },
+        });
+        if (coupon && coupon.isActive) {
+          const now = new Date();
+          const validStart = !coupon.startDate || coupon.startDate <= now;
+          const validEnd = !coupon.endDate || coupon.endDate >= now;
+          const validUsage = coupon.maxUsage === null || coupon.usedCount < coupon.maxUsage;
+          const validCategory = coupon.category === 'all' || coupon.category === 'insurance';
+          if (validStart && validEnd && validUsage && validCategory) {
+            let disc = 0;
+            if (coupon.type === 'percentage') {
+              disc = Math.round(finalAmount * (coupon.value / 100));
+              if (coupon.maxDiscount !== null && disc > coupon.maxDiscount) disc = coupon.maxDiscount;
+            } else {
+              disc = Math.min(coupon.value, finalAmount);
+            }
+            if (disc > 0) {
+              validCouponCode = coupon.code.toUpperCase();
+              validDiscountAmount = disc;
+              finalAmount = Math.max(0, finalAmount - disc);
+            }
+          }
+        }
+        await prisma.$disconnect();
+      } catch (e: any) {
+        console.error('[Insurance Book] Coupon validation error:', e.message);
+      }
+    }
+
     // 2. Buat Transaksi Midtrans
     // FIX (Bug #2): ID acak (tidak lagi predictable dari Date.now() saja).
     const orderId = generateBookingId('INS');
@@ -126,13 +197,13 @@ export async function POST(req: NextRequest) {
     try {
       snap = await createSnapTransaction({
         orderId,
-        amount: markedUpAmount,
+        amount: finalAmount,
         customerName: `${booker.first_name} ${booker.last_name}`,
         customerEmail: booker.email,
         customerPhone: booker.calling_code + booker.mobile,
         itemDetails: [{
           id: product_code || orderId,
-          price: Math.round(markedUpAmount),
+          price: Math.round(finalAmount),
           quantity: 1,
           name: `Asuransi: ${product_name || 'Travel Insurance'}`,
         }],
@@ -150,7 +221,7 @@ export async function POST(req: NextRequest) {
         orderNumber: bookingData?.order_number || orderId,
         bookingType: 'insurance',
         status: 'pending_payment',
-        totalAmount: markedUpAmount,
+        totalAmount: finalAmount,
         currency: 'IDR',
         hotelName: product_name || 'Asuransi Perjalanan',
         checkinDate: date_start ? new Date(date_start).toISOString() : new Date().toISOString(),
@@ -163,6 +234,7 @@ export async function POST(req: NextRequest) {
         } as Prisma.InputJsonValue,
         snapToken: snap.token,
         snapRedirectUrl: snap.redirect_url,
+        ...(validCouponCode && { couponCode: validCouponCode, discountAmount: validDiscountAmount }),
       });
     } catch (dbErr: any) {
       console.error('[DB] Save booking error:', dbErr.message);

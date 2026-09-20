@@ -5,6 +5,7 @@ import HotelCard from '@/components/hotel/HotelCard';
 import HotelSearchForm from '@/components/hotel/HotelSearchForm';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 const POPULAR_HOTEL_DESTINATIONS = [
   { destination_id: 'ID8731', name: 'Bali',        nameEN: 'Bali',        price: 750000,  img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600&q=80' },
@@ -14,6 +15,18 @@ const POPULAR_HOTEL_DESTINATIONS = [
   { destination_id: 'ID8732', name: 'Surabaya',    nameEN: 'Surabaya',    price: 350000,  img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=600&q=80' },
   { destination_id: 'SG7355', name: 'Singapura',   nameEN: 'Singapore',   price: 1500000, img: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=600&q=80' },
 ];
+
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
 
 // ─── Loading skeleton ────────────────────────────────────────────────────────
 function SkeletonCard() {
@@ -33,6 +46,111 @@ function SkeletonCard() {
             <div className="h-7 w-36 bg-orange-100 rounded-xl" />
           </div>
           <div className="h-10 w-28 bg-orange-100 rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Filter Skeleton ────────────────────────────────────────────────────────
+function FilterSkeleton() {
+  return (
+    <aside className="w-full lg:w-64 shrink-0 lg:sticky lg:top-24 lg:self-start">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden animate-pulse">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+          <div className="w-4 h-4 bg-slate-200 rounded"></div>
+          <div className="h-3 w-12 bg-slate-200 rounded"></div>
+        </div>
+        <div className="p-5 flex flex-col gap-6">
+          {/* Search by name */}
+          <div>
+            <div className="h-2 w-24 bg-slate-200 rounded mb-3"></div>
+            <div className="h-10 w-full bg-slate-100 rounded-xl"></div>
+          </div>
+          {/* Price */}
+          <div>
+            <div className="h-2 w-20 bg-slate-200 rounded mb-3"></div>
+            <div className="flex gap-1.5 mb-3">
+              {[1,2,3,4,5].map(i => <div key={i} className="h-7 w-14 bg-slate-100 rounded-lg"></div>)}
+            </div>
+            <div className="h-2 w-full bg-slate-100 rounded-full mt-2"></div>
+          </div>
+          {/* Stars */}
+          <div className="border-t border-slate-100 pt-5">
+            <div className="h-2 w-16 bg-slate-200 rounded mb-3"></div>
+            <div className="space-y-2.5">
+              {[1,2,3,4,5].map(i => <div key={i} className="flex items-center gap-3"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="flex gap-0.5">{[1,2,3,4,5].map(j => <div key={j} className="w-2.5 h-2.5 bg-slate-100 rounded-full"></div>)}</div><div className="h-2.5 w-10 bg-slate-100 rounded"></div></div>)}
+            </div>
+          </div>
+          {/* Facilities */}
+          <div className="border-t border-slate-100 pt-5">
+            <div className="h-2 w-14 bg-slate-200 rounded mb-3"></div>
+            <div className="flex flex-wrap gap-1.5">
+              {[1,2,3,4,5].map(i => <div key={i} className="h-7 w-16 bg-slate-100 rounded-lg"></div>)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ─── No Results with Alternatives ───────────────────────────────────────────
+function NoResultsWithAlternatives({ searchParams, onSearch, onRetry }: { searchParams: any; onSearch: (p: any) => void; onRetry?: () => void }) {
+  const { language } = useLanguage();
+  const t = i18n.hotelSearch[language];
+  const isEN = language === 'EN';
+
+  const quickHotel = (destId: string) => {
+    const today = formatLocalDate(new Date());
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = formatLocalDate(tomorrowDate);
+    onSearch({
+      destination_id: destId,
+      q: POPULAR_HOTEL_DESTINATIONS.find(d => d.destination_id === destId)?.nameEN || destId,
+      checkin_date: today,
+      checkout_date: tomorrow,
+      adult: searchParams?.adult || 2,
+      room: searchParams?.room || 1,
+    });
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+      {/* No results header */}
+      <div className="px-6 py-10 text-center">
+        <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <i className="fa-solid fa-bed text-3xl text-orange-300"></i>
+        </div>
+        <h3 className="font-black text-brand-ink text-lg mb-1.5">{t.noResultTitle}</h3>
+        <p className="text-slate-400 text-sm max-w-md mx-auto">{t.noResultDesc}</p>
+        {onRetry && (
+          <button onClick={onRetry} className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-colors">
+            <i className="fa-solid fa-rotate-right"></i> Coba Lagi
+          </button>
+        )}
+      </div>
+
+      {/* Alternative destinations */}
+      <div className="border-t border-slate-100 bg-slate-50 px-6 py-6">
+        <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">{t.alternativeTitle}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {POPULAR_HOTEL_DESTINATIONS.filter(d => d.destination_id !== searchParams?.destination_id).map(d => (
+            <button key={d.destination_id} onClick={() => quickHotel(d.destination_id)}
+              className="group relative overflow-hidden rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
+              <div className="aspect-[16/10] relative">
+                <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-2.5">
+                  <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
+                  <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
+                    Mulai dari IDR {(d.price / 1000).toLocaleString('id-ID')}K
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -59,46 +177,78 @@ function CompactBar({ searchParams, onSearch, loading }: { searchParams: any; on
     ? Math.max(1, Math.round((new Date(searchParams.checkout_date).getTime() - new Date(searchParams.checkin_date).getTime()) / 86400000))
     : 1;
 
-  return (
-    <div>
-      {/* Collapsed pill */}
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          className="w-full bg-white/10 hover:bg-white/15 border border-white/15 rounded-2xl px-5 py-3.5 flex items-center gap-4 transition-all text-left group"
-        >
-          <div className="w-9 h-9 bg-orange-500 rounded-xl flex items-center justify-center shrink-0">
-            <i className="fa-solid fa-bed text-white text-sm"></i>
+  if (!open) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-4 flex flex-col sm:flex-row items-start sm:items-center gap-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setOpen(true)}>
+        <div className="flex items-center gap-3 flex-1">
+          <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
+            <i className="fa-solid fa-bed text-orange-600"></i>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-black text-white text-sm truncate">{destLabel}</p>
-            <p className="text-xs text-white/50 font-medium">
-              {fmt(searchParams?.checkin_date)} → {fmt(searchParams?.checkout_date)}
-              {' · '}              {searchParams?.adult || 2} tamu · {searchParams?.room || 1} {tc.room} · {nights} {tc.night}
+          <div>
+            <p className="font-black text-brand-ink text-sm">{destLabel}</p>
+            <p className="text-xs text-slate-500">
+              {fmt(searchParams?.checkin_date)} → {fmt(searchParams?.checkout_date)} · {nights} {tc.night} · {searchParams?.adult || 2} tamu · {searchParams?.room || 1} {tc.room}
             </p>
           </div>
-          <span className="shrink-0 bg-orange-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 group-hover:bg-orange-400 transition-colors">
-            <i className="fa-solid fa-pen text-[10px]"></i>
-            <span className="hidden sm:inline">Ubah</span>
-          </span>
-        </button>
-      )}
-
-      {/* Expanded form */}
-      {open && (
-        <div className="bg-white/5 border border-white/15 rounded-2xl p-5 relative z-50">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-white text-sm flex items-center gap-2">
-              <i className="fa-solid fa-magnifying-glass text-orange-400 text-xs"></i>
-              Ubah Pencarian
-            </h3>
-            <button aria-label="Tutup pencarian" onClick={() => setOpen(false)} className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors">
-              <i className="fa-solid fa-xmark text-sm"></i>
-            </button>
-          </div>
-          <HotelSearchForm onSearch={(p) => { onSearch(p); setOpen(false); }} loading={loading} initialData={searchParams} />
         </div>
-      )}
+        <button className="px-4 py-2 bg-orange-100 text-orange-700 font-bold text-xs rounded-xl hover:bg-orange-200 transition-colors shrink-0">
+          Ubah Pencarian
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 relative z-50">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-black text-brand-ink text-sm">Ubah Pencarian</h3>
+        <button onClick={() => setOpen(false)} className="text-slate-400 hover:text-brand-ink transition-colors">
+          <i className="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <HotelSearchForm onSearch={(p) => { onSearch(p); setOpen(false); }} loading={loading} initialData={searchParams} variant="light" />
+    </div>
+  );
+}
+
+// ─── Info Banner (after search) ─────────────────────────────────────────────
+function InfoBanner({ searchParams, nights, onSearch }: { searchParams: any; nights: number; onSearch: (p: any) => void }) {
+  const fmt = (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '—';
+
+  return (
+    <div className="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white">
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-3 flex-1">
+          <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
+            <i className="fa-solid fa-bed text-orange-400 text-sm"></i>
+          </div>
+          <div>
+            <div className="text-sm font-black">
+              {searchParams?.q || searchParams?.destination_id || '—'}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-white/60 mt-0.5">
+              <span>{fmt(searchParams?.checkin_date)} → {fmt(searchParams?.checkout_date)}</span>
+              <span>·</span>
+              <span>{nights} malam · {searchParams?.adult || 2} tamu · {searchParams?.room || 1} kamar</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+          {[-2, -1, 0, 1, 2].map(offset => {
+            const d = searchParams?.checkin_date ? parseLocalDate(searchParams.checkin_date) : new Date();
+            d.setDate(d.getDate() + offset);
+            const dateStr = formatLocalDate(d);
+            const checkout = new Date(d);
+            checkout.setDate(checkout.getDate() + nights);
+            return (
+              <button key={offset} onClick={() => onSearch({ ...searchParams, checkin_date: dateStr, checkout_date: formatLocalDate(checkout) })}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${offset === 0 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>
+                {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -138,9 +288,9 @@ function SidebarFilter({ priceRange, setPriceRange, starFilters, onStarChange, o
 
   return (
     <aside className="w-full lg:w-64 shrink-0 lg:sticky lg:top-24 lg:self-start">
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+          <h3 className="font-black text-brand-ink text-sm flex items-center gap-2">
             <i className="fa-solid fa-sliders text-orange-500 text-xs"></i>
             {tc.filter}
           </h3>
@@ -258,13 +408,16 @@ function ResultBar({ count, loading, filtered, sortBy, onSort }: any) {
       <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm min-w-0">
           {loading ? (
-            <div className="flex items-center gap-2 text-slate-500">
-              <div className="w-3.5 h-3.5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
-              <span className="text-xs font-medium">{t.loading}</span>
+            <div className="flex items-center gap-2.5">
+              <div className="relative">
+                <div className="w-4 h-4 border-2 border-orange-200 rounded-full"></div>
+                <div className="absolute inset-0 w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+              <span className="text-xs font-semibold text-slate-500">Sedang mencari hotel terbaik...</span>
             </div>
           ) : (
             <span className="text-slate-600 text-sm">
-              <span className="font-black text-slate-900">{count}</span> {t.hotelsFound}
+              <span className="font-black text-brand-ink">{count}</span> {t.hotelsFound}
               {filtered && <span className="text-orange-500 ml-1 text-xs">(difilter)</span>}
             </span>
           )}
@@ -294,7 +447,7 @@ export default function HotelSearchPage() {
   const t = i18n.hotelSearch[language];
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[#f4f6fb] flex items-center justify-center">
+      <div className="min-h-screen bg-brand-bgLight flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           <span className="text-slate-500 text-sm font-medium">{t.loadingPage}</span>
@@ -315,6 +468,12 @@ function HotelSearchContent() {
   const searchParamsHook = useSearchParams();
   const router = useRouter();
 
+  usePageTitle(
+    searchParamsHook.get('q')
+      ? `Pencarian Hotel: ${searchParamsHook.get('q')}`
+      : 'Pencarian Hotel'
+  );
+
   const [results, setResults] = useState<{ hotel_ids?: Array<Record<string, unknown>> } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -328,35 +487,17 @@ function HotelSearchContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
+  // Default tanggal dihitung sekali saat mount (stabil & idempotent)
+  const [todayISO] = useState(() => formatLocalDate(new Date()));
+  const [tomorrowISO] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    return formatLocalDate(date);
+  });
+
   // Guard supaya auto-search dari URL params hanya benar-benar dieksekusi
   // SEKALI, walau effect di-invoke berkali-kali (mis. React StrictMode di dev).
   const autoSearchDone = useRef(false);
-
-  // ── Auto-search from URL params on mount ──
-  useEffect(() => {
-    if (autoSearchDone.current) return;
-    autoSearchDone.current = true;
-
-    const destId = searchParamsHook.get('destination_id');
-    if (!destId) return;
-
-    const params = {
-      destination_id: destId,
-      q: searchParamsHook.get('q') || '',
-      checkin_date: searchParamsHook.get('checkin_date') || '',
-      checkout_date: searchParamsHook.get('checkout_date') || '',
-      adult: parseInt(searchParamsHook.get('adult') || '2'),
-      child: parseInt(searchParamsHook.get('child') || '0'),
-      child_ages: (() => {
-        try { return JSON.parse(searchParamsHook.get('child_ages') || '[]'); } catch { return []; }
-      })(),
-      room: parseInt(searchParamsHook.get('room') || '1'),
-      nationality: searchParamsHook.get('nationality') || 'ID',
-    };
-
-    setSearchParams(params);
-    doSearch(params);
-  }, []);
 
   const doSearch = async (params: SearchParamsState) => {
     if (!params.destination_id || !params.checkin_date || !params.checkout_date) {
@@ -387,6 +528,32 @@ function HotelSearchContent() {
     }
   };
 
+  // ── Auto-search from URL params on mount ──
+  useEffect(() => {
+    if (autoSearchDone.current) return;
+    autoSearchDone.current = true;
+
+    const destId = searchParamsHook.get('destination_id');
+    if (!destId) return;
+
+    const params = {
+      destination_id: destId,
+      q: searchParamsHook.get('q') || '',
+      checkin_date: searchParamsHook.get('checkin_date') || '',
+      checkout_date: searchParamsHook.get('checkout_date') || '',
+      adult: parseInt(searchParamsHook.get('adult') || '2'),
+      child: parseInt(searchParamsHook.get('child') || '0'),
+      child_ages: (() => {
+        try { return JSON.parse(searchParamsHook.get('child_ages') || '[]'); } catch { return []; }
+      })(),
+      room: parseInt(searchParamsHook.get('room') || '1'),
+      nationality: searchParamsHook.get('nationality') || 'ID',
+    };
+
+    setSearchParams(params);
+    doSearch(params);
+  }, []);
+
   const handleSearch = (params: SearchParamsState) => {
     setSearchParams(params);
     const urlParams = new URLSearchParams();
@@ -404,9 +571,7 @@ function HotelSearchContent() {
   };
 
   const quickHotel = (destination_id: string) => {
-    const checkin = new Date().toISOString().split('T')[0];
-    const checkout = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-    handleSearch({ destination_id, q: '', checkin_date: checkin, checkout_date: checkout, adult: 2, child: 0, child_ages: [], room: 1, nationality: 'ID' });
+    handleSearch({ destination_id, q: '', checkin_date: todayISO, checkout_date: tomorrowISO, adult: 2, child: 0, child_ages: [], room: 1, nationality: 'ID' });
   };
 
   const getLowestPrice = (prices?: Record<string, { price?: number }>) => {
@@ -468,45 +633,73 @@ function HotelSearchContent() {
 
   const hasActiveFilters = starFilters.length > 0 || priceRange.max < 10000000 || searchText.length > 0 || facilityFilters.length > 0;
   const showInitialForm = !searchParams;
+  const hasResults = results && results.hotel_ids && results.hotel_ids.length > 0;
+  const noResultsAfterSearch = !loading && results && !hasResults;
 
   return (
-    <div className="min-h-screen bg-[#f4f6fb] font-sans pb-24 pt-20">
+    <div className="bg-brand-bgLight min-h-screen pb-24 pt-20">
 
-      {/* ── HERO HEADER ── */}
-      <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 pt-6 pb-6 border-b border-white/5">
+      {/* ── HERO HEADER (landing) ── */}
+      {showInitialForm ? (
+      <>
+      <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
         <div className="max-w-[1280px] mx-auto px-4 md:px-8">
-          {showInitialForm ? (
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-                <div>
-                  <p className="text-orange-400 text-[10px] font-black uppercase tracking-widest mb-1">🏨 Hotel Search</p>
-                  <h1 className="text-2xl font-black text-white">Temukan Penginapan Terbaik</h1>
-                  <p className="text-slate-400 text-sm mt-1">Ribuan pilihan hotel di seluruh dunia dengan harga terbaik</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-slate-300 backdrop-blur-sm">
-                  <span className="font-black text-white">Cocok untuk</span> staycation, business trip, dan liburan keluarga.
-                </div>
-              </div>
-              <HotelSearchForm onSearch={handleSearch} loading={loading} />
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2 text-xs text-white/40">
-                <i className="fa-solid fa-hotel text-orange-400"></i>
-                <span className="font-bold text-white/70">Hotel</span>
-                <span>·</span>
-                <span>{nights} {tc.night}</span>
-                <span>·</span>
-                <span>{searchParams?.adult} tamu</span>
-              </div>
-              <CompactBar searchParams={searchParams} onSearch={handleSearch} loading={loading} />
-            </div>
-          )}
+          <div className="mb-6 md:mb-8">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-brand-ink leading-tight tracking-tight">
+              {t.landing.title}
+            </h1>
+            <p className="mt-2 text-sm md:text-base text-brand-neutral font-medium">{t.landing.subtitle}</p>
+          </div>
+
+          <div className="bg-white rounded-2xl md:rounded-3xl shadow-floating border border-slate-100/80 p-4 sm:p-6 transition-all">
+            <HotelSearchForm onSearch={handleSearch} loading={loading} variant="light" />
+          </div>
         </div>
       </section>
 
+      {/* Destinasi populer */}
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-8">
+        <div className="mb-5">
+          <h2 className="text-lg sm:text-xl font-black text-brand-ink">{t.landing.popularTitle}</h2>
+          <p className="text-brand-neutral text-xs sm:text-sm mt-1">{t.landing.popularSub}</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4">
+          {POPULAR_HOTEL_DESTINATIONS.map(d => (
+            <button key={d.destination_id} onClick={() => quickHotel(d.destination_id)}
+              className="group relative overflow-hidden rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
+              <div className="aspect-[16/10] relative">
+                <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3">
+                  <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
+                  <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
+                    {t.landing.startingFrom} IDR {(d.price / 1000).toLocaleString('id-ID')}K
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+      </>
+      ) : (
+      <>
+      {/* ─── Info Banner ──────────────────────────────────────────────────────── */}
+      <InfoBanner searchParams={searchParams} nights={nights} onSearch={handleSearch} />
+      </>
+      )}
+
+      {!showInitialForm && (
+      <>
+      {/* ─── Sticky Compact Search Bar ─────────────────────────────────────── */}
+      <div data-compact-search className="sticky top-0 z-[900] bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3">
+          <CompactBar searchParams={searchParams} onSearch={handleSearch} loading={loading} />
+        </div>
+      </div>
+
       {/* ── RESULT BAR ── */}
-      {(results || loading) && (
+      {(results || loading) && !noResultsAfterSearch && (
         <ResultBar
           count={filteredAndSortedHotels.length}
           loading={loading}
@@ -517,10 +710,18 @@ function HotelSearchContent() {
       )}
 
       {/* ── MAIN LAYOUT ── */}
-      <main className="max-w-[1280px] mx-auto px-4 md:px-8 py-6 flex flex-col lg:flex-row gap-6 items-start">
+      <div className="max-w-[1280px] mx-auto px-4 md:px-8 pt-3 pb-6 flex flex-col lg:flex-row gap-6 items-start">
 
         {/* Mobile filter toggle */}
-        {(results || loading) && (
+        {loading && (
+          <div className="lg:hidden w-full">
+            <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-2 animate-pulse">
+              <div className="w-4 h-4 bg-slate-200 rounded"></div>
+              <div className="h-3 w-16 bg-slate-200 rounded"></div>
+            </div>
+          </div>
+        )}
+        {!loading && !noResultsAfterSearch && (results || loading) && (
           <div className="lg:hidden w-full">
             <button
               onClick={() => setMobileFilterOpen(!mobileFilterOpen)}
@@ -559,7 +760,8 @@ function HotelSearchContent() {
         )}
 
         {/* Desktop Sidebar */}
-        {(results || loading) && (
+        {loading && <FilterSkeleton />}
+        {!loading && !noResultsAfterSearch && (results || loading) && (
           <div className="hidden lg:block">
             <SidebarFilter
               priceRange={priceRange}
@@ -584,7 +786,7 @@ function HotelSearchContent() {
 
         {/* Results */}
         <div className="flex-1 min-w-0 flex flex-col gap-4">
-          {!loading && results && currentHotels.length > 0 && (
+          {!loading && results && !noResultsAfterSearch && currentHotels.length > 0 && (
             <div className="lg:hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
               <div className="flex items-center justify-between text-xs text-slate-500">
                 <span className="font-black text-slate-700">Hasil pencarian</span>
@@ -595,21 +797,7 @@ function HotelSearchContent() {
 
           {/* Error */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 text-red-600 text-sm">
-              <i className="fa-solid fa-wifi mt-0.5 shrink-0"></i>
-              <div className="flex-1">
-                <p className="font-bold">Gagal mencari hotel</p>
-                <p className="text-red-500 text-xs mt-0.5">{error}</p>
-                {searchParams && (
-                  <button
-                    onClick={() => doSearch(searchParams)}
-                    className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white font-bold rounded-xl text-xs hover:bg-red-700 transition-colors"
-                  >
-                    <i className="fa-solid fa-rotate-right"></i> Coba Lagi
-                  </button>
-                )}
-              </div>
-            </div>
+            <NoResultsWithAlternatives searchParams={searchParams} onSearch={handleSearch} onRetry={() => doSearch(searchParams!)} />
           )}
 
           {/* Loading skeletons */}
@@ -628,13 +816,18 @@ function HotelSearchContent() {
             </div>
           )}
 
-          {/* Empty state after filter */}
-          {!loading && results && currentHotels.length === 0 && (
-            <div className="bg-white rounded-2xl border border-slate-100 p-16 text-center shadow-sm">
+          {/* No results after search - show alternatives */}
+          {noResultsAfterSearch && (
+            <NoResultsWithAlternatives searchParams={searchParams} onSearch={handleSearch} />
+          )}
+
+          {/* Empty state after filter (but results exist overall) */}
+          {!loading && results && !noResultsAfterSearch && currentHotels.length === 0 && (
+            <div className="bg-white rounded-2xl border border-slate-100 p-16 text-center shadow-card">
               <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <i className="fa-solid fa-filter-circle-xmark text-3xl text-orange-200"></i>
               </div>
-              <h3 className="font-black text-slate-900 text-lg mb-1.5">{t.noResult}</h3>
+              <h3 className="font-black text-brand-ink text-lg mb-1.5">{t.noResult}</h3>
               <p className="text-slate-400 text-sm mb-5">{t.noResultSub}</p>
               {hasActiveFilters && (
                 <button
@@ -647,33 +840,7 @@ function HotelSearchContent() {
             </div>
           )}
 
-          {/* Initial empty state */}
-          {!loading && !results && !error && showInitialForm && (
-            <div className="bg-white rounded-2xl border border-slate-100 p-6 md:p-8 shadow-sm">
-              <div className="mb-5">
-                <h3 className="font-black text-slate-900 text-lg">{t.landing.popularTitle}</h3>
-                <p className="text-slate-400 text-sm mt-1">{t.landing.popularSub}</p>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4">
-                {POPULAR_HOTEL_DESTINATIONS.map(d => (
-                  <button key={d.destination_id} onClick={() => quickHotel(d.destination_id)}
-                    className="group relative overflow-hidden rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
-                    <div className="aspect-[16/10] relative">
-                      <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                      <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3">
-                        <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
-                        <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
-                          {t.landing.startingFrom} IDR {(d.price / 1000).toLocaleString('id-ID')}K
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
+          {/* Initial state — form & popular destinations handled in landing above */}
           {/* Pagination */}
           {!loading && totalPages > 1 && (
             <div className="flex items-center justify-center gap-1.5 mt-4">
@@ -716,7 +883,17 @@ function HotelSearchContent() {
             </div>
           )}
         </div>
-      </main>
+      </div>
+      </>
+      )}
+
+      <style jsx global>{`
+        /* Saat halaman hasil pencarian hotel: navbar ikut terscroll,
+           hanya "Ubah Pencarian" yang sticky di atas. */
+        body:has([data-compact-search]) header.fixed {
+          position: absolute;
+        }
+      `}</style>
     </div>
   );
 }

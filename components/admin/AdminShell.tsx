@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Topbar, { type AdminNotification } from './Topbar';
 
@@ -13,15 +13,45 @@ interface AdminShellProps {
   initialUnreadCount?: number;
 }
 
+function getInitialCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem('admin_sidebar_collapsed') === 'true';
+  } catch {
+    return false;
+  }
+}
+
 export default function AdminShell({ children, userName, userEmail, userImage, initialNotifications, initialUnreadCount }: AdminShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<boolean>(getInitialCollapsed);
+  const [mounted, setMounted] = useState(false);
+
+  // Mark as mounted so we can enable transitions after first paint
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Persist collapsed state to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('admin_sidebar_collapsed', String(collapsed));
+    } catch {}
+  }, [collapsed]);
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
-      <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+    <div className="flex h-screen bg-brand-bgLight overflow-hidden">
+      <Sidebar
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+        collapsed={collapsed}
+        animate={mounted}
+      />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Topbar
           onMenuClick={() => setMobileOpen(true)}
+          collapsed={collapsed}
+          onToggleCollapse={() => setCollapsed(c => !c)}
           userName={userName}
           userEmail={userEmail}
           userImage={userImage}

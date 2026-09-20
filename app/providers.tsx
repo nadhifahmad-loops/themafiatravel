@@ -4,9 +4,10 @@ import { LanguageProvider } from '@/contexts/LanguageContext';
 import { LocationProvider } from '@/contexts/LocationContext';
 import LoginWelcomeToast from '@/components/auth/LoginWelcomeToast';
 
-export function Providers({ children }: { children: React.ReactNode }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function Providers({ children, session }: { children: React.ReactNode; session?: any }) {
   return (
-    <SessionProvider>
+    <SessionProvider session={session}>
       <LanguageProvider>
         <LocationProvider>
           {children}

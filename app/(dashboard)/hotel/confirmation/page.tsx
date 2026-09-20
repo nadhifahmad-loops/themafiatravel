@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 function formatRupiah(amount: string | number | null) {
   const value = Number(amount || 0);
@@ -24,6 +25,8 @@ function ConfirmationContent() {
 
   const isSuccess = status === 'success';
   const isPending = status === 'pending';
+
+  usePageTitle(isSuccess ? `Konfirmasi Hotel: ${hotelName}` : isPending ? 'Menunggu Pembayaran' : 'Pembayaran Gagal');
 
   const config = {
     icon: isSuccess ? '✓' : isPending ? '⏳' : '✗',

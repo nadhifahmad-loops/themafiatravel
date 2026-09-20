@@ -24,8 +24,14 @@ export const FLIGHT_PROVIDERS: AirlineProvider[] = [
 // Providers yang wajib berjalan untuk semua search
 export const PROVIDER_IDS = FLIGHT_PROVIDERS.map(p => p.id);
 
+// Map provider ID → label (buat resolve "citilink" → "Citilink", dll)
+export const PROVIDER_ID_TO_LABEL: Record<string, string> = Object.fromEntries(
+  FLIGHT_PROVIDERS.map(p => [p.id, p.label])
+);
+
 // Map agar mudah lookup nama maskapai dari carrier code
 export const CARRIER_CODE_TO_AIRLINE: Record<string, string> = {
+  // Indonesia
   QG: 'Citilink',
   JT: 'Lion Air',
   ID: 'Batik Air',
@@ -36,13 +42,76 @@ export const CARRIER_CODE_TO_AIRLINE: Record<string, string> = {
   SJ: 'Sriwijaya Air',
   IN: 'Nam Air',
   IW: 'Wings Air',
-  SQ: 'Singapore Airlines',
+  BI: 'Brunei Airlines',
+  // Malaysia
+  OD: 'AirAsia X Malaysia',
   MH: 'Malaysia Airlines',
+  FY: 'Firefly',
+  // Singapore
+  SQ: 'Singapore Airlines',
+  TR: 'Scoot',
+  // Thailand
+  TG: 'Thai Airways',
+  SL: 'Thai Lion Air',
+  WE: 'Thai VietJet Air',
+  FD: 'Thai AirAsia',
+  // Vietnam
+  VJ: 'VietJet Air',
+  VN: 'Vietnam Airlines',
+  // Philippines
+  PR: 'Philippine Airlines',
+  Z2: 'Philippines AirAsia',
+  '5J': 'Cebu Pacific',
+  // Hong Kong
   CX: 'Cathay Pacific',
-  EK: 'Emirates',
-  TK: 'Turkish Airlines',
-  QR: 'Qatar Airways',
+  UO: 'HK Express',
+  // Taiwan
+  CI: 'China Airlines',
+  BR: 'EVA Air',
+  // China
+  MU: 'China Eastern Airlines',
+  CA: 'Air China',
+  CZ: 'China Southern Airlines',
+  HU: 'Hainan Airlines',
+  '3U': 'Sichuan Airlines',
+  MF: 'Xiamen Air',
+  // Japan
   NH: 'ANA',
   JL: 'Japan Airlines',
+  MM: 'Peach Aviation',
+  // Korea
   KE: 'Korean Air',
+  OZ: 'Asiana Airlines',
+  // India
+  AI: 'Air India',
+  '6E': 'IndiGo',
+  SG: 'SpiceJet',
+  // Middle East
+  EK: 'Emirates',
+  EY: 'Etihad Airways',
+  TK: 'Turkish Airlines',
+  QR: 'Qatar Airways',
+  GF: 'Gulf Air',
+  WY: 'Oman Air',
+  SV: 'Saudia',
+  // Europe
+  BA: 'British Airways',
+  LH: 'Lufthansa',
+  AF: 'Air France',
+  KL: 'KLM',
+  SK: 'SAS',
+  AZ: 'ITA Airways',
+  IB: 'Iberia',
+  TP: 'TAP Air Portugal',
+  // USA
+  AA: 'American Airlines',
+  DL: 'Delta Air Lines',
+  UA: 'United Airlines',
+  WN: 'Southwest Airlines',
+  B6: 'JetBlue Airways',
+  AS: 'Alaska Airlines',
+  // Australia
+  QF: 'Qantas',
+  VA: 'Virgin Australia',
+  JQ: 'Jetstar Airways',
 };

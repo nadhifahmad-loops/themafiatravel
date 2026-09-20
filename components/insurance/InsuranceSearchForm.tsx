@@ -6,12 +6,14 @@ import { registerLocale } from 'react-datepicker';
 import { id as localeId } from 'date-fns/locale';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { type FormVariant, vField, vLabel, vValue, vPanel, vItem, vStepper, vStepBtn, vIconCircle, vToggle, vToggleIdle, vChevron, vFieldLabel, vSub, vBtnSearch } from '@/lib/formVariants';
 registerLocale('id', localeId);
 
 interface Props {
   onSearch: (p: any) => void;
   loading: boolean;
   initialData?: any;
+  variant?: FormVariant;
 }
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -76,15 +78,23 @@ const TRIP_TYPES = [
   { value: 'annual_trip', label: 'Tahunan' },
 ];
 
+function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // ─── Dropdown generic (dark style like FlightSearchForm) ──────────────────────
 function DropdownSelect({
-  label, icon, value, options, onChange,
+  label, icon, value, options, onChange, variant = 'dark',
 }: {
   label: string;
   icon: string;
   value: string;
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
+  variant?: FormVariant;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -100,35 +110,35 @@ function DropdownSelect({
   const selected = options.find(o => o.value === value);
 
   return (
-    <div className="relative flex-1 w-full" ref={ref}>
+    <div className="relative flex-1 min-w-0" ref={ref}>
       <div
         onClick={() => setOpen(o => !o)}
-        className="group flex flex-col px-5 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl cursor-pointer transition-all h-full"
+        className={`group flex flex-col px-4 py-3 rounded-xl cursor-pointer transition-all h-full ${vField(variant)}`}
       >
-        <span className="text-[10px] text-white/50 font-bold uppercase tracking-widest mb-0.5">{label}</span>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <i className={`fa-solid ${icon} text-orange-500 text-sm shrink-0`} />
-            <span className="font-black text-white text-sm truncate">
+        <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{label}</span>
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <i className={`fa-solid ${icon} text-orange-500 text-[13px] shrink-0`} />
+            <span className={`text-[13px] font-medium truncate ${vValue(variant)}`}>
               {selected?.label || 'Pilih...'}
             </span>
           </div>
-          <i className={`fa-solid fa-chevron-down text-white/30 text-xs shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+          <i className={`fa-solid fa-chevron-down text-[9px] shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${vChevron(variant)}`} />
         </div>
       </div>
 
       {open && (
-        <div className="absolute top-full left-0 mt-2 w-full min-w-[220px] bg-slate-900 border border-white/10 shadow-2xl rounded-2xl z-[100] py-2 animate-fade-in overflow-hidden">
+        <div className={`absolute top-full left-0 mt-2 w-full min-w-[220px] rounded-xl z-[9999] py-2 animate-fade-in overflow-hidden shadow-2xl ${vPanel(variant)}`}>
           {options.map(o => {
             const isActive = o.value === value;
             return (
               <div
                 key={o.value}
                 onClick={() => { onChange(o.value); setOpen(false); }}
-                className={`px-5 py-3 flex items-center justify-between cursor-pointer transition-colors ${isActive ? 'bg-orange-600/10' : 'hover:bg-white/5'}`}
+                className={`px-4 py-2.5 flex items-center justify-between cursor-pointer transition-colors ${isActive ? 'bg-orange-500/10 text-orange-600' : vItem(variant)}`}
               >
-                <span className={`text-sm font-bold ${isActive ? 'text-orange-400' : 'text-white'}`}>{o.label}</span>
-                {isActive && <i className="fa-solid fa-check text-orange-500 text-xs" />}
+                <span className={`text-[13px] font-medium ${isActive ? 'text-orange-600' : vValue(variant)}`}>{o.label}</span>
+                {isActive && <i className="fa-solid fa-check text-orange-600 text-xs" />}
               </div>
             );
           })}
@@ -139,7 +149,7 @@ function DropdownSelect({
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function InsuranceSearchForm({ onSearch, loading, initialData }: Props) {
+export default function InsuranceSearchForm({ onSearch, loading, initialData, variant = 'dark' }: Props) {
   const { language } = useLanguage();
   const t = i18n.searchForm[language].insurance;
   const tc = i18n.common[language];
@@ -199,8 +209,8 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
     onSearch({
       provider,
       destination_area: area,
-      date_start: startDate?.toISOString().split('T')[0],
-      date_end:   endDate?.toISOString().split('T')[0],
+      date_start: startDate ? formatLocalDate(startDate) : undefined,
+      date_end:   endDate ? formatLocalDate(endDate) : undefined,
       trip_type:  tripType,
       pax,
       is_senior:  isSenior,
@@ -209,19 +219,19 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5 animate-fade-up">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-2 animate-fade-up">
 
-      {/* TRIP TYPE TOGGLE */}
-      <div className="flex gap-1.5 p-1 bg-white/5 rounded-2xl w-fit border border-white/5">
+      {/* Baris 1: Toggle */}
+      <div className={`flex gap-1 p-1 rounded-lg w-fit ${vToggle(variant)}`}>
         {TRIP_TYPES.map(t => (
           <button
             key={t.value}
             type="button"
             onClick={() => setTripType(t.value)}
-            className={`px-5 py-2 rounded-xl text-xs font-black transition-all ${
+            className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap ${
               tripType === t.value
-                ? 'bg-orange-600 text-white shadow-lg'
-                : 'text-white/60 hover:text-white hover:bg-white/5'
+                ? 'bg-orange-500 text-white shadow-md'
+                : vToggleIdle(variant)
             }`}
           >
             {t.label}
@@ -229,32 +239,30 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
         ))}
       </div>
 
-      {/* ROW 1: PROVIDER + AREA TUJUAN */}
-      <div className="flex flex-col md:flex-row gap-3">
+      {/* Baris 2: Semua field dalam 1 baris */}
+      <div className="flex flex-col md:flex-row items-stretch gap-2">
         <DropdownSelect
-          label="Provider Asuransi"
+          label="Provider"
           icon="fa-shield-halved"
           value={provider}
           options={PROVIDERS.map(p => ({ value: p.value, label: p.label }))}
           onChange={handleProviderChange}
+          variant={variant}
         />
         <DropdownSelect
-          label="Area Tujuan"
+          label="Area"
           icon="fa-earth-asia"
           value={area}
           options={currentAreas}
           onChange={setArea}
+          variant={variant}
         />
-      </div>
-
-      {/* ROW 2: TANGGAL + PESERTA + BUTTON */}
-      <div className="flex flex-col lg:flex-row items-stretch gap-4 border-t border-white/10 pt-4">
 
         {/* Tanggal Mulai */}
-        <div className="flex-1 min-w-[150px] px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all">
-          <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">{t.departure}</span>
-          <div className="flex items-center gap-3">
-            <i className="fa-regular fa-calendar text-orange-500 text-base" />
+        <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
+          <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{t.departure}</span>
+          <div className="flex items-center gap-1.5">
+            <i className="fa-regular fa-calendar text-orange-500 text-[13px]" />
             <DatePicker
               selected={startDate}
               onChange={(d: Date | null) => {
@@ -266,85 +274,80 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
               }}
               minDate={minDateTomorrow}
               locale="id"
-              className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer"
+              className={`bg-transparent text-[13px] font-medium outline-none w-full cursor-pointer ${vValue(variant)}`}
               dateFormat="dd MMM yyyy"
-              placeholderText="Pilih tanggal"
+              placeholderText="Pilih"
             />
           </div>
         </div>
 
         {/* Tanggal Selesai */}
-        <div className="flex-1 min-w-[150px] px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all">
-          <span className="text-[10px] text-white/50 font-bold uppercase mb-0.5">
+        <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
+          <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>
             {t.return}
             {nights > 0 && (
               <span className="ml-1 text-orange-400">· {nights} {tc.night}</span>
             )}
           </span>
-          <div className="flex items-center gap-3">
-            <i className="fa-regular fa-calendar-check text-orange-500 text-base" />
+          <div className="flex items-center gap-1.5">
+            <i className="fa-regular fa-calendar-check text-orange-500 text-[13px]" />
             <DatePicker
               selected={endDate}
               onChange={(d: Date | null) => setEndDate(d)}
               minDate={startDate ? new Date(startDate.getTime() + 86400000) : minDateTomorrow}
               locale="id"
-              className="bg-transparent text-white font-black outline-none w-full text-base cursor-pointer"
+              className={`bg-transparent text-[13px] font-medium outline-none w-full cursor-pointer ${vValue(variant)}`}
               dateFormat="dd MMM yyyy"
-              placeholderText="Pilih tanggal"
+              placeholderText="Pilih"
             />
           </div>
         </div>
 
         {/* Peserta */}
-        <div className="relative flex-1 min-w-[200px]" ref={paxRef}>
+        <div className="relative flex-1 min-w-[140px] shrink-0" ref={paxRef}>
           <div
             onClick={() => setOpenPax(o => !o)}
-            className="px-5 py-3 bg-white/5 border border-white/10 rounded-2xl flex flex-col justify-center cursor-pointer hover:bg-white/10 transition-all h-full"
+            className={`px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all h-full ${vField(variant)}`}
           >
-            <span className="text-[9px] text-white/40 font-bold uppercase mb-0.5">{t.passengers}</span>
+            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vFieldLabel(variant)}`}>{t.passengers}</span>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <i className="fa-solid fa-users text-orange-500 text-sm" />
-                <div className="text-white font-black text-sm">
-                  {pax} Peserta{isSenior && <span className="ml-1.5 text-[10px] text-orange-400 font-bold">· Senior</span>}
+              <div className="flex items-center gap-1.5">
+                <i className="fa-solid fa-users text-orange-500 text-[13px]" />
+                <div className={`text-[13px] font-medium ${vValue(variant)}`}>
+                  {pax} Peserta{isSenior && <span className="ml-1 text-[10px] text-orange-400 font-medium">· Senior</span>}
                 </div>
               </div>
-              <i className={`fa-solid fa-chevron-down text-white/30 text-xs transition-transform ${openPax ? 'rotate-180' : ''}`} />
+              <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`} />
             </div>
           </div>
 
           {openPax && (
-            <div className="absolute top-full left-0 mt-2 w-full lg:w-[280px] bg-slate-900 border border-white/10 shadow-2xl rounded-2xl z-[100] p-4 flex flex-col gap-4 animate-fade-in">
-              {/* Jumlah Peserta */}
+            <div className={`absolute top-full right-0 mt-2 w-full lg:w-[280px] rounded-xl z-[9999] p-4 flex flex-col gap-4 animate-fade-in shadow-2xl ${vPanel(variant)}`}>
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
-                    <i className="fa-solid fa-user text-white/50 text-xs" />
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${vIconCircle(variant)}`}>
+                    <i className="fa-solid fa-user text-[10px]" />
                   </div>
                   <div>
-                    <span className="text-white font-bold text-sm block">Jumlah Peserta</span>
-                    <span className="text-[10px] text-white/40">Maks. 9 orang</span>
+                    <span className={`text-[13px] font-medium block ${vValue(variant)}`}>Jumlah Peserta</span>
+                    <span className={`text-[10px] ${vSub(variant)}`}>Maks. 9 orang</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 bg-white/5 px-2 py-1 rounded-xl border border-white/5">
-                  <button type="button" onClick={() => setPax(p => Math.max(1, p - 1))} className="w-7 h-7 rounded-lg hover:bg-orange-600 text-white transition-colors flex items-center justify-center">
-                    <i className="fa-solid fa-minus text-xs" />
+                <div className={`flex items-center gap-2 px-2 py-1 rounded-lg ${vStepper(variant)}`}>
+                  <button type="button" disabled={pax <= 1} onClick={() => setPax(p => Math.max(1, p - 1))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax <= 1 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+                    <i className="fa-solid fa-minus text-[10px]" />
                   </button>
-                  <span className="text-white font-black text-sm w-4 text-center">{pax}</span>
-                  <button type="button" onClick={() => setPax(p => Math.min(9, p + 1))} className="w-7 h-7 rounded-lg hover:bg-orange-600 text-white transition-colors flex items-center justify-center">
-                    <i className="fa-solid fa-plus text-xs" />
+                  <span className={`text-[13px] font-medium w-4 text-center ${vValue(variant)}`}>{pax}</span>
+                  <button type="button" disabled={pax >= 9} onClick={() => setPax(p => Math.min(9, p + 1))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax >= 9 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+                    <i className="fa-solid fa-plus text-[10px]" />
                   </button>
                 </div>
               </div>
-
-              {/* Senior Toggle */}
-              <label className="flex items-center gap-3 cursor-pointer select-none group">
-                <div className={`w-10 h-6 rounded-full relative transition-colors ${isSenior ? 'bg-orange-600' : 'bg-white/10'}`} onClick={() => setIsSenior(s => !s)}>
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${isSenior ? 'left-5' : 'left-1'}`} />
-                </div>
+              <label className={`flex items-center gap-3 cursor-pointer p-2.5 rounded-lg transition-colors ${isSenior ? vToggle(variant) : variant === 'light' ? 'bg-white/60 border border-white/40' : 'bg-white/5 border border-white/10'}`}>
+                <input type="checkbox" checked={isSenior} onChange={() => setIsSenior(!isSenior)} className="accent-orange-500 w-4 h-4" />
                 <div>
-                  <span className="text-white font-bold text-sm block">Senior (60+)</span>
-                  <span className="text-[10px] text-white/40">Peserta berusia 60 tahun ke atas</span>
+                  <span className={`text-[13px] font-medium block ${vValue(variant)}`}>Peserta Senior</span>
+                  <span className={`text-[10px] ${vSub(variant)}`}>Usia 65 tahun ke atas</span>
                 </div>
               </label>
             </div>
@@ -355,14 +358,14 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData }: 
         <button
           type="submit"
           disabled={loading}
-          className="w-full sm:w-full lg:w-16 h-12 lg:h-16 bg-orange-600 text-white rounded-2xl hover:bg-orange-700 shadow-md shadow-orange-600/20 transition-all flex items-center justify-center active:scale-95 disabled:opacity-50 shrink-0"
+          className={`shrink-0 w-full sm:w-full lg:w-12 h-12 lg:h-full min-h-[52px] flex items-center justify-center rounded-xl ${vBtnSearch(variant)}`}
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
           ) : (
             <div className="flex items-center gap-2 lg:gap-0">
               <i className="fa-solid fa-magnifying-glass text-sm" />
-              <span className="text-sm font-bold lg:hidden">{t.search}</span>
+              <span className="text-sm font-semibold lg:hidden">{t.search}</span>
             </div>
           )}
         </button>

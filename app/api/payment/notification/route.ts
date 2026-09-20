@@ -6,6 +6,7 @@ import { releaseVendorHold } from '@/lib/payment-cleanup';
 import { sendBookingConfirmationEmail } from '@/lib/email';
 import { sendWhatsApp, formatBookingConfirmationMessage } from '@/lib/whatsapp';
 import { getBookingContact } from '@/lib/notify';
+import { trainAPI } from '@/lib/orbis';
 
 /**
  * Midtrans Webhook — POST /api/payment/notification
@@ -96,7 +97,8 @@ export async function POST(req: NextRequest) {
     // mendapat count === 0 dan tahu bahwa transisi ini sudah/sedang ditangani
     // oleh request lain, sehingga tidak menjalankan side-effect lagi.
     const previousStatus = booking.status;
-    const statusChanged = newStatus !== previousStatus;
+    const statusChanged = newStatus !== previousStatus
+      && !(previousStatus === 'issued' && newStatus === 'paid');
 
     let wonTransition = false;
 
@@ -140,7 +142,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 6. Update tabel Payment (audit trail) ─────────────────────────────────
+    // ── 6. Terbitkan tiket kereta setelah pembayaran sukses ─────────────────
+    // KAI memisahkan commit_booking (hold) dan issued (payment reservation).
+    // Jika webhook diulang setelah issued, marker bookingData mencegah issue ganda.
+    if (newStatus === 'paid' && booking.bookingType === 'train') {
+      const bookingData = (booking.bookingData as Record<string, unknown> | null) || {};
+      const issuedData = bookingData.issued as Record<string, unknown> | undefined;
+      if (issuedData?.state !== 'issued') {
+        try {
+          const issued = await trainAPI.issued(booking.orderNumber);
+          await bookingStore.mergeBookingData(booking.id, {
+            status: 'issued',
+            bookingData: {
+              issued: {
+                ...(issued && typeof issued === 'object' ? issued : {}),
+                state: 'issued',
+                issuedAt: new Date().toISOString(),
+              },
+            },
+          });
+          console.log('[Payment Webhook] Train issued:', booking.orderNumber);
+        } catch (issueErr: any) {
+          console.error('[Payment Webhook] Train issued failed:', issueErr.message);
+          return NextResponse.json({ error: 'Tiket kereta gagal diterbitkan sementara.' }, { status: 500 });
+        }
+      }
+    }
+
+    // ── 7. Update tabel Payment (audit trail) ─────────────────────────────────
     try {
       await bookingStore.updatePayment(order_id, {
         status: transaction_status,
@@ -152,7 +181,7 @@ export async function POST(req: NextRequest) {
       console.warn('[Payment Webhook] Payment update error (non-fatal):', e.message);
     }
 
-    // ── 7. Send confirmation notifications for successful payments ─────────
+    // ── 8. Send confirmation notifications for successful payments ─────────
     // Guest booking (tanpa akun) juga mendapat notifikasi: kontak diambil dari
     // bookingData.contacts/contact/booker, fallback ke akun terdaftar.
     if (newStatus === 'paid' && wonTransition) {

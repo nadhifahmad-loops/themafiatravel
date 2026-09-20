@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { loadSnap, getSnapRedirectUrl } from '@/lib/snap-pay';
 
 const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -15,9 +17,11 @@ function fmtIDR(n: number) {
 }
 
 function getCountdown(createdAt: string) {
-  const deadline = new Date(new Date(createdAt).getTime() + PAYMENT_TIMEOUT_MS);
-  const now = Date.now();
-  const remaining = deadline.getTime() - now;
+  if (!createdAt) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
+  const created = typeof createdAt === 'string' ? new Date(createdAt).getTime() : new Date(String(createdAt)).getTime();
+  if (isNaN(created)) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
+  const deadline = created + PAYMENT_TIMEOUT_MS;
+  const remaining = deadline - Date.now();
   if (remaining <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
   const hours = Math.floor(remaining / 3600000);
   const minutes = Math.floor((remaining % 3600000) / 60000);
@@ -28,12 +32,17 @@ function getCountdown(createdAt: string) {
 function PaymentCountdown({ createdAt }: { createdAt: string }) {
   const { language } = useLanguage();
   const t = i18n.paymentPage[language];
-  const [cd, setCd] = useState(() => getCountdown(createdAt));
+  const [cd, setCd] = useState({ expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 });
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    setCd(getCountdown(createdAt));
     const timer = setInterval(() => setCd(getCountdown(createdAt)), 1000);
     return () => clearInterval(timer);
   }, [createdAt]);
+
+  if (!mounted) return null;
 
   const urgency = cd.total < 3600000;
 
@@ -66,6 +75,7 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
   const { language } = useLanguage();
   const t = i18n.paymentPage[language];
   const router = useRouter();
+  const { data: session } = useSession();
 
   const [booking, setBooking] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -76,6 +86,8 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
   const [refreshingToken, setRefreshingToken] = useState(false);
   const [tokenError, setTokenError] = useState('');
   const embedStartedRef = useRef(false);
+
+  usePageTitle('Pembayaran');
 
   useEffect(() => {
     if (!id) return;
@@ -107,8 +119,20 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
         if (el) el.innerHTML = '';
         snap.embed(booking.snapToken, {
           embedId: 'snap-embed',
-          onSuccess: () => router.push(`/bookings/${id}`),
-          onPending: () => router.push(`/bookings/${id}`),
+          onSuccess: () => {
+            if (session?.user) {
+              router.push(`/bookings/${id}`);
+            } else {
+              router.push(`/find-booking?orderId=${booking.orderNumber || id}`);
+            }
+          },
+          onPending: () => {
+            if (session?.user) {
+              router.push(`/bookings/${id}`);
+            } else {
+              router.push(`/find-booking?orderId=${booking.orderNumber || id}`);
+            }
+          },
           onError: (e: any) => {
             console.error('[Payment] snap.embed onError:', e);
             setEmbedError(true);
@@ -215,7 +239,7 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
             <h1 className="text-lg font-bold text-slate-900">{t.alreadyPaid}</h1>
             <p className="text-sm text-slate-500 mt-2">{t.alreadyPaidSub}</p>
             <Link
-              href={`/bookings/${id}`}
+              href={session?.user ? `/bookings/${id}` : `/find-booking?orderId=${booking.orderNumber || id}`}
               className="mt-6 inline-block px-6 py-3 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800"
             >
               {t.viewBooking}
@@ -236,7 +260,7 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
             </div>
             <h1 className="text-lg font-bold text-slate-900">{isExpired ? t.countdownExpired : t.inactive}</h1>
             <Link
-              href={`/bookings/${id}`}
+              href={session?.user ? `/bookings/${id}` : `/find-booking?orderId=${booking.orderNumber || id}`}
               className="mt-6 inline-block px-6 py-3 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800"
             >
               {t.back}

@@ -1,3 +1,5 @@
+import PublicLayoutWrapper from '@/components/layout/PublicLayoutWrapper';
+
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <PublicLayoutWrapper>{children}</PublicLayoutWrapper>;
 }

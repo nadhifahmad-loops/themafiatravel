@@ -24,8 +24,11 @@ export function isValidPassport(no: string): boolean {
   return /^[A-Za-z0-9]{6,20}$/.test((no || '').trim());
 }
 
-export function isValidIdentityNumber(no: string, type: 'ktp' | 'passport'): boolean {
-  return type === 'ktp' ? isValidKtp(no) : isValidPassport(no);
+export function isValidIdentityNumber(no: string, type: string): boolean {
+  if (type === 'passport') return isValidPassport(no);
+  if (type === 'sim') return no.length >= 12;
+  if (type === 'other') return no.length >= 1;
+  return isValidKtp(no);
 }
 
 export function isValidBirthDate(date: string): boolean {
@@ -33,6 +36,13 @@ export function isValidBirthDate(date: string): boolean {
   const d = new Date(date);
   if (isNaN(d.getTime())) return false;
   return d.getTime() <= Date.now();
+}
+
+export function isValidPassportExpiry(date: string): boolean {
+  if (!date) return false;
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return false;
+  return d.getTime() > Date.now();
 }
 
 // Parsing nomor HP tersimpan (mis. "6281234567890" / "081234567890")

@@ -70,8 +70,9 @@ export default function BookingsClient({
   const [updatingBookingId, setUpdatingBookingId] = useState<string | null>(null);
 
   const searchRef = useRef(searchQuery);
-  searchRef.current = searchQuery;
   const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => { searchRef.current = searchQuery; }, [searchQuery]);
 
   // Sinkronkan state lokal saat server component merender ulang (navigasi URL).
   useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
@@ -123,8 +124,8 @@ export default function BookingsClient({
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">Manajemen Pesanan</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Pantau dan kelola seluruh transaksi pelanggan.</p>
+          <h1 className="text-xl font-bold text-brand-ink">Manajemen Pesanan</h1>
+          <p className="text-brand-neutral text-sm mt-0.5">Pantau dan kelola seluruh transaksi pelanggan.</p>
         </div>
       </div>
 

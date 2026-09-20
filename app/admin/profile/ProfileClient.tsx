@@ -55,8 +55,8 @@ export default function ProfileClient({ user }: ProfileClientProps) {
   return (
     <div className="max-w-4xl space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-xl font-bold text-slate-800">Profil Admin</h1>
-        <p className="text-slate-500 text-sm mt-0.5">Kelola informasi data diri dan keamanan akun Anda.</p>
+        <h1 className="text-xl font-bold text-brand-ink">Profil Admin</h1>
+        <p className="text-brand-neutral text-sm mt-0.5">Kelola informasi data diri dan keamanan akun Anda.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -71,8 +71,8 @@ export default function ProfileClient({ user }: ProfileClientProps) {
                 user?.name?.charAt(0)?.toUpperCase() || 'A'
               )}
             </div>
-            <h2 className="text-lg font-bold text-slate-800">{user?.name || 'Administrator'}</h2>
-            <p className="text-sm text-slate-500 mb-4">{user?.email || 'admin@mafia.travel'}</p>
+            <h2 className="text-lg font-bold text-brand-ink">{user?.name || 'Administrator'}</h2>
+            <p className="text-brand-neutral text-sm mb-4">{user?.email || 'admin@mafia.travel'}</p>
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold">
               <ShieldCheck className="w-4 h-4" /> Hak Akses: Administrator
             </div>
@@ -90,7 +90,7 @@ export default function ProfileClient({ user }: ProfileClientProps) {
           {/* Form Informasi Dasar */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-800">Informasi Dasar</h3>
+              <h3 className="text-base font-bold text-brand-ink">Informasi Dasar</h3>
             </div>
             <div className="p-6 space-y-5">
               <div>
@@ -151,7 +151,7 @@ export default function ProfileClient({ user }: ProfileClientProps) {
           {/* Form Keamanan / Ganti Password */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-800">Keamanan</h3>
+              <h3 className="text-base font-bold text-brand-ink">Keamanan</h3>
             </div>
             <div className="p-6 space-y-5">
               <div>

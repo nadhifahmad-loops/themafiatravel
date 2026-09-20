@@ -4,26 +4,21 @@ import { flightAPI } from '@/lib/orbis';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { adult, child, infant, schedules, is_combo_price } = body;
-
-    // ─── SENSOR PELACAK UNTUK DIBACA DI TERMINAL ───
-    console.log("\n=== BENTUK ASLI SCHEDULES DARI FRONTEND ===");
-    console.log(JSON.stringify(schedules, null, 2));
-    console.log("===========================================\n");
+    const { adult, child, infant, schedules } = body;
 
     // 1. Validasi field wajib
     if (!schedules || !Array.isArray(schedules) || schedules.length === 0) {
       return NextResponse.json({ success: false, error: 'Data jadwal kosong' }, { status: 400 });
     }
 
-    // 2. ─── AUTO-FIX & CLEAN DATA ────────────────────
+    // 2. ─── AUTO-FIX & CLEAN DATA sesuai §3.8.1 ────────────────────
+    // Struktur bersih: { journeys: [{ segments: [{segment_code, fare_code}] }], provider }
     let cleanSchedules = [];
 
     // KASUS A: Frontend mengirimkan struktur yang sudah benar (Punya journeys)
     if (schedules[0].journeys) {
       cleanSchedules = schedules.map((s: any) => ({
-        provider: s.provider || 'citilink', // Auto fallback jika kosong
-        sequence: s.sequence || 1,
+        provider: s.provider || 'citilink',
         journeys: s.journeys.map((j: any) => ({
           segments: (j.segments || []).map((seg: any) => ({
             segment_code: seg.segment_code,
@@ -36,11 +31,9 @@ export async function POST(req: NextRequest) {
     else if (schedules[0].segments) {
        cleanSchedules = [{
          provider: schedules[0].provider || body.provider || 'citilink',
-         sequence: schedules[0].sequence || 1,
          journeys: schedules.map((j: any) => ({
            segments: (j.segments || []).map((seg: any) => ({
              segment_code: seg.segment_code,
-             // Cari fare_code di berbagai kemungkinan tempat
              fare_code: seg.fare_code || seg.fares?.[0]?.fare_code || j.fare?.fare_code || j.fares?.[0]?.fare_code
            }))
          }))
@@ -51,15 +44,14 @@ export async function POST(req: NextRequest) {
        throw new Error('Format data jadwal sama sekali tidak dikenali oleh backend.');
     }
 
-    console.log(`[FLIGHT PRICE] adult=${adult} | schedules=${cleanSchedules.length} | combo=${!!is_combo_price}`);
+    console.log(`[FLIGHT PRICE] adult=${adult} | schedules=${cleanSchedules.length}`);
 
-    // 3. ─── Kirim ke Orbis sesuai format docs ────────────────────
+    // 3. ─── Kirim ke Orbis sesuai format docs §3.8 ────────────────────
     const data = await flightAPI.getPriceItinerary({
       adult: Number(adult) || 1,
       child: Number(child) || 0,
       infant: Number(infant) || 0,
       schedules: cleanSchedules,
-      is_combo_price: !!is_combo_price,
       promo_codes: [],
     });
 

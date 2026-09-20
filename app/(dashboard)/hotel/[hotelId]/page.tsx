@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 // ─── Lightbox Modal ───────────────────────────────────────────────────────────
 function Lightbox({ images, startIndex, onClose }: { images: any[]; startIndex: number; onClose: () => void }) {
@@ -171,6 +172,8 @@ function HotelDetailContent() {
   // 🌟 STATE BARU UNTUK POPUP MODAL ERROR
   const [showErrorModal, setShowErrorModal] = useState(false);
 
+  usePageTitle(data?.hotel_name || 'Detail Hotel');
+
   const searchParams = {
     checkin_date: sp.get('checkin_date') || '',
     checkout_date: sp.get('checkout_date') || '',
@@ -178,9 +181,17 @@ function HotelDetailContent() {
     hotel_id: String(hotelId),
     adult: parseInt(sp.get('adult') || '2'),
     child: parseInt(sp.get('child') || '0'),
-    child_ages: [],
+    child_ages: (() => {
+      try {
+        const raw = sp.get('child_ages');
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    })(),
     room: parseInt(sp.get('room') || '1'),
     nationality: sp.get('nationality') || 'ID',
+    search_name: sp.get('search_name') || '',
   };
 
   const nights = searchParams.checkin_date && searchParams.checkout_date
@@ -293,7 +304,9 @@ function HotelDetailContent() {
         child: String(searchParams.child),
         room: String(searchParams.room),
         nationality: searchParams.nationality,
+        child_ages: JSON.stringify(searchParams.child_ages),
         destination_id: searchParams.destination_id,
+        search_name: searchParams.search_name,
         nights: String(nights),
       }).toString();
 
@@ -447,6 +460,53 @@ function HotelDetailContent() {
                     <i className="fa-solid fa-star text-[10px]" /> {hotel.ribbon}
                   </div>
                 )}
+
+                {/* Hotel facilities — dari doc §3.4.1.3 hotel.facilities */}
+                {hotel.facilities?.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {hotel.facilities.slice(0, 8).map((f: any, fi: number) => (
+                      <span key={fi} className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
+                        {typeof f === 'string' ? f : f.name || f.description || ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Map — dari doc §3.4.1.3 hotel.lat / hotel.long */}
+                {hotel.lat && hotel.long && (
+                  <div className="mt-4 rounded-xl overflow-hidden border border-slate-100">
+                    <a
+                      href={`https://www.google.com/maps?q=${hotel.lat},${hotel.long}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block relative group"
+                    >
+                      <img
+                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${hotel.lat},${hotel.long}&zoom=15&size=600x200&maptype=roadmap&markers=color:orange%7C${hotel.lat},${hotel.long}&key=`}
+                        alt={`Peta ${hotel.name}`}
+                        className="w-full h-[140px] object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={e => {
+                          // Fallback: tampilkan link Google Maps tanpa gambar
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const parent = target.parentElement;
+                          if (parent && !parent.querySelector('.map-fallback')) {
+                            const fallback = document.createElement('div');
+                            fallback.className = 'map-fallback flex items-center justify-center h-[140px] bg-slate-50 text-slate-400 text-sm gap-2';
+                            fallback.innerHTML = '<i class="fa-solid fa-map-location-dot text-orange-300"></i> Lihat di Google Maps';
+                            parent.appendChild(fallback);
+                          }
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                        <span className="bg-white/90 backdrop-blur-sm text-xs font-bold text-slate-700 px-3 py-1.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5">
+                          <i className="fa-solid fa-up-right-from-square text-[10px]"></i>
+                          Buka di Maps
+                        </span>
+                      </div>
+                    </a>
+                  </div>
+                )}
               </div>
 
               {/* Search summary sticky card */}
@@ -587,6 +647,29 @@ function HotelDetailContent() {
                       </div>
 
                       <CancellationBadge policies={price.cancellation_policies} />
+
+                      {/* Room facilities — dari doc §3.4.1.4 price.rooms.room_facilities */}
+                      {price.rooms?.[0]?.room_facilities?.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {price.rooms[0].room_facilities.slice(0, 5).map((f: any, fi: number) => (
+                            <span key={fi} className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
+                              <i className="fa-solid fa-check text-[8px] text-emerald-400"></i>
+                              {typeof f === 'string' ? f : f.name || f.description || ''}
+                            </span>
+                          ))}
+                          {price.rooms[0].room_facilities.length > 5 && (
+                            <span className="text-[10px] text-slate-400">+{price.rooms[0].room_facilities.length - 5} lagi</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Room size — dari doc §3.4.1.4 price.rooms.room_size */}
+                      {price.rooms?.[0]?.room_size?.size > 0 && (
+                        <p className="mt-1.5 text-[11px] text-slate-400 flex items-center gap-1">
+                          <i className="fa-solid fa-ruler-combined text-[9px] text-slate-300"></i>
+                          {price.rooms[0].room_size.size} {price.rooms[0].room_size.unit || 'm²'}
+                        </p>
+                      )}
 
                       {/* Supplement notes */}
                       {price.rooms?.[0]?.supplements?.filter((s: any) => s.name?.trim()).slice(0, 1).map((s: any, si: number) => (

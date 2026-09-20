@@ -12,6 +12,47 @@ const PROVIDER_AREAS: Record<string, string[]> = {
   oona: ['All'],
 };
 
+const DEFAULT_PROVIDERS = Object.keys(PROVIDER_AREAS);
+
+type InsuranceProduct = Record<string, unknown>;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function normalizeProducts(result: unknown, provider: string): InsuranceProduct[] {
+  const resultRecord = asRecord(result);
+  const responseRecord = asRecord(resultRecord?.response);
+  const dataRecord = asRecord(resultRecord?.data);
+  const candidates = [
+    resultRecord?.[provider],
+    responseRecord?.[provider],
+    dataRecord?.[provider],
+    resultRecord?.response,
+    resultRecord?.data,
+    result,
+  ];
+  const rawProducts = candidates.find((value) => Array.isArray(value)) || [];
+
+  return rawProducts
+    .filter((product): product is InsuranceProduct => Boolean(asRecord(product)))
+    .map((product) => ({
+      ...product,
+      provider: typeof product.provider === 'string' ? product.provider : provider,
+      carrier_code: typeof product.carrier_code === 'string' ? product.carrier_code : provider,
+      product_code: String(product.product_code || product.plan_code || product.code || ''),
+      product_name: String(product.product_name || product.plan_name || product.name || 'Paket Asuransi'),
+      package: typeof (product.package ?? product.package_id ?? product.package_code ?? product.package_number) === 'string'
+        || typeof (product.package ?? product.package_id ?? product.package_code ?? product.package_number) === 'number'
+        ? (product.package ?? product.package_id ?? product.package_code ?? product.package_number)
+        : 1,
+      total_price: Number(
+        product.total_price ?? product.price_total ?? product.premium ?? product.price ?? 0
+      ),
+    }))
+    .filter((product) => product.product_code && Number.isFinite(product.total_price) && product.total_price > 0);
+}
+
 // Pilih area terbaik dari provider berdasarkan input user
 function pickBestArea(provider: string, requestedArea: string): string {
   const validAreas = PROVIDER_AREAS[provider] || [];
@@ -64,10 +105,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'date_start dan date_end wajib diisi' }, { status: 400 });
     }
 
+    const start = new Date(`${date_start}T00:00:00Z`).getTime();
+    const end = new Date(`${date_end}T00:00:00Z`).getTime();
+    const passengerCount = Number(pax);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return NextResponse.json({ error: 'Tanggal selesai harus setelah tanggal mulai.' }, { status: 400 });
+    }
+    if (!Number.isInteger(passengerCount) || passengerCount < 1 || passengerCount > 20) {
+      return NextResponse.json({ error: 'Jumlah peserta harus antara 1 dan 20.' }, { status: 400 });
+    }
+
     // Tentukan list provider yang akan di-search
-    const providerList: string[] = providers
+    const requestedProviders: string[] = providers
       ? (Array.isArray(providers) ? providers : [providers])
-      : ['assistcard', 'bcainsurance', 'zurich', 'great_eastern', 'oona'];
+      : DEFAULT_PROVIDERS;
+    const providerList = [...new Set(requestedProviders.map(String).filter((provider) => DEFAULT_PROVIDERS.includes(provider)))];
+    if (providerList.length === 0) {
+      return NextResponse.json({ error: 'Provider asuransi tidak valid.' }, { status: 400 });
+    }
 
     console.log('[INSURANCE SEARCH] Providers:', providerList, '| Area:', destination_area);
 
@@ -77,7 +132,7 @@ export async function POST(req: NextRequest) {
       const payload = {
         date_start,
         date_end,
-        pax: Number(pax),
+        pax: passengerCount,
         destination,
         is_senior,
         international,
@@ -90,28 +145,31 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        const result = await insuranceAPI.getAvailability(payload);
-        // result bisa berupa object { [provider]: [...] } atau array langsung
-        const products = result?.[provider] || (Array.isArray(result) ? result : []);
+        const result = await insuranceAPI.getAvailability(payload, { timeoutMs: 30000, maxRetries: 1 });
+        const products = normalizeProducts(result, provider);
         return { provider, products, area, error: null };
-      } catch (e: any) {
-        console.error(`[INSURANCE SEARCH] Provider ${provider} error:`, e.message);
-        return { provider, products: [], area, error: e.message };
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Provider gagal merespons.';
+        const friendlyMessage = /timeout|terputus/i.test(message)
+          ? 'Provider tidak merespons dalam 30 detik.'
+          : message;
+        console.error(`[INSURANCE SEARCH] Provider ${provider} error:`, e);
+        return { provider, products: [], area, error: friendlyMessage };
       }
     });
 
     const results = await Promise.all(searchPromises);
 
     // Gabungkan semua hasil
-    const allProducts: any[] = [];
-    const providerResults: Record<string, any> = {};
+    const allProducts: InsuranceProduct[] = [];
+    const providerResults: Record<string, InsuranceProduct[]> = {};
     const errors: Record<string, string> = {};
 
     for (const r of results) {
       providerResults[r.provider] = r.products;
       if (r.error) errors[r.provider] = r.error;
       // Tandai produk dengan info provider
-      r.products.forEach((p: any) => {
+      r.products.forEach((p) => {
         allProducts.push({ ...p, _searched_area: r.area });
       });
     }
@@ -122,12 +180,13 @@ export async function POST(req: NextRequest) {
         all: allProducts,
         byProvider: providerResults,
         errors,
-        meta: { date_start, date_end, pax, destination_area, international },
+        meta: { date_start, date_end, pax: passengerCount, destination_area, international, providers: providerList },
       },
     });
 
-  } catch (e: any) {
-    console.error('[INSURANCE SEARCH] Fatal error:', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Gagal mencari asuransi.';
+    console.error('[INSURANCE SEARCH] Fatal error:', e);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

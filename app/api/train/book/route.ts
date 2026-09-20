@@ -9,6 +9,7 @@ import { getMarkup, applyFlatMarkup } from '@/lib/markup';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { generateBookingId } from '@/lib/security';
 import { checkSubmittedPrice } from '@/lib/price-check';
+import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
 
 export const maxDuration = 90;
@@ -73,22 +74,46 @@ export async function POST(req: NextRequest) {
 
       const adultCount = (passengers || []).filter((p: any) => (p.pax_type || 'ADT') !== 'INF').length || 1;
       const infantCount = (passengers || []).filter((p: any) => p.pax_type === 'INF').length;
+      // Detail jadwal KAI menyimpan departure_date sebagai "YYYY-MM-DD HH:mm".
+      // Endpoint search hanya menerima tanggal kalender "YYYY-MM-DD".
+      const searchDepartureDate = String(departure_date).split(/[ T]/)[0];
 
       const searchResult = await trainAPI.search({
-        journey_list: [{ origin, destination, departure_date }],
+        journey_list: [{ origin, destination, departure_date: searchDepartureDate }],
         direction: 'OW',
         adult: adultCount,
         infant: infantCount,
         provider: 'kai',
       });
 
-      const allJourneys = (searchResult?.schedules || []).flatMap((s: any) => s.journeys || []);
-      const matchedJourney = allJourneys.find((j: any) => j.journey_code === journeyCode);
-      const matchedFare = matchedJourney?.fares?.find((f: any) => f.fare_code === fareCode);
-      const summary = matchedFare?.service_charge_summary?.[0];
-      const realBasePrice = summary?.base_price || summary?.base_fare;
+      const schedulesResult = Array.isArray(searchResult?.schedules)
+        ? searchResult.schedules
+        : Array.isArray(searchResult?.response?.schedules)
+          ? searchResult.response.schedules
+          : [];
+      const allJourneys = schedulesResult.flatMap((s: any) => Array.isArray(s?.journeys) ? s.journeys : []);
+      const normalizeCode = (value: unknown) => String(value ?? '').trim();
+      const normalizedJourneyCode = normalizeCode(journeyCode);
+      const normalizedFareCode = normalizeCode(fareCode);
+      const matchedJourney = allJourneys.find((j: any) => normalizeCode(j?.journey_code) === normalizedJourneyCode);
+      const matchedFare = matchedJourney?.fares?.find((f: any) => normalizeCode(f?.fare_code) === normalizedFareCode)
+        || allJourneys.flatMap((j: any) => Array.isArray(j?.fares) ? j.fares : [])
+          .find((f: any) => normalizeCode(f?.fare_code) === normalizedFareCode);
+      const summaryValue = matchedFare?.service_charge_summary;
+      const summary = Array.isArray(summaryValue) ? summaryValue[0] : summaryValue;
+      const realBasePrice = summary?.total_price ?? summary?.base_price ?? summary?.base_fare;
 
-      const realTotal = realBasePrice != null ? Number(realBasePrice) * adultCount : undefined;
+      if (realBasePrice == null) {
+        console.warn('[Train Book] Price revalidation tidak menemukan fare:', JSON.stringify({
+          journeyCode: normalizedJourneyCode,
+          fareCode: normalizedFareCode,
+          journeyFound: Boolean(matchedJourney),
+          fareFound: Boolean(matchedFare),
+          journeyCount: allJourneys.length,
+        }));
+      }
+
+      const realTotal = realBasePrice != null ? Number(realBasePrice) : undefined;
       const priceCheck = checkSubmittedPrice({ submitted: total_amount, refreshed: realTotal, lowerBoundOnly: true });
 
       if (priceCheck.kind === 'changed') {
@@ -209,6 +234,42 @@ export async function POST(req: NextRequest) {
     const markedUpAmount = applyFlatMarkup(total_amount, markup.train, paxCount);
     console.log(`[Train Book] Markup applied: Rp${markup.train} x ${paxCount} pax = ${total_amount} → ${markedUpAmount}`);
 
+    // Coupon validation
+    let finalAmount = markedUpAmount;
+    let validCouponCode: string | null = null;
+    let validDiscountAmount = 0;
+
+    if (body.coupon_code) {
+      try {
+        const coupon = await prisma.coupon.findFirst({
+          where: { code: { equals: body.coupon_code, mode: 'insensitive' } },
+        });
+        if (coupon && coupon.isActive) {
+          const now = new Date();
+          const validStart = !coupon.startDate || coupon.startDate <= now;
+          const validEnd = !coupon.endDate || coupon.endDate >= now;
+          const validUsage = coupon.maxUsage === null || coupon.usedCount < coupon.maxUsage;
+          const validCategory = coupon.category === 'all' || coupon.category === 'train';
+          if (validStart && validEnd && validUsage && validCategory) {
+            let disc = 0;
+            if (coupon.type === 'percentage') {
+              disc = Math.round(finalAmount * (coupon.value / 100));
+              if (coupon.maxDiscount !== null && disc > coupon.maxDiscount) disc = coupon.maxDiscount;
+            } else {
+              disc = Math.min(coupon.value, finalAmount);
+            }
+            if (disc > 0) {
+              validCouponCode = coupon.code.toUpperCase();
+              validDiscountAmount = disc;
+              finalAmount = Math.max(0, finalAmount - disc);
+            }
+          }
+        }
+      } catch (e: any) {
+        console.error('[Train Book] Coupon validation error:', e.message);
+      }
+    }
+
     // 2. Buat transaksi Midtrans
     // FIX (Bug #2): ID acak (tidak lagi predictable dari Date.now() saja).
     const orderId = generateBookingId('TRN');
@@ -219,13 +280,13 @@ export async function POST(req: NextRequest) {
     try {
       snap = await createSnapTransaction({
         orderId,
-        amount: Math.round(markedUpAmount),
+        amount: Math.round(finalAmount),
         customerName: `${booker.first_name} ${booker.last_name || ''}`.trim(),
         customerEmail: booker.email,
         customerPhone: (booker.calling_code || '62') + booker.mobile,
         itemDetails: [{
           id: orderId,
-          price: Math.round(markedUpAmount),
+          price: Math.round(finalAmount),
           quantity: 1,
           name: `Tiket Kereta: ${routeLabel} - ${trainLabel}`.substring(0, 50),
         }],
@@ -245,7 +306,7 @@ export async function POST(req: NextRequest) {
         provider: 'kai',
         bookingType: 'train',
         status: 'pending_payment',
-        totalAmount: markedUpAmount,
+        totalAmount: finalAmount,
         currency: 'IDR',
         routeLabel,
         origin: origin || '',
@@ -264,6 +325,7 @@ export async function POST(req: NextRequest) {
         } as Prisma.InputJsonValue,
         snapToken: snap.token,
         snapRedirectUrl: snap.redirect_url,
+        ...(validCouponCode && { couponCode: validCouponCode, discountAmount: validDiscountAmount }),
       });
     } catch (e: any) {
       // Race condition (dua request paralel): kembalikan booking yang sudah tersimpan.

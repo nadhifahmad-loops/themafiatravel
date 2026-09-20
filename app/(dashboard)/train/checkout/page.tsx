@@ -6,7 +6,9 @@ import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, parsePhoneWithCode, scrollToFirstError } from '@/lib/checkout-utils';
+import CouponInput from '@/components/checkout/CouponInput';
 
 const TITLES = ['MR', 'MRS', 'MS'];
 const INFANT_TITLES = ['MSTR', 'MISS'];
@@ -123,6 +125,8 @@ function TrainCheckoutContent() {
   const infantCount  = parseInt(sp.get('infant') || '0');
   const paxCount     = adultCount + infantCount;
 
+  usePageTitle(`Pembayaran Kereta: ${origin} → ${destination}`);
+
   const ADDON_PRICES = { insurance: 45000, refund: 30000 };
   const [addInsurance, setAddInsurance] = useState(false);
   const [addRefund, setAddRefund] = useState(false);
@@ -131,6 +135,8 @@ function TrainCheckoutContent() {
   const [markup, setMarkup] = useState<MarkupSettings>({ flight: 50000, hotel: 10, train: 15000, insurance: 5 });
   const [formErrors, setFormErrors] = useState<Record<string,string>>({});
   const [checkoutDone, setCheckoutDone] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
 
   useEffect(() => {
     fetch('/api/markup').then(r=>r.json()).then(d=>{ if(d?.train!==undefined) setMarkup(d); }).catch(()=>{});
@@ -140,7 +146,7 @@ function TrainCheckoutContent() {
   const refundFee = addRefund ? ADDON_PRICES.refund * paxCount : 0;
   const adminFee = markup.train * paxCount;
   const pricingAmount = baseAmount + insuranceFee + refundFee;
-  const grandTotal = pricingAmount + adminFee;
+  const grandTotal = Math.max(0, baseAmount + insuranceFee + refundFee + adminFee - discountAmount);
 
   const initPax = (type: string, count: number) =>
     Array.from({ length: count }, () => ({
@@ -212,8 +218,10 @@ function TrainCheckoutContent() {
         body: JSON.stringify({
           contacts: [contact], passengers, booker: { ...contact },
           schedules: [{ journeys: [{ journey_code: journeyCode, fare_code: fareCode }], provider: 'kai' }],
+          // Server menambahkan markup train satu kali sebelum membuat transaksi Midtrans.
           total_amount: pricingAmount, origin, destination, departure_date: departureDate, arrival_date: arrivalDate,
           train_name: trainName, train_number: trainNumber, cabin_class: cabinClass,
+          ...(appliedCoupon && { coupon_code: appliedCoupon.code, discount_amount: discountAmount }),
         }),
       });
       const data = await res.json();
@@ -403,6 +411,22 @@ function TrainCheckoutContent() {
                     <span>Jaminan Uang Kembali</span>
                     <span className="font-semibold">{fmtIDR(refundFee)}</span>
                   </div>
+                )}
+                <div className="pt-2">
+                  <CouponInput
+                    category="train"
+                    totalAmount={baseAmount + insuranceFee + refundFee + adminFee}
+                    onApply={(coupon: any, disc: number) => { setAppliedCoupon(coupon); setDiscountAmount(disc); }}
+                    onRemove={() => { setAppliedCoupon(null); setDiscountAmount(0); }}
+                    appliedCoupon={appliedCoupon}
+                    discountAmount={discountAmount}
+                  />
+                </div>
+                {discountAmount > 0 && (
+                <div className="flex justify-between text-emerald-600">
+                  <span>Diskon Kupon</span>
+                  <span className="font-semibold">-{fmtIDR(discountAmount)}</span>
+                </div>
                 )}
                 <div className="border-t border-slate-200 pt-3 mt-3 flex justify-between items-center">
                   <span className="font-bold text-slate-800">{t.total}</span>

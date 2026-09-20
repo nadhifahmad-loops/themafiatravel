@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { recordAudit, auditIpFromRequest } from '@/lib/audit';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { safeTrainProviderBookings } from '@/lib/train-seat-data';
 
 const VALID_STATUSES = ['pending_payment', 'paid', 'issued', 'payment_failed', 'cancelled', 'refund_requested', 'refund'];
 
@@ -79,9 +80,44 @@ export async function GET(
     const isAdmin = requester?.role === 'admin';
     const { bookingData, ...safeBooking } = booking;
 
+    // Expose hanya field display-safe dari bookingData untuk non-admin
+    const bd = (bookingData as Record<string, unknown>) || {};
+    const safeTrainPbs = safeTrainProviderBookings(bd.provider_bookings);
+    const safeBookingData = {
+      arrival_date_from_search: bd.arrival_date_from_search ?? null,
+      cabin_class: bd.cabin_class ?? null,
+      subclass: bd.subclass ?? null,
+      refundable: bd.refundable ?? null,
+      is_refundable: bd.is_refundable ?? null,
+      selectedBaggage: bd.selectedBaggage ?? null,
+      coverage: bd.coverage ?? null,
+      roomType: bd.roomType ?? null,
+      // Segments hanya untuk display nama kota & arrival time (flight),
+      // journeys hanya untuk kursi train (ubah kursi KAI / tampilkan kursi).
+      provider_bookings: Array.isArray(bd.provider_bookings)
+        ? (bd.provider_bookings as any[]).map((pb: any, idx: number) => ({
+            segments: Array.isArray(pb?.segments)
+              ? pb.segments.map((s: any) => ({
+                  origin: s.origin,
+                  destination: s.destination,
+                  origin_name: s.origin_name,
+                  destination_name: s.destination_name,
+                  departure_date: s.departure_date,
+                  arrival_date: s.arrival_date,
+                  carrier_code: s.carrier_code,
+                  carrier_name: s.carrier_name,
+                  cabin_baggage: s.cabin_baggage,
+                  baggage_allowance: s.baggage_allowance,
+                }))
+              : [],
+            journeys: safeTrainPbs[idx]?.journeys ?? [],
+          }))
+        : [],
+    };
+
     const responseData = {
       ...safeBooking,
-      ...(isAdmin ? { bookingData } : {}),
+      bookingData: isAdmin ? bookingData : safeBookingData,
       serviceType: booking.bookingType,
     };
 

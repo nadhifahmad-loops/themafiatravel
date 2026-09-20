@@ -1,10 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { flightAPI, OrbisSchedule } from '@/lib/orbis';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const ip = getClientIp(req);
+  const rateLimit = await checkRateLimit(`lock:${ip}`, 'search');
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Terlalu banyak permintaan. Silakan coba lagi nanti.' },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await req.json();
-    const { adult, child, infant, cabin_class, schedules, is_combo_price } = body;
+    const { adult, child, infant, schedules } = body;
 
     // 1. Validasi data jadwal
     if (!schedules || !Array.isArray(schedules) || schedules.length === 0) {
@@ -16,14 +33,12 @@ export async function POST(req: NextRequest) {
 
     console.log('[Flight Lock] Memproses penguncian kursi (sell_journeys)...');
 
-    // 2. Tembak API Orbis untuk mengunci jadwal (sell_journeys)
+    // 2. Tembak API Orbis untuk mengunci jadwal (sell_journeys) — §3.10
     await flightAPI.sellJourneys({
       adult: Number(adult) || 1,
       child: Number(child) || 0,
       infant: Number(infant) || 0,
-      cabin_class: cabin_class || 'Y',
       schedules: schedules as OrbisSchedule[],
-      is_combo_price: !!is_combo_price,
       promo_codes: [],
     });
 
@@ -36,17 +51,22 @@ export async function POST(req: NextRequest) {
     
     console.error('[Flight Lock Error]', code, msg);
 
-    // Jika error 4014 (Sudah dikunci sebelumnya), kita abaikan dan anggap SUKSES
     if (code === 4014 || msg.includes('dikunci sebelumnya')) {
       console.log('[Flight Lock] 4014 — Jadwal sudah terkunci sebelumnya, lanjut aman.');
       return NextResponse.json({ success: true, message: 'Jadwal sudah terkunci sebelumnya.' });
     }
     
-    // Jika sesi habis (4011)
     if (code === 4011 || msg.includes('kedaluwarsa')) {
       return NextResponse.json(
         { success: false, error: 'SESSION_EXPIRED', message: 'Sesi pencarian habis.' },
         { status: 410 }
+      );
+    }
+
+    if (code === 4016 || msg.includes('Schedule is not available') || msg.includes('fare class')) {
+      return NextResponse.json(
+        { success: false, error: 'FARE_UNAVAILABLE', message: 'Kelas kursi tidak tersedia. Silakan pilih penerbangan lain.' },
+        { status: 422 }
       );
     }
 

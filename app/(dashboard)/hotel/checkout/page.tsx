@@ -1,11 +1,13 @@
 'use client';
-import { Suspense, useState, useEffect, useMemo } from 'react';
+import { Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
+import CouponInput from '@/components/checkout/CouponInput';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 type Passenger = {
   pax_type: string;
@@ -73,14 +75,16 @@ function CheckoutContent() {
   const hotelId       = sp.get('hotel_id') || '';
   const priceCode     = sp.get('price_code') || '';
   const hotelName     = sp.get('hotel_name') || 'Hotel';
-  const totalAmount   = parseFloat(sp.get('total_amount') || '0');
+  const totalAmount   = parseFloat(sp.get('total_amount') || '0') || 0;
   const checkinDate   = sp.get('checkin_date') || '';
   const checkoutDate  = sp.get('checkout_date') || '';
-  const adultCount    = parseInt(sp.get('adult') || '1');
+  const adultCount    = Math.max(1, parseInt(sp.get('adult') || '1') || 1);
   const mealType      = sp.get('meal_type') || 'Room Only';
   const roomDesc      = sp.get('room_desc') || '';
   const provider      = sp.get('provider') || '';
   const nightsParam   = parseInt(sp.get('nights') || '1');
+
+  usePageTitle(`Pembayaran Hotel: ${hotelName}`);
 
   const nights = useMemo(() => {
     if (!checkinDate || !checkoutDate) return Math.max(1, nightsParam);
@@ -89,6 +93,7 @@ function CheckoutContent() {
   }, [checkinDate, checkoutDate, nightsParam]);
 
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const [error, setError] = useState('');
   const [specialRequest, setSpecialRequest] = useState('');
   const [passengers, setPassengers] = useState<Passenger[]>(
@@ -102,6 +107,8 @@ function CheckoutContent() {
   });
   const [markup, setMarkup] = useState<MarkupSettings>({ flight: 50000, hotel: 10, train: 15000, insurance: 5 });
 const [checkoutDone, setCheckoutDone] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
 
   useEffect(() => {
     fetch('/api/markup').then(r=>r.json()).then(d=>{ if(d?.hotel!==undefined) setMarkup(d); }).catch(()=>{});
@@ -118,11 +125,12 @@ const [checkoutDone, setCheckoutDone] = useState(false);
     setPassengers((current) => current.map((passenger, index) => (index === i ? { ...passenger, [key]: value } : passenger)));
 
   const adminFee = Math.round(totalAmount * (markup.hotel / 100));
-  const grandTotal = totalAmount + adminFee;
+  const grandTotal = Math.max(0, totalAmount + adminFee - discountAmount);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (checkoutDone) return;
+    if (checkoutDone || submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     setError('');
 
@@ -133,44 +141,44 @@ const [checkoutDone, setCheckoutDone] = useState(false);
     const normalizedContact = { ...contact, calling_code: cleanCallingCode, first_name: contact.first_name.trim(), last_name: contact.last_name.trim(), email: contact.email.trim(), mobile: contact.mobile.trim() };
 
     const invalid = normalizedPassengers.some(p => !p.first_name || !p.last_name);
-    if (invalid) { setError('Mohon lengkapi nama depan dan nama belakang semua tamu.'); setLoading(false); return; }
-    if (!normalizedContact.first_name || !normalizedContact.last_name) { setError('Mohon lengkapi nama kontak utama.'); setLoading(false); return; }
-    if (!isValidEmail(normalizedContact.email)) { setError('Format email tidak valid.'); setLoading(false); return; }
-    if (!/^\d{8,15}$/.test(normalizedContact.mobile)) { setError('Nomor HP minimal 8 digit angka.'); setLoading(false); return; }
-    if (!hotelId || !priceCode) { setError('Data kamar tidak lengkap. Silakan pilih kamar lagi.'); setLoading(false); return; }
+    if (invalid) { setError('Mohon lengkapi nama depan dan nama belakang semua tamu.'); setLoading(false); submittingRef.current = false; return; }
+    if (!normalizedContact.first_name || !normalizedContact.last_name) { setError('Mohon lengkapi nama kontak utama.'); setLoading(false); submittingRef.current = false; return; }
+    if (!isValidEmail(normalizedContact.email)) { setError('Format email tidak valid.'); setLoading(false); submittingRef.current = false; return; }
+    if (!/^\d{8,15}$/.test(normalizedContact.mobile)) { setError('Nomor HP minimal 8 digit angka.'); setLoading(false); submittingRef.current = false; return; }
+    if (!hotelId || !priceCode) { setError('Data kamar tidak lengkap. Silakan pilih kamar lagi.'); setLoading(false); submittingRef.current = false; return; }
 
     try {
-      const provisionRes = await fetch('/api/hotel/provision', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hotel_code: hotelId, vendor_price_code: priceCode, provider,
-          search_data: { checkin_date: checkinDate, checkout_date: checkoutDate, destination_id: sp.get('destination_id') || '', adult: adultCount, child: parseInt(sp.get('child') || '0'), child_ages: [], room: parseInt(sp.get('room') || '1'), nationality: sp.get('nationality') || 'ID' },
-        }),
-      });
-      const provisionData = await provisionRes.json();
-      if (!provisionRes.ok || (!provisionData.success && !provisionData.priceChanged)) throw new Error(provisionData.error || 'Kamar tidak lagi tersedia.');
-
-      const effectivePriceCode = provisionData.selectedPriceCode || priceCode;
-      const effectiveTotalAmount = typeof provisionData?.data?.price_total === 'number' ? provisionData.data.price_total : totalAmount;
-      const effectiveProvider = provisionData.selectedProvider || provider;
+      // FIX (ROUND 6): Detail page sudah memanggil provision SEBELUM redirect ke
+      // checkout. Checkout TIDAK boleh provision lagi — Orbis hanya mengizinkan
+      // SATU provision per price_code. Provision kedua "mengonsumsi" lock Orbis,
+      // sehingga booked selalu return 4014 "Already call this function".
+      // Langsung pakai price_code dari URL (sudah terverifikasi oleh detail page).
 
       const res = await fetch('/api/hotel/book', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          hotel_code: hotelId, price_code: effectivePriceCode, provider: effectiveProvider,
+          hotel_code: hotelId, price_code: priceCode, provider,
           passenger: normalizedPassengers, contact: [normalizedContact], booker: normalizedContact,
-          special_request: specialRequest, total_amount: effectiveTotalAmount, hotel_name: hotelName,
-          search_data: { checkin_date: checkinDate, checkout_date: checkoutDate, destination_id: sp.get('destination_id') || '', hotel_id: hotelId, adult: adultCount, child: parseInt(sp.get('child') || '0'), child_ages: [], room: parseInt(sp.get('room') || '1'), nationality: sp.get('nationality') || 'ID' },
+          special_request: specialRequest, total_amount: totalAmount, hotel_name: hotelName,
+          ...(appliedCoupon && { coupon_code: appliedCoupon.code, discount_amount: discountAmount }),
+          search_data: { checkin_date: checkinDate, checkout_date: checkoutDate, destination_id: sp.get('destination_id') || '', hotel_id: hotelId, search_name: sp.get('search_name') || '', adult: adultCount, child: parseInt(sp.get('child') || '0'), child_ages: (() => { try { return JSON.parse(sp.get('child_ages') || '[]'); } catch { return []; } })(), room: parseInt(sp.get('room') || '1'), nationality: sp.get('nationality') || 'ID', nights, meal_type: sp.get('meal_type') || '', room_description: sp.get('room_desc') || '' },
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Gagal membuat pesanan');
+      // FIX: sebelumnya pakai `data.error` duluan — tapi untuk response
+      // PRICE_CHANGED/SCHEDULE_ALREADY_USED, `error` itu KODE mesin
+      // ("PRICE_CHANGED", "SCHEDULE_ALREADY_USED"), bukan pesan buat
+      // manusia. Pesan yang enak dibaca ada di `data.message`. User
+      // sebelumnya bisa melihat teks error mentah seperti
+      // "SCHEDULE_ALREADY_USED" tanpa penjelasan.
+      if (!res.ok || !data.success) throw new Error(data.message || data.error || 'Gagal membuat pesanan');
       setCheckoutDone(true);
 
       router.push(data.orderId ? `/payment/${data.orderId}` : '/bookings');
     } catch (error) {
       setError(error instanceof Error ? error.message : tc.error + '.');
       setLoading(false);
+      submittingRef.current = false;
     }
   };
 
@@ -345,6 +353,22 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                 </div>
               </div>
 
+              <div className="pt-2">
+                <CouponInput
+                  category="hotel"
+                  totalAmount={totalAmount + adminFee}
+                  onApply={(coupon: any, disc: number) => { setAppliedCoupon(coupon); setDiscountAmount(disc); }}
+                  onRemove={() => { setAppliedCoupon(null); setDiscountAmount(0); }}
+                  appliedCoupon={appliedCoupon}
+                  discountAmount={discountAmount}
+                />
+              </div>
+              {discountAmount > 0 && (
+              <div className="flex justify-between text-emerald-600">
+                <span>Diskon Kupon</span>
+                <span className="font-semibold">-{fmtIDR(discountAmount)}</span>
+              </div>
+              )}
               <div className="border-t border-slate-200 mt-3 pt-3 flex justify-between items-center">
                 <span className="font-bold text-slate-800">{t.total}</span>
                 <span className="font-bold text-slate-900 text-lg">{fmtIDR(grandTotal)}</span>

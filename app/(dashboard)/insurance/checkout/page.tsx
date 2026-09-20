@@ -4,8 +4,10 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
+import CouponInput from '@/components/checkout/CouponInput';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 const TITLES = ['MR', 'MRS', 'MS', 'MSTR', 'MISS'];
 interface MarkupSettings { flight: number; hotel: number; train: number; insurance: number; }
@@ -26,24 +28,31 @@ function InsuranceCheckoutContent() {
   const isGuest = status !== 'authenticated';
 
   const productCode  = sp.get('product_code') || '';
+  const packageId    = sp.get('package') || '1';
   const productName  = sp.get('product_name') || 'Asuransi Perjalanan';
   const provider     = sp.get('provider')     || '';
   const carrierCode  = sp.get('carrier_code') || provider;
   const carrierName  = sp.get('carrier_name') || provider;
   const dateStart    = sp.get('date_start')   || '';
   const dateEnd      = sp.get('date_end')     || '';
-  const paxCount     = parseInt(sp.get('pax') || '1');
+  const paxCount     = Math.max(1, parseInt(sp.get('pax') || '1') || 1);
+  const isSenior     = sp.get('is_senior') === 'true';
   const destination  = sp.get('destination')  || '';
-  const totalAmount  = parseFloat(sp.get('total_amount') || '0');
+  const destinationArea = sp.get('destination_area') || destination;
+  const totalAmount  = parseFloat(sp.get('total_amount') || '0') || 0;
   const sectorType   = sp.get('sector_type')  || '';
   const productType  = sp.get('product_type') || 'individual';
   const tripType     = sp.get('trip_type')    || 'single_trip';
   const nights       = parseInt(sp.get('nights') || '1');
 
+  usePageTitle(`Pembayaran Asuransi: ${destination || productName}`);
+
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
   const [markup, setMarkup] = useState<MarkupSettings>({ flight: 50000, hotel: 10, train: 15000, insurance: 5 });
 const [checkoutDone, setCheckoutDone] = useState(false);
+const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+const [discountAmount, setDiscountAmount] = useState(0);
 
   useEffect(() => {
     fetch('/api/markup').then(r=>r.json()).then(d=>{ if(d?.insurance!==undefined) setMarkup(d); }).catch(()=>{});
@@ -51,7 +60,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
 
   const adminFee = Math.round(totalAmount * (markup.insurance / 100));
   const pricingAmount = totalAmount;
-  const grandTotal = pricingAmount + adminFee;
+  const grandTotal = Math.max(0, pricingAmount + adminFee - discountAmount);
 
   const initPax = () => Array.from({ length: paxCount }, (_, i) => ({
     pax_type: 'ADT', title: 'MR', first_name: '', last_name: '',
@@ -70,7 +79,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
   });
 
   useEffect(() => {
-    if (session?.user?.email) setContact(c => ({ ...c, email: session.user!.email! }));
+    if (session?.user?.email) setContact(c => ({ ...c, email: c.email || session.user!.email! }));
     if (session?.user?.name) {
       const parts = (session.user.name || '').split(' ');
       setContact(c => ({ ...c, first_name: parts[0] || '', last_name: parts.slice(1).join(' ') || '' }));
@@ -88,6 +97,15 @@ const [checkoutDone, setCheckoutDone] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); if (checkoutDone) return;
+    if (!contact.first_name) { setError('Nama kontak wajib diisi.'); return; }
+    if (!contact.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact.email)) { setError('Format email tidak valid.'); return; }
+    if (!contact.mobile || !/^\d{8,15}$/.test(contact.mobile)) { setError('Nomor HP minimal 8 digit angka.'); return; }
+    if (!passengers.length) { setError('Minimal 1 penumpang wajib diisi.'); return; }
+    for (let i = 0; i < passengers.length; i++) {
+      const p = passengers[i];
+      if (!p.first_name) { setError(`Nama depan penumpang ${i + 1} wajib diisi.`); return; }
+      if (!p.birth_date) { setError(`Tanggal lahir penumpang ${i + 1} wajib diisi.`); return; }
+    }
     setLoading(true); setError('');
     try {
       const formattedPax = passengers.map((pax, idx) => ({
@@ -105,7 +123,11 @@ const [checkoutDone, setCheckoutDone] = useState(false);
         body: JSON.stringify({
           contacts: [formattedContact], passengers: formattedPax, booker: formattedBooker,
           provider, carrier_code: carrierCode, total_amount: pricingAmount, product_name: productName, product_code: productCode,
-          date_start: dateStart, date_end: dateEnd, destination,
+          package: packageId,
+          date_start: dateStart, date_end: dateEnd, destination, destination_area: destinationArea,
+          is_senior: isSenior,
+          international: !/domestic|domestik/i.test(destinationArea), type: tripType, product_type: productType,
+          ...(appliedCoupon && { coupon_code: appliedCoupon.code, discount_amount: discountAmount }),
         }),
       });
       const data = await res.json();
@@ -312,6 +334,23 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                       <span className="font-semibold text-slate-700">{fmtIDR(adminFee)}</span>
                     </div>
                   </div>
+
+                  <div className="pt-2">
+                    <CouponInput
+                      category="insurance"
+                      totalAmount={totalAmount + adminFee}
+                      onApply={(coupon: any, disc: number) => { setAppliedCoupon(coupon); setDiscountAmount(disc); }}
+                      onRemove={() => { setAppliedCoupon(null); setDiscountAmount(0); }}
+                      appliedCoupon={appliedCoupon}
+                      discountAmount={discountAmount}
+                    />
+                  </div>
+                  {discountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Diskon Kupon</span>
+                    <span className="font-semibold">-{fmtIDR(discountAmount)}</span>
+                  </div>
+                  )}
 
                   <div className="border-t border-slate-200 mt-3 pt-3 flex justify-between items-center">
                     <span className="font-bold text-slate-800">{t.total}</span>

@@ -8,7 +8,8 @@ import { hotelBookSchema, validateBody, apiError } from '@/lib/validate';
 import { getMarkup, applyPercentMarkup } from '@/lib/markup';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { generateBookingId } from '@/lib/security';
-import { verifyHotelPrice } from '@/lib/hotel-price';
+// verifyHotelPrice DIHAPUS dari book route — provision hanya boleh dipanggil SEKALI
+// (oleh frontend checkout page). Re-provision di sini menyebabkan 4014 "Already call".
 import type { Prisma } from '@prisma/client';
 
 export const maxDuration = 90;
@@ -47,29 +48,16 @@ export async function POST(req: NextRequest) {
 
     let effectivePriceCode = String(price_code);
     let effectiveTotalAmount = Number(total_amount);
+    let effectiveProvider = provider || '';
 
-    // ── Provision re-check (price revalidation) — berlaku untuk SEMUA price_code ──
-    // Sebelumnya hanya dijalankan ketika price_code berupa integer sequence;
-    // price_code string (format `{int}~{float}` dari get_details/provision) dilewati
-    // sehingga total_amount client dipercaya begitu saja. Sekarang harga selalu
-    // diverifikasi ulang dari server; kegagalan verifikasi = booking DITOLAK.
-    try {
-      const verified = await verifyHotelPrice({
-        hotel_code: String(hotel_code),
-        price_code: effectivePriceCode,
-        provider: provider || '',
-        search_data,
-      });
-      effectivePriceCode = verified.priceCode;
-      effectiveTotalAmount = verified.priceTotal;
-      console.log(`[Hotel Book] Harga terverifikasi: ${effectivePriceCode} = ${effectiveTotalAmount}${verified.priceChanged ? ' (berubah)' : ''}`);
-    } catch (verifErr: any) {
-      if (verifErr?.priceError === 'SESSION_EXPIRED') {
-        return apiError('Sesi pencarian hotel telah kedaluwarsa. Silakan cari kamar kembali.', 410);
-      }
-      console.error('Hotel price verification error:', verifErr?.message);
-      return apiError('Harga kamar tidak dapat diverifikasi saat ini. Silakan pilih kamar lagi atau coba beberapa saat lagi.', 409);
-    }
+    // FIX (ROUND 5): SKIP re-provision di book route.
+    // Frontend (checkout page) SUDAH memanggil provision SEBELUM redirect ke book
+    // endpoint. Provision di Orbis adalah "locking" — hanya bisa dipanggil SEKALI
+    // per price_code sebelum booked. Kalau kita provision lagi di sini, price_code
+    // terkunci dan booked return 4014 "Already call this function".
+    // Kita percaya price dari frontend (sudah terverifikasi oleh provision).
+    console.log(`[Hotel Book] Using frontend-provided price: ${effectivePriceCode} = ${effectiveTotalAmount} provider=${effectiveProvider}`);
+
 
     // Re-check price difference
     const priceDiff = Math.abs(effectiveTotalAmount - total_amount);
@@ -92,29 +80,132 @@ export async function POST(req: NextRequest) {
     const markedUpAmount = applyPercentMarkup(effectiveTotalAmount, markup.hotel);
     console.log(`[Hotel Book] Markup applied: ${markup.hotel}% = ${effectiveTotalAmount} → ${markedUpAmount}`);
 
+    // Coupon validation
+    let finalAmount = markedUpAmount;
+    let validCouponCode: string | null = null;
+    let validCouponId: number | null = null;
+    let validDiscountAmount = 0;
+
+    if (body.coupon_code) {
+      try {
+        const { PrismaClient } = await import('@prisma/client');
+        const prisma = new PrismaClient();
+        const coupon = await prisma.coupon.findFirst({
+          where: { code: { equals: body.coupon_code, mode: 'insensitive' } },
+        });
+        if (coupon && coupon.isActive) {
+          const now = new Date();
+          const validStart = !coupon.startDate || coupon.startDate <= now;
+          const validEnd = !coupon.endDate || coupon.endDate >= now;
+          const validUsage = coupon.maxUsage === null || coupon.usedCount < coupon.maxUsage;
+          const validCategory = coupon.category === 'all' || coupon.category === 'hotel';
+          if (validStart && validEnd && validUsage && validCategory) {
+            let disc = 0;
+            if (coupon.type === 'percentage') {
+              disc = Math.round(finalAmount * (coupon.value / 100));
+              if (coupon.maxDiscount !== null && disc > coupon.maxDiscount) disc = coupon.maxDiscount;
+            } else {
+              disc = Math.min(coupon.value, finalAmount);
+            }
+            if (disc > 0) {
+              validCouponCode = coupon.code.toUpperCase();
+              validCouponId = coupon.id;
+              validDiscountAmount = disc;
+              finalAmount = Math.max(0, finalAmount - disc);
+            }
+          }
+        }
+        await prisma.$disconnect();
+      } catch (e: any) {
+        console.error('[Hotel Book] Coupon validation error:', e.message);
+      }
+    }
+
     let bookingData: { order_number?: string } | null = null;
-    const orbisPayload: Record<string, unknown> = {
+    let orbisPayload: Record<string, unknown> = {
       hotel_code,
       price_code: effectivePriceCode,
-      provider: provider || '',
+      provider: effectiveProvider,
       passenger: normalizedPassengers,
       contact: normalizedContacts,
       booker,
     };
     if (special_request) orbisPayload.special_request = special_request;
     if (search_data) orbisPayload.search_data = search_data;
-    console.log('[HOTEL BOOK] Orbisway payload:', JSON.stringify(orbisPayload, null, 2));
-    try {
-      bookingData = await hotelAPI.createBooking(orbisPayload as import('@/lib/orbis-types').OrbisStruct & { hotel_code: string });
-    } catch (error) {
-      console.error('Orbis booking error:', error);
-      return apiError('Kamar tidak bisa diproses saat ini. Silakan coba lagi beberapa saat.', 502);
+    console.log('[HOTEL BOOK] Orbisway payload (pre-transform, lihat [ORBIS WIRE] utk body final):', JSON.stringify(orbisPayload, null, 2));
+
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        bookingData = await hotelAPI.createBooking(orbisPayload as import('@/lib/orbis-types').OrbisStruct & { hotel_code: string });
+        break; // success
+      } catch (error: any) {
+        const orbisCode = error?.orbisCode;
+        console.error(`[HOTEL BOOK] Attempt ${attempt + 1}/${MAX_RETRIES} failed:`, orbisCode ?? error?.message);
+
+        // 4014 = "sudah dipanggil sebelumnya" — price_code sudah terkunci.
+        // Retry dengan price_code BARU dari get_details (bukan re-use yang sama).
+        if (orbisCode === 4014 && attempt < MAX_RETRIES - 1 && search_data?.checkin_date && search_data?.checkout_date && search_data?.destination_id) {
+          console.log('[HOTEL BOOK] 4014 — refetching fresh price_code dari get_details...');
+          try {
+            const detailData = (await hotelAPI.getDetails({
+              checkin_date: search_data.checkin_date,
+              checkout_date: search_data.checkout_date,
+              destination_id: search_data.destination_id,
+              hotel_id: String(hotel_code),
+              search_name: '',
+              adult: Number(search_data.adult ?? 2),
+              child: Number(search_data.child ?? 0),
+              child_ages: search_data.child_ages ?? [],
+              room: Number(search_data.room ?? 1),
+              nationality: search_data.nationality ?? 'ID',
+            })) as { prices?: unknown };
+
+            const rawPrices = detailData?.prices;
+            type PriceEntry = { provider?: unknown; price_code?: unknown };
+            const priceList: PriceEntry[] = Array.isArray(rawPrices) ? rawPrices : rawPrices && typeof rawPrices === 'object' ? Object.values(rawPrices as Record<string, PriceEntry>) : [];
+            const targetProvider = (effectiveProvider || '').trim().toLowerCase();
+            const match = priceList.find((p) => String(p?.provider ?? '').toLowerCase() === targetProvider) ?? priceList[0];
+            const freshCode = match?.price_code != null ? String(match.price_code) : '';
+            const freshProvider = match?.provider ? String(match.provider) : effectiveProvider;
+
+            if (freshCode && freshCode !== effectivePriceCode) {
+              console.log(`[HOTEL BOOK] Fresh price_code="${freshCode}" provider="${freshProvider}" — retrying booked...`);
+              // Re-provision price_code baru supaya terdaftar di cache vendor
+              try {
+                await hotelAPI.getCancellationPolicy(String(hotel_code), freshCode);
+              } catch { /* non-fatal */ }
+              await hotelAPI.provision(String(hotel_code), freshCode, freshProvider, true);
+
+              effectivePriceCode = freshCode;
+              effectiveProvider = freshProvider;
+              orbisPayload = { ...orbisPayload, price_code: freshCode, provider: freshProvider };
+              continue; // retry loop
+            }
+          } catch (refetchErr: any) {
+            console.error('[HOTEL BOOK] Gagal refetch price_code:', refetchErr?.message);
+          }
+        }
+
+        // 4014 tanpa retry — user harus search ulang
+        if (orbisCode === 4014) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'SCHEDULE_ALREADY_USED',
+              message: 'Kamar ini sudah pernah diproses sebelumnya dan tidak bisa dipesan ulang dengan data yang sama. Silakan cari kamar kembali untuk mendapatkan penawaran baru.',
+            },
+            { status: 409 }
+          );
+        }
+        return apiError('Kamar tidak bisa diproses saat ini. Silakan coba lagi beberapa saat.', 502);
+      }
     }
 
     // FIX (Bug #2): ID acak (tidak lagi predictable dari Date.now() saja).
     const orderId = generateBookingId('HTL');
     const effectiveOrderNumber = bookingData?.order_number || orderId;
-    const snapAmount = Math.round(markedUpAmount);
+    const snapAmount = Math.round(finalAmount);
 
     let snap = { token: '', redirect_url: '' };
     try {
@@ -150,7 +241,23 @@ export async function POST(req: NextRequest) {
       snapRedirectUrl: snap.redirect_url,
       checkinDate: search_data.checkin_date,
       checkoutDate: search_data.checkout_date,
-      createdAt: new Date().toISOString(),
+      // Orbis fields — disimpan untuk debugging & refund nanti
+      provider: effectiveProvider || undefined,
+      pnr: bookingData?.order_number || effectiveOrderNumber || undefined,
+      // Hotel detail fields (§3.5 — dari search_data untuk audit & re-search)
+      destinationId: search_data.destination_id || undefined,
+      hotelIdOrbis: hotel_code || undefined,
+      roomCount: Number(search_data.room) || undefined,
+      adultCount: Number(search_data.adult) || undefined,
+      childCount: Number(search_data.child) || undefined,
+      nationality: search_data.nationality || undefined,
+      mealType: search_data.meal_type || undefined,
+      roomDescription: search_data.room_description || undefined,
+      priceCode: effectivePriceCode || undefined,
+      originalPrice: effectiveTotalAmount || undefined,
+      nights: search_data.nights ? Number(search_data.nights) : undefined,
+      // Coupon
+      ...(validCouponCode && { couponCode: validCouponCode, couponId: validCouponId ?? undefined, discountAmount: validDiscountAmount }),
     };
 
     await bookingStore.create(booking);

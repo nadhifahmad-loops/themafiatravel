@@ -3,31 +3,102 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import DatePicker from 'react-datepicker';
+import "react-datepicker/dist/react-datepicker.css";
+import { registerLocale } from "react-datepicker";
+import { id as localeId } from 'date-fns/locale';
+registerLocale('id', localeId);
 import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
+import { COUNTRY_CODES } from '@/app/(dashboard)/account/edit/components';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
-import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, parsePhoneWithCode, scrollToFirstError } from '@/lib/checkout-utils';
+import { usePageTitle } from '@/components/hooks/usePageTitle';
+import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, isValidPassportExpiry, parsePhoneWithCode, scrollToFirstError } from '@/lib/checkout-utils';
+import CouponInput from '@/components/checkout/CouponInput';
+import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
+
+const AIRPORT_COUNTRY: Record<string, string> = {
+  CGK:'ID', DPS:'ID', SUB:'ID', SOC:'ID', MLG:'ID', PNK:'ID', BPN:'ID', UPG:'ID', DJJ:'ID', SOQ:'ID', AMQ:'ID', PDG:'ID', PKU:'ID', PLM:'ID', BTJ:'ID', SRG:'ID', JOG:'ID', BDO:'ID', BTH:'ID', KOE:'ID', ABU:'ID', TMC:'ID', LBJ:'ID', MOF:'ID', TTE:'ID', BMU:'ID', WGP:'ID', LOP:'ID', BKS:'ID', DUM:'ID',
+  SIN:'SG',
+  KUL:'MY', SZB:'MY', BKI:'MY', KCH:'MY', JHB:'MY', PEN:'MY', AOR:'MY', LGK:'MY', TWU:'MY', SDK:'MY', TGG:'MY', MYY:'MY', SBW:'MY', BWN:'BN',
+  BKK:'TH', DMK:'TH', HKT:'TH', CNX:'TH', USM:'TH', PHS:'TH', NNT:'TH', HGN:'TH', KOP:'TH', UTH:'TH', NST:'TH', UTP:'TH',
+  HAN:'VN', SGN:'VN', DAD:'VN', CXR:'VN', PQC:'VN', VCA:'VN', VCL:'VN', VCS:'VN', UIH:'VN', DLI:'VN', HPH:'VN', VII:'VN', BMV:'VN',
+  NRT:'JP', HND:'JP', KIX:'JP', NGO:'JP', CTS:'JP', FUK:'JP', SDJ:'JP', OKA:'JP', ITM:'JP', KMJ:'JP', KOJ:'JP', MYJ:'JP', TAK:'JP', AXJ:'JP', KCJ:'JP',
+  ICN:'KR', GMP:'KR', PUS:'KR', CJU:'KR', MWX:'KR', TAE:'KR', YNY:'KR', CJJ:'KR',
+  MNL:'PH', CEB:'PH', DVO:'PH', KLO:'PH', TAG:'PH', CRK:'PH', ILO:'PH', ZAM:'PH', PPS:'PH', CGY:'PH', DGT:'PH',
+  TPE:'TW', KHH:'TW', RMQ:'TW', TXG:'TW',
+  HKG:'HK', MFM:'MO',
+  DEL:'IN', BOM:'IN', BLR:'IN', MAA:'IN', HYD:'IN', CCU:'IN', COK:'IN', TRV:'IN', GOI:'IN', AMD:'IN', PNQ:'IN', JAI:'IN', IXC:'IN', LKO:'IN', SXR:'IN', GAU:'IN', IMF:'IN', DIB:'IN', BBI:'IN', RPR:'IN', NAG:'IN', IDR:'IN', VTZ:'IN', RJA:'IN', CJB:'IN', TIR:'IN', UDR:'IN', JDH:'IN', ATQ:'IN', IXR:'IN',
+  DXB:'AE', AUH:'AE', SHJ:'AE',
+  DOH:'QA', RUH:'SA', JED:'SA', MED:'SA', DMM:'SA', AHB:'SA', ABT:'SA', TIF:'SA',
+  IST:'TR', SAW:'TR', ADB:'TR', ESB:'TR', BJV:'TR', DLM:'TR', GZP:'TR', ASR:'TR', KYA:'TR', TZX:'TR', ERZ:'TR', GZT:'TR', VAN:'TR',
+  MCT:'OM', KTM:'NP', BWA:'NP',
+  CMB:'LK', JKF:'LK', TRR:'LK', HRI:'LK', MLE:'MV',
+  LHR:'GB', LGW:'GB', STN:'GB', LTN:'GB', LCY:'GB', BHX:'GB', MAN:'GB', EDI:'GB', GLA:'GB', BRS:'GB', LPL:'GB', NCL:'GB', EMA:'GB', CWL:'GB', BFS:'GB',
+  CDG:'FR', ORY:'FR', NCE:'FR', LYS:'FR', MRS:'FR', TLS:'FR', BOD:'FR', NTE:'FR', SXB:'FR', AJA:'FR',
+  FRA:'DE', MUC:'DE', DUS:'DE', BER:'DE', HAM:'DE', STR:'DE', CGN:'DE', LEJ:'DE', HAJ:'DE', BRE:'DE', FMO:'DE', DTM:'DE', NUE:'DE', FKB:'DE',
+  AMS:'NL', EIN:'NL', RTM:'NL',
+  MAD:'ES', BCN:'ES', AGP:'ES', VLC:'ES', SVQ:'ES', PMI:'ES', ALC:'ES', LPA:'ES', TFN:'ES', TFS:'ES', VGO:'ES', SCQ:'ES',
+  FCO:'IT', MXP:'IT', VCE:'IT', BLQ:'IT', NAP:'IT', PMO:'IT', CTA:'IT', BGY:'IT', LIN:'IT', TRN:'IT', GOA:'IT', PSA:'IT', OLB:'IT',
+  LIS:'PT', OPO:'PT', FAO:'PT', FNC:'PT',
+  ZRH:'CH', GVA:'CH', BSL:'CH', VIE:'AT', SZG:'AT', INN:'AT',
+  ATH:'GR', SKG:'GR', HER:'GR', CHQ:'GR', RHO:'GR', ZTH:'GR', JMK:'GR', JTR:'GR', KGS:'GR', LCA:'GR', PVK:'GR',
+  BRU:'BE', CRL:'BE',
+  CPH:'DK', OSL:'NO', BGO:'NO', TOS:'NO', SVG:'NO', TRD:'NO',
+  ARN:'SE', GOT:'SE', MMX:'SE', NYO:'SE',
+  HEL:'FI', OUL:'FI', TKU:'FI',
+  WAW:'PL', KRK:'PL', GDN:'PL', WRO:'PL', POZ:'PL', RZE:'PL', KTW:'PL',
+  PRG:'CZ', BRQ:'CZ', BUD:'HU', DEB:'HU',
+  OTP:'RO', CLJ:'RO', TSR:'RO', CND:'RO', SOF:'BG', VAR:'BG',
+  BEG:'RS', TGD:'ME', SJJ:'BA', SKP:'MK', LJU:'SI', ZAG:'HR', DBV:'HR', SPU:'HR',
+  JNB:'ZA', CPT:'ZA', DUR:'ZA',
+  CAI:'EG', HRG:'EG', SSH:'EG',
+  NBO:'KE', MBA:'KE', ADD:'ET',
+  LOS:'NG', ABV:'NG', ACC:'GH', DAR:'TZ', JRO:'TZ',
+  CMN:'MA', RAK:'MA', ALG:'DZ', TUN:'TN',
+  GRU:'BR', GIG:'BR', EZE:'AR', SCL:'CL', BOG:'CO', MDE:'CO', LIM:'PE',
+  MEX:'MX', CUN:'MX', GDL:'MX', PTY:'PA', SJO:'CR',
+  JFK:'US', LAX:'US', SFO:'US', ORD:'US', MIA:'US', IAH:'US', ATL:'US', DFW:'US', SEA:'US', EWR:'US', BOS:'US', IAD:'US', DEN:'US', LAS:'US', PHX:'US', MSP:'US', DTW:'US', FLL:'US', MCO:'US', CLT:'US', PDX:'US', SLC:'US', HNL:'US', SAN:'US', TPA:'US', BWI:'US', HOU:'US', DAL:'US', OAK:'US', SJC:'US', SMF:'US', RNO:'US', ANC:'US',
+  SYD:'AU', MEL:'AU', BNE:'AU', PER:'AU', ADL:'AU', OOL:'AU', CBR:'AU', CNS:'AU', HBA:'AU',
+  AKL:'NZ', WLG:'NZ', CHC:'NZ', DUD:'NZ', ZQN:'NZ',
+};
+
+function isInternationalFlight(origin?: string, destination?: string): boolean {
+  if (!origin || !destination) return false;
+  const originCountry = AIRPORT_COUNTRY[origin.toUpperCase()];
+  const destCountry = AIRPORT_COUNTRY[destination.toUpperCase()];
+  if (!originCountry || !destCountry) return false;
+  return originCountry !== destCountry;
+}
 
 interface SeatInfo { seat_code: string; column: string; row_number: string; availability: number; base_price: number; seat_name: string; description: string[]; }
 interface CabinData { cabin_name: string; cabin_code: string; seat_rows: { row_number: string; seats: SeatInfo[] }[]; }
 interface SegmentSeatData { segment_code: string; origin: string; destination: string; carrier_name: string; provider: string; cabins: CabinData[]; }
 interface SelectedSeat { seat_code: string; base_price: number; }
-interface PassengerIdentity { identity_type: 'ktp' | 'passport'; identity_number: string; identity_expdate: string; identity_country_of_issued_code: string; }
-interface Passenger { title: string; first_name: string; last_name: string; birth_date: string; pax_type: 'ADT' | 'CHD' | 'INF'; nationality_code: string; identity: PassengerIdentity; }
-interface PriceBreakdown { adultFare: number; adultTax: number; adultCount: number; childFare: number; childTax: number; childCount: number; infantFare: number; infantTax: number; infantCount: number; otherCharges: number; totalFlight: number; }
+interface PassengerIdentity { identity_type: 'ktp' | 'passport' | 'sim' | 'other'; identity_number: string; identity_expdate: string; identity_country_of_issued_code: string; }
+interface Passenger { title: string; first_name: string; last_name: string; birth_date: string; pax_type: 'ADT' | 'CHD' | 'INF' | 'YCD' | 'STU'; gender?: 'male' | 'female'; nationality_code: string; identity: PassengerIdentity; }
+interface PriceBreakdown { adultFare: number; adultTax: number; adultCount: number; childFare: number; childTax: number; childCount: number; infantFare: number; infantTax: number; infantCount: number; seniorFare: number; seniorTax: number; seniorCount: number; studentFare: number; studentTax: number; studentCount: number; otherCharges: number; totalFlight: number; orbisAdminFee: number; }
 interface BaggageSsr { ssr_code: string; name: string; kg: number; base_price: number; journey_code: string; }
+interface MealSsr { ssr_code: string; name: string; base_price: number; journey_code: string; }
 interface MarkupSettings { flight: number; hotel: number; train: number; insurance: number; }
 
 function fmtIDR(n: number) { if (!n || isNaN(n)) return 'Rp 0'; return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
 function fmtTime(dt: string) { if (!dt) return '--:--'; return dt.split(' ')[1]?.substring(0, 5) || dt.substring(11, 16); }
 function fmtDate(dt: string) { if (!dt) return ''; return new Date(dt).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
 
+const SSR_TYPE_LABELS: Record<string, string> = {
+  BG: 'Bagasi',
+  BGA: 'Bagasi Pesawat',
+  BGC: 'Bagasi Kabin',
+  ML: 'Makanan',
+};
+
 function parsePriceBreakdown(priceResponse: any): PriceBreakdown | null {
   if (!priceResponse) return null;
   const pip = priceResponse?.price_itinerary_provider || [];
   if (!pip.length) return null;
-  let adultFare=0,adultTax=0,adultCount=0,childFare=0,childTax=0,childCount=0,infantFare=0,infantTax=0,infantCount=0,otherCharges=0;
+  let adultFare=0,adultTax=0,adultCount=0,childFare=0,childTax=0,childCount=0,infantFare=0,infantTax=0,infantCount=0,seniorFare=0,seniorTax=0,seniorCount=0,studentFare=0,studentTax=0,studentCount=0,otherCharges=0;
   for (const provider of pip) {
     for (const journey of (provider.journeys || [])) {
       for (const seg of (journey.segments || [])) {
@@ -41,13 +112,17 @@ function parsePriceBreakdown(priceResponse: any): PriceBreakdown | null {
             if (sc.pax_type==='ADT'){adultFare+=farePerPax;adultTax+=taxPerPax;adultCount=paxCount;}
             else if (sc.pax_type==='CHD'){childFare+=farePerPax;childTax+=taxPerPax;childCount=paxCount;}
             else if (sc.pax_type==='INF'){infantFare+=farePerPax;infantTax+=taxPerPax;infantCount=paxCount;}
+            else if (sc.pax_type==='YCD'){seniorFare+=farePerPax;seniorTax+=taxPerPax;seniorCount=paxCount;}
+            else if (sc.pax_type==='STU'){studentFare+=farePerPax;studentTax+=taxPerPax;studentCount=paxCount;}
           }
         }
       }
     }
   }
-  const totalFlight = priceResponse.total_price || ((adultFare+adultTax)*adultCount)+((childFare+childTax)*childCount)+((infantFare+infantTax)*infantCount)+otherCharges;
-  return {adultFare,adultTax,adultCount,childFare,childTax,childCount,infantFare,infantTax,infantCount,otherCharges,totalFlight};
+  const totalFlight = priceResponse.total_price || ((adultFare+adultTax)*adultCount)+((childFare+childTax)*childCount)+((infantFare+infantTax)*infantCount)+((seniorFare+seniorTax)*seniorCount)+((studentFare+studentTax)*studentCount)+otherCharges;
+  const fareCalc = ((adultFare+adultTax)*adultCount)+((childFare+childTax)*childCount)+((infantFare+infantTax)*infantCount)+((seniorFare+seniorTax)*seniorCount)+((studentFare+studentTax)*studentCount)+otherCharges;
+  const orbisAdminFee = Math.max(0, (priceResponse.total_price || 0) - fareCalc);
+  return {adultFare,adultTax,adultCount,childFare,childTax,childCount,infantFare,infantTax,infantCount,seniorFare,seniorTax,seniorCount,studentFare,studentTax,studentCount,otherCharges,totalFlight,orbisAdminFee};
 }
 
 function parseBaggageSsr(ssrData: any): BaggageSsr[] {
@@ -80,6 +155,30 @@ function parseBaggageSsr(ssrData: any): BaggageSsr[] {
     if (!existing || item.base_price < existing.base_price) byCode.set(item.ssr_code, item);
   }
   return Array.from(byCode.values()).sort((a, b) => a.kg - b.kg);
+}
+
+function parseMealSsr(ssrData: any): MealSsr[] {
+  if (!ssrData) return [];
+  const providers: any[] = ssrData?.ssr_availability_provider || ssrData?.response?.ssr_availability_provider || [];
+  if (!providers.length) return [];
+  const ssrMap = new Map<string, MealSsr>();
+  for (const provider of providers) {
+    const mealList: any[] = provider?.ssr_availability?.meal || [];
+    for (const meal of mealList) {
+      const journeyCode = meal.journey_code || '';
+      const ssrs: any[] = meal?.ssrs || [];
+      for (const ssr of ssrs) {
+        if (ssr.ssr_type !== 'ML') continue;
+        const scForAdt = (ssr.service_charges || []).find((c: any) => c.pax_type === 'ADT') || ssr.service_charges?.[0];
+        if (!scForAdt) continue;
+        const price = ssr.base_price || scForAdt.amount || scForAdt.total || 0;
+        if (price === 0) continue;
+        const key = `${ssr.ssr_code}::${journeyCode}`;
+        if (!ssrMap.has(key)) ssrMap.set(key, { ssr_code: ssr.ssr_code, name: ssr.name, base_price: price, journey_code: journeyCode });
+      }
+    }
+  }
+  return Array.from(ssrMap.values()).sort((a, b) => a.base_price - b.base_price);
 }
 
 function SeatMap({ segment, passengerCount, selectedSeats, onSelectSeat }: {
@@ -162,7 +261,7 @@ function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onCh
 }) {
   const { language } = useLanguage();
   const t = i18n.flightCheckout[language];
-  const paxLabel = pax.pax_type==='ADT'?t.adult:pax.pax_type==='CHD'?t.child:t.infant;
+  const paxLabel = pax.pax_type==='ADT'?t.adult:pax.pax_type==='CHD'?t.child:pax.pax_type==='YCD'?t.senior:pax.pax_type==='STU'?t.student:t.infant;
   const k = (key: string) => `${key}_${index}`;
   const errFirst = errors?.[k('pax_first')];
   const errLast = errors?.[k('pax_last')];
@@ -192,12 +291,35 @@ function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onCh
         </div>
         <div><label className={labelCls}>{t.nationality}</label>
           <select value={pax.nationality_code} onChange={e=>onChange(index,'nationality_code',e.target.value)} className={selectCls}>
-            <option value="ID">Indonesia</option><option value="SG">Singapura</option><option value="MY">Malaysia</option><option value="US">Amerika Serikat</option><option value="GB">Inggris</option><option value="AU">Australia</option>
+            <option value="ID">Indonesia</option><option value="SG">Singapura</option><option value="MY">Malaysia</option><option value="TH">Thailand</option><option value="PH">Filipina</option><option value="VN">Vietnam</option><option value="JP">Jepang</option><option value="KR">Korea Selatan</option><option value="CN">China</option><option value="IN">India</option><option value="US">Amerika Serikat</option><option value="GB">Inggris</option><option value="AU">Australia</option><option value="DE">Jerman</option><option value="FR">Prancis</option><option value="AE">Uni Emirat Arab</option><option value="SA">Arab Saudi</option><option value="NL">Belanda</option><option value="SG">Singapura</option>
           </select>
         </div>
         <div><label className={labelCls}>{t.birthDate}</label>
-          <input id={k('pax_birth')} type="date" value={pax.birth_date} onChange={e=>onChange(index,'birth_date',e.target.value)} className={fieldCls(errBirth)}/>
+          <div className="relative">
+            <i className="fa-regular fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[13px] pointer-events-none z-10"></i>
+            <DatePicker
+              id={k('pax_birth')}
+              selected={pax.birth_date ? new Date(pax.birth_date + 'T00:00:00') : null}
+              onChange={(d: Date | null) => onChange(index, 'birth_date', d ? d.toISOString().split('T')[0] : '')}
+              dateFormat="dd MMM yyyy"
+              locale="id"
+              showMonthDropdown
+              showYearDropdown
+              dropdownMode="select"
+              maxDate={new Date()}
+              placeholderText="Pilih tanggal lahir"
+              className={`w-full pl-9 pr-4 py-2.5 bg-white border rounded-lg text-slate-800 text-sm outline-none transition-colors cursor-pointer ${errBirth ? 'border-red-400 focus:border-red-400' : 'border-slate-200 focus:border-slate-400'}`}
+              wrapperClassName="w-full"
+            />
+          </div>
           {errBirth && <p className="text-[11px] text-red-600 mt-1">{errBirth}</p>}
+        </div>
+        <div><label className={labelCls}>{t.gender || 'Jenis Kelamin'}</label>
+          <select value={pax.gender || ''} onChange={e=>onChange(index,'gender',e.target.value||undefined)} className={selectCls}>
+            <option value="">-- Pilih --</option>
+            <option value="male">{t.gender === 'Gender' ? 'Male' : 'Laki-laki'}</option>
+            <option value="female">{t.gender === 'Gender' ? 'Female' : 'Perempuan'}</option>
+          </select>
         </div>
         <div><label className={labelCls}>{t.idType}</label>
           <select value={pax.identity.identity_type} onChange={e=>onChange(index,'identity',{...pax.identity,identity_type:e.target.value})} className={selectCls}>
@@ -211,7 +333,22 @@ function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onCh
         {pax.identity.identity_type==='passport'&&(
           <>
             <div><label className={labelCls}>{t.idExpiry}</label>
-              <input type="date" value={pax.identity.identity_expdate} onChange={e=>onChange(index,'identity',{...pax.identity,identity_expdate:e.target.value})} className={fieldCls()}/>
+              <div className="relative">
+                <i className="fa-regular fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[13px] pointer-events-none z-10"></i>
+                <DatePicker
+                  selected={pax.identity.identity_expdate ? new Date(pax.identity.identity_expdate + 'T00:00:00') : null}
+                  onChange={(d: Date | null) => onChange(index, 'identity', { ...pax.identity, identity_expdate: d ? d.toISOString().split('T')[0] : '' })}
+                  dateFormat="dd MMM yyyy"
+                  locale="id"
+                  showMonthDropdown
+                  showYearDropdown
+                  dropdownMode="select"
+                  minDate={new Date()}
+                  placeholderText="Pilih tanggal kedaluwarsa"
+                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-sm outline-none transition-colors focus:border-slate-400 cursor-pointer"
+                  wrapperClassName="w-full"
+                />
+              </div>
             </div>
             <div><label className={labelCls}>{t.idCountry}</label>
               <select value={pax.identity.identity_country_of_issued_code} onChange={e=>onChange(index,'identity',{...pax.identity,identity_country_of_issued_code:e.target.value})} className={selectCls}>
@@ -234,7 +371,10 @@ function FlightCheckoutContent() {
   const isGuest = status !== 'authenticated';
   const isSubmittingRef = useRef(false);
 
+  usePageTitle('Pembayaran Pesawat');
+
   const [flightData, setFlightData] = useState<any>(null);
+  const [isInternational, setIsInternational] = useState(false);
   const [booker, setBooker] = useState({ title: 'MR', first_name: '', last_name: '', email: '', mobile: '', calling_code: '62', nationality_code: 'ID' });
   const [passengers, setPassengers] = useState<Passenger[]>([]);
   const [selectedSeats, setSelectedSeats] = useState<Record<string,SelectedSeat>>({});
@@ -245,20 +385,51 @@ function FlightCheckoutContent() {
   const [showSeatMap, setShowSeatMap] = useState(false);
   const [skipSeats, setSkipSeats] = useState(false);
   const [baggageSsrs, setBaggageSsrs] = useState<BaggageSsr[]>([]);
+  const [mealSsrs, setMealSsrs] = useState<MealSsr[]>([]);
   const [ssrLoading, setSsrLoading] = useState(false);
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageSsr | null>(null);
-  const [addInsurance, setAddInsurance] = useState(false);
-  const [addResched, setAddResched] = useState(false);
-  const [addRefund, setAddRefund] = useState(false);
-  const [addDelay, setAddDelay] = useState(false);
-  const [addLostBag, setAddLostBag] = useState(false);
+  const [selectedMeal, setSelectedMeal] = useState<MealSsr | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [markup, setMarkup] = useState<MarkupSettings>({ flight: 50000, hotel: 10, train: 15000, insurance: 5 });
   const [formErrors, setFormErrors] = useState<Record<string,string>>({});
-const [checkoutDone, setCheckoutDone] = useState(false);
+  const [checkoutDone, setCheckoutDone] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [phonePickerOpen, setPhonePickerOpen] = useState(false);
+  const [phoneSearch, setPhoneSearch] = useState('');
+  const phonePickerRef = useRef<HTMLDivElement>(null);
+  const steps = ['Data Pemesan', 'Data Penumpang', 'Pelengkap'];
+  const [activeStep, setActiveStep] = useState(0);
+  const section0 = useRef<HTMLDivElement>(null);
+  const section1 = useRef<HTMLDivElement>(null);
+  const section2 = useRef<HTMLDivElement>(null);
+  const sectionRefs = [section0, section1, section2];
 
-  const ADDON_PRICES = { insurance: 110000, resched: 70000, refund: 100000, delay: 50000, lostBag: 34000 };
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idx = sectionRefs.findIndex(r => r.current === entry.target);
+            if (idx !== -1) setActiveStep(idx);
+          }
+        });
+      },
+      { rootMargin: '-100px 0px -60% 0px', threshold: 0 }
+    );
+    sectionRefs.forEach(r => { if (r.current) observer.observe(r.current); });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!phonePickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (phonePickerRef.current && !phonePickerRef.current.contains(e.target as Node)) setPhonePickerOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [phonePickerOpen]);
 
   const adultCount = parseInt(flightData?.priceBody?.adult || flightData?.searchMeta?.adult || '1');
   const childCount = parseInt(flightData?.priceBody?.child || flightData?.searchMeta?.child || '0');
@@ -277,7 +448,11 @@ const [checkoutDone, setCheckoutDone] = useState(false);
       const adult = parseInt(parsed.priceBody?.adult || parsed.searchMeta?.adult || '1');
       const child = parseInt(parsed.priceBody?.child || parsed.searchMeta?.child || '0');
       const infant = parseInt(parsed.priceBody?.infant || parsed.searchMeta?.infant || '0');
-      const defaultIdentity = { identity_type: 'ktp' as const, identity_number: '', identity_expdate: '', identity_country_of_issued_code: 'ID' };
+      const origin = parsed.display?.origin || parsed.priceBody?.schedules?.[0]?.journeys?.[0]?.segments?.[0]?.segment_code?.split(',')[2] || '';
+      const dest = parsed.display?.destination || '';
+      const intl = isInternationalFlight(origin, dest);
+      setIsInternational(intl);
+      const defaultIdentity = { identity_type: (intl ? 'passport' : 'ktp') as 'ktp' | 'passport', identity_number: '', identity_expdate: '', identity_country_of_issued_code: 'ID' };
       const defaultPax = { title:'MR', first_name:'', last_name:'', birth_date:'', nationality_code:'ID', identity: defaultIdentity };
       const paxList: Passenger[] = [];
       for (let i=0;i<adult;i++) paxList.push({...defaultPax, pax_type:'ADT'});
@@ -290,7 +465,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
       }
       if (session?.user?.phone) {
         const parsed = parsePhoneWithCode(session.user.phone);
-        setBooker(b=>({...b, calling_code:'+'+parsed.code, mobile: parsed.number}));
+        setBooker(b=>({...b, calling_code:parsed.code, mobile: parsed.number}));
       }
     } catch { router.push('/flight/search'); }
   }, [session]);
@@ -306,6 +481,8 @@ const [checkoutDone, setCheckoutDone] = useState(false);
         const payload = data.data?.response || data.data;
         const bags = parseBaggageSsr(payload);
         if (bags.length > 0) setBaggageSsrs(bags);
+        const meals = parseMealSsr(payload);
+        if (meals.length > 0) setMealSsrs(meals);
       }
     } catch {} finally { setSsrLoading(false); }
   }, [ssrLoading, baggageSsrs.length]);
@@ -319,7 +496,11 @@ const [checkoutDone, setCheckoutDone] = useState(false);
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify(flightData.priceBody),
         });
-        if (!lockRes.ok) { setSeatsError('Gagal mengunci sesi. Coba lagi.'); return; }
+        if (!lockRes.ok) {
+          const lockData = await lockRes.json().catch(() => ({}));
+          if (lockData.error === 'FARE_UNAVAILABLE') { sessionStorage.removeItem('flight_priced_data'); setBookingError('__FARE_UNAVAILABLE__'); return; }
+          setSeatsError('Gagal mengunci sesi. Coba lagi.'); return;
+        }
         setIsLocked(true);
         fetchSsr();
       }
@@ -369,11 +550,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
 
   const seatFee = skipSeats ? 0 : Object.values(selectedSeats).reduce((sum,s)=>sum+(s.base_price||0),0);
   const baggageFee = selectedBaggage ? selectedBaggage.base_price * adultCount : 0;
-  const insuranceFee = addInsurance ? ADDON_PRICES.insurance * paxCount : 0;
-  const reschedFee = addResched ? ADDON_PRICES.resched * paxCount : 0;
-  const refundFee = addRefund ? ADDON_PRICES.refund * paxCount : 0;
-  const delayFee = addDelay ? ADDON_PRICES.delay * paxCount : 0;
-  const lostBagFee = addLostBag ? ADDON_PRICES.lostBag * paxCount : 0;
+  const mealFee = selectedMeal ? selectedMeal.base_price * (adultCount + childCount) : 0;
 
   const flightBase = (() => {
     if (!flightData) return 0;
@@ -384,8 +561,8 @@ const [checkoutDone, setCheckoutDone] = useState(false);
   })();
 
   const adminFee = markup.flight * paxCount;
-  const pricingAmount = flightBase + seatFee + baggageFee + insuranceFee + reschedFee + refundFee + delayFee + lostBagFee;
-  const grandTotal = pricingAmount + adminFee;
+  const pricingAmount = flightBase + seatFee + baggageFee + mealFee;
+  const grandTotal = Math.max(0, pricingAmount + adminFee - discountAmount);
 
   const validate = (): Record<string,string> => {
     const errs: Record<string,string> = {};
@@ -401,16 +578,24 @@ const [checkoutDone, setCheckoutDone] = useState(false);
           ? 'No. paspor harus alfanumerik minimal 6 karakter.'
           : 'NIK harus 16 digit angka.';
       }
+      if (isInternational && p.identity?.identity_type !== 'passport') {
+        errs[`pax_id_${i}`] = 'Penerbangan internasional memerlukan paspor.';
+      }
+      if (isInternational && p.identity?.identity_type === 'passport') {
+        if (!p.identity?.identity_expdate) errs[`pax_passport_exp_${i}`] = 'Tanggal kadaluarsa paspor wajib diisi.';
+        else if (!isValidPassportExpiry(p.identity.identity_expdate)) errs[`pax_passport_exp_${i}`] = 'Paspor sudah kedaluwarsa.';
+      }
     });
     return errs;
   };
 
   const handleSubmit = async () => {
     if (!flightData || isSubmittingRef.current || checkoutDone) return;
+    if (bookingError) return;
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setFormErrors(errs);
-      const ids = ['booker_name','booker_phone','booker_email', ...passengers.flatMap((_,i)=>[`pax_first_${i}`,`pax_last_${i}`,`pax_birth_${i}`,`pax_id_${i}`])];
+      const ids = ['booker_name','booker_phone','booker_email', ...passengers.flatMap((_,i)=>[`pax_first_${i}`,`pax_last_${i}`,`pax_birth_${i}`,`pax_id_${i}`,`pax_passport_exp_${i}`])];
       scrollToFirstError(ids);
       return;
     }
@@ -431,6 +616,9 @@ const [checkoutDone, setCheckoutDone] = useState(false);
       const display = flightData.display || {};
       const baggagePayload = (selectedBaggage && selectedBaggage.ssr_code !== 'NOBAG')
         ? { ssr_code: selectedBaggage.ssr_code, journey_code: selectedBaggage.journey_code || '', kg: selectedBaggage.kg || 0, name: selectedBaggage.name || '' }
+        : undefined;
+      const mealPayload = selectedMeal
+        ? { ssr_code: selectedMeal.ssr_code, journey_code: selectedMeal.journey_code || '', name: selectedMeal.name || '' }
         : undefined;
       const contactPayload = {
         title: booker.title || 'MR',
@@ -462,11 +650,19 @@ const [checkoutDone, setCheckoutDone] = useState(false);
         departure_date: display.departure || '',
         arrival_date: display.arrival || '',
         flight_number: display.flight_num || '',
-        airline_name: display.carrier || '',
+        airline_name: (() => {
+          const raw = display.carrier || '';
+          const upper = raw.trim().toUpperCase();
+          if (CARRIER_CODE_TO_AIRLINE[upper]) return CARRIER_CODE_TO_AIRLINE[upper];
+          const lower = raw.trim().toLowerCase();
+          if (PROVIDER_ID_TO_LABEL[lower]) return PROVIDER_ID_TO_LABEL[lower];
+          return raw;
+        })(),
         selectedSeats: Object.values(seatRequestBySegment),
         ...(baggagePayload && { selectedBaggage: baggagePayload }),
-        addOns: { insurance: addInsurance, reschedule: addResched, refund: addRefund, delay: addDelay, lostBag: addLostBag },
+        ...(mealPayload && { selectedMeal: mealPayload }),
         is_locked_before: isLocked,
+        ...(appliedCoupon && { coupon_code: appliedCoupon.code, discount_amount: discountAmount }),
       };
       const res = await fetch('/api/flight/book', {
         method:'POST', headers:{'Content-Type':'application/json'},
@@ -475,6 +671,10 @@ const [checkoutDone, setCheckoutDone] = useState(false);
       const data = await res.json();
       if (!res.ok || !data.success) {
         if (data.error==='SESSION_EXPIRED') { sessionStorage.removeItem('flight_priced_data'); setBookingError('Sesi penerbangan telah berakhir. Silakan cari ulang.'); setTimeout(()=>router.push('/flight/search'),2500); return; }
+        if (data.error==='FARE_UNAVAILABLE') { setBookingError('__FARE_UNAVAILABLE__'); return; }
+        if (data.error==='PRICE_UNVERIFIABLE') { setBookingError('__PRICE_UNVERIFIABLE__'); return; }
+        if (data.error==='PRICE_CHANGED') { setBookingError('__PRICE_CHANGED__'); return; }
+        if (data.error==='PASSPORT_REQUIRED') { setBookingError('__PASSPORT_REQUIRED__'); return; }
         const details = data.details ? Object.entries(data.details).map(([k,v])=>`${k}: ${(v as string[]).join(', ')}`).join('; ') : '';
         throw new Error(data.error + (details ? ` (${details})` : '') || 'Pemesanan gagal.');
       }
@@ -517,30 +717,51 @@ const [checkoutDone, setCheckoutDone] = useState(false);
     { label:'Biaya Admin', value: adminFee },
     { label:'Kursi Dipilih', value: seatFee },
     { label:'Bagasi Tambahan', value: baggageFee },
-    { label:'Asuransi Perjalanan', value: insuranceFee },
-    { label:'Perlindungan Reschedule', value: reschedFee },
-    { label:'Jaminan Refund 100%', value: refundFee },
-    { label:'Asuransi Keterlambatan', value: delayFee },
-    { label:'Perlindungan Bagasi Hilang', value: lostBagFee },
+    { label:'Makanan', value: mealFee },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 pt-[56px]">
       <CheckoutNavbar />
       <LeaveGuard active={!checkoutDone} />
 
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 sticky top-[73px] z-10">
-        <div className="max-w-[1280px] mx-auto flex items-center justify-between px-4 py-3">
-          <button onClick={()=>router.push('/flight/search')} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
-            ← {tc.back}
-          </button>
-          <div className="flex items-center gap-3 text-xs">
-            <span className="font-semibold text-slate-800">1. Data Diri</span>
-            <span className="text-slate-300">→</span>
-            <span className="text-slate-400">2. Pembayaran</span>
+      <div className="bg-white border-b border-slate-200 sticky top-[56px] z-10">
+        <div className="max-w-[1280px] mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <button onClick={()=>router.push('/flight/search')} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
+              ← {tc.back}
+            </button>
+            <div className="flex items-center gap-2">
+              {steps.map((step, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  {i > 0 && <div className={`w-4 h-px ${i <= activeStep ? 'bg-orange-400' : 'bg-slate-200'}`}/>}
+                  <button
+                    onClick={() => sectionRefs[i].current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
+                      i === activeStep
+                        ? 'bg-orange-50 text-orange-600'
+                        : i < activeStep
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'text-slate-400'
+                    }`}
+                  >
+                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${
+                      i === activeStep
+                        ? 'bg-orange-500 text-white'
+                        : i < activeStep
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-200 text-slate-400'
+                    }`}>
+                      {i < activeStep ? '✓' : i + 1}
+                    </span>
+                    <span className="hidden sm:inline">{step}</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="w-16"/>
           </div>
-          <div className="w-16"/>
         </div>
       </div>
 
@@ -558,18 +779,98 @@ const [checkoutDone, setCheckoutDone] = useState(false);
           </div>
         )}
 
-        {bookingError && (
+        {bookingError && bookingError === '__FARE_UNAVAILABLE__' ? (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-6 mb-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-ticket text-amber-600 text-lg"></i>
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-slate-800 text-sm mb-1">Kelas Kursi Tidak Tersedia</p>
+                <p className="text-slate-600 text-sm mb-4">
+                  Harga atau kelas kursi yang Anda pilih sudah tidak tersedia. Silakan pilih penerbangan lain.
+                </p>
+                <button
+                  onClick={() => { sessionStorage.removeItem('flight_priced_data'); router.push('/flight/search'); }}
+                  className="px-5 py-2.5 bg-orange-600 text-white font-bold text-sm rounded-xl hover:bg-orange-700 transition-all shadow-md shadow-orange-500/20"
+                >
+                  <i className="fa-solid fa-magnifying-glass mr-2"></i>Cari Penerbangan Lain
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : bookingError && bookingError === '__PRICE_UNVERIFIABLE__' ? (
+          <div className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 rounded-2xl p-6 mb-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-sky-100 rounded-2xl flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-rotate text-sky-600 text-lg"></i>
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-slate-800 text-sm mb-1">Gagal Memverifikasi Harga</p>
+                <p className="text-slate-600 text-sm mb-4">
+                  Harga tiket tidak dapat diverifikasi untuk saat ini. Silakan coba beberapa saat lagi.
+                </p>
+                <button
+                  onClick={() => setBookingError('')}
+                  className="px-5 py-2.5 bg-sky-600 text-white font-bold text-sm rounded-xl hover:bg-sky-700 transition-all shadow-md shadow-sky-500/20"
+                >
+                  <i className="fa-solid fa-rotate mr-2"></i>Coba Lagi
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : bookingError && bookingError === '__PRICE_CHANGED__' ? (
+          <div className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 rounded-2xl p-6 mb-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-rose-100 rounded-2xl flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-tag text-rose-600 text-lg"></i>
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-slate-800 text-sm mb-1">Harga Telah Berubah</p>
+                <p className="text-slate-600 text-sm mb-4">
+                  Harga penerbangan ini sudah berubah. Silakan pilih penerbangan lain atau coba lagi.
+                </p>
+                <button
+                  onClick={() => { sessionStorage.removeItem('flight_priced_data'); router.push('/flight/search'); }}
+                  className="px-5 py-2.5 bg-rose-600 text-white font-bold text-sm rounded-xl hover:bg-rose-700 transition-all shadow-md shadow-rose-500/20"
+                >
+                  <i className="fa-solid fa-magnifying-glass mr-2"></i>Cari Penerbangan Lain
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : bookingError && bookingError === '__PASSPORT_REQUIRED__' ? (
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-6 mb-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center shrink-0">
+                <i className="fa-solid fa-passport text-indigo-600 text-lg"></i>
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-slate-800 text-sm mb-1">Paspor Diperlukan</p>
+                <p className="text-slate-600 text-sm mb-4">
+                  Penerbangan internasional ini memerlukan data paspor. Silakan ubah tipe identitas ke Paspor dan isi data paspor Anda di bawah.
+                </p>
+                <button
+                  onClick={() => { setBookingError(''); setIsInternational(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  className="px-5 py-2.5 bg-indigo-600 text-white font-bold text-sm rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/20"
+                >
+                  <i className="fa-solid fa-pen mr-2"></i>Isi Data Paspor
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : bookingError ? (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5 text-sm text-red-700">
             <p className="font-semibold mb-1">Pemesanan Gagal</p>
             <p>{bookingError}</p>
           </div>
-        )}
+        ) : null}
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
           {/* LEFT */}
           <div className="space-y-5">
             {/* Data Pemesan */}
-            <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <div ref={sectionRefs[0]} className="bg-white rounded-xl border border-slate-200 p-5">
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-6 h-6 rounded-full bg-slate-800 text-white text-[11px] font-bold flex items-center justify-center"><i className="fa-solid fa-user text-[9px]"></i></div>
                 <h2 className="text-sm font-bold text-slate-800">Data Pemesan</h2>
@@ -593,9 +894,39 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                 <div>
                   <label className={labelCls}>{t.contactPhone}</label>
                   <div className="flex gap-2">
-                    <select value={booker.calling_code} onChange={e=>setBooker(b=>({...b,calling_code:e.target.value}))} className="w-20 px-2 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-600 text-sm outline-none focus:border-slate-400 cursor-pointer">
-                      <option value="+62">+62</option><option value="+65">+65</option><option value="+60">+60</option><option value="+1">+1</option><option value="+44">+44</option>
-                    </select>
+                    <div className="relative" ref={phonePickerRef}>
+                      <button type="button" onClick={() => setPhonePickerOpen(!phonePickerOpen)}
+                        className={`flex items-center gap-2 px-3 py-2.5 bg-white border rounded-lg text-sm font-semibold outline-none transition-all shrink-0 ${phonePickerOpen ? 'border-orange-500' : 'border-slate-200 focus:border-slate-400'}`}>
+                        <span className="text-slate-800">+{booker.calling_code}</span>
+                        <i className={`fa-solid fa-chevron-down text-[8px] text-slate-400 transition-transform ${phonePickerOpen ? 'rotate-180' : ''}`}></i>
+                      </button>
+                      {phonePickerOpen && (
+                        <div className="absolute top-full left-0 mt-2 w-[280px] bg-white rounded-2xl border border-slate-100 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                          <div className="p-2.5 border-b border-slate-100">
+                            <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
+                              <i className="fa-solid fa-magnifying-glass text-[11px] text-slate-400"></i>
+                              <input type="text" value={phoneSearch} onChange={e => setPhoneSearch(e.target.value)} placeholder="Cari negara..."
+                                className="flex-1 bg-transparent text-[13px] font-medium text-slate-800 outline-none placeholder:text-slate-400" autoFocus />
+                            </div>
+                          </div>
+                          <div className="max-h-[240px] overflow-y-auto p-1.5">
+                            {COUNTRY_CODES.filter(c =>
+                              c.name.toLowerCase().includes(phoneSearch.toLowerCase()) ||
+                              c.code.includes(phoneSearch)
+                            ).map(c => (
+                              <button key={c.code} type="button"
+                                onClick={() => { setBooker(b => ({ ...b, calling_code: c.code })); setPhonePickerOpen(false); setPhoneSearch(''); }}
+                                className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-left transition-all ${c.code === booker.calling_code ? 'bg-orange-50' : 'hover:bg-slate-50'}`}>
+                                <span className="text-xl leading-none w-7 text-center">{c.flag}</span>
+                                <span className="flex-1 text-[13px] font-semibold text-slate-700">{c.name}</span>
+                                <span className={`text-[13px] font-bold ${c.code === booker.calling_code ? 'text-orange-600' : 'text-slate-400'}`}>+{c.code}</span>
+                                {c.code === booker.calling_code && <i className="fa-solid fa-check text-[10px] text-orange-600"></i>}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <input id="booker_phone" value={booker.mobile} onChange={e=>{setBooker(b=>({...b,mobile:e.target.value.replace(/\D/g,'')})); clearErr('booker_phone');}} className={fieldCls(formErrors.booker_phone)} placeholder="8xxxxxxxxxx"/>
                   </div>
                   {formErrors.booker_phone && <p className="text-[11px] text-red-600 mt-1">{formErrors.booker_phone}</p>}
@@ -612,12 +943,14 @@ const [checkoutDone, setCheckoutDone] = useState(false);
             </div>
 
             {/* Penumpang */}
-            {passengers.map((pax,i) => (
-              <PassengerForm key={i} pax={pax} index={i} fieldCls={fieldCls} labelCls={labelCls} selectCls={selectCls} errors={formErrors} onChange={updatePassenger}/>
-            ))}
+            <div ref={sectionRefs[1]}>
+              {passengers.map((pax,i) => (
+                <PassengerForm key={i} pax={pax} index={i} fieldCls={fieldCls} labelCls={labelCls} selectCls={selectCls} errors={formErrors} onChange={updatePassenger}/>
+              ))}
+            </div>
 
             {/* Pelengkap Penerbangan */}
-            <div>
+            <div ref={sectionRefs[2]}>
               <h2 className="text-sm font-bold text-slate-800 mb-3">Pelengkap Penerbangan</h2>
               <div className="space-y-3">
 
@@ -648,35 +981,104 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                   )}
                 </div>
 
-                {/* Kursi */}
-                <div className={`bg-white rounded-xl border transition-all ${showSeatMap?'border-slate-800':'border-slate-200'}`}>
-                  <div className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-800 text-sm">{t.seatSelection}</p>
-                        <p className="text-xs text-slate-400">{t.seatOptional}</p>
-                        {Object.keys(selectedSeats).length > 0 && (
-                          <p className="text-xs text-slate-600 font-semibold mt-1">
-                            {Object.keys(selectedSeats).length} kursi · {fmtIDR(seatFee)}
-                          </p>
-                        )}
+                {/* Makanan */}
+                {mealSsrs.length > 0 && (
+                  <div className="bg-white rounded-xl border border-slate-200 p-4">
+                    <p className="font-semibold text-slate-800 text-sm mb-1">{t.meal}</p>
+                    <p className="text-xs text-slate-400 mb-3">Pilih makanan untuk penerbangan Anda.</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      <button
+                        onClick={()=>setSelectedMeal(null)}
+                        className={`py-2.5 px-2 text-xs font-semibold rounded-lg border transition-all text-center ${
+                          selectedMeal===null
+                            ?'border-slate-800 bg-slate-800 text-white'
+                            :'border-slate-200 text-slate-500 hover:border-slate-400'
+                        }`}>
+                        <div>{tc.no}</div>
+                        <div className="text-[10px] font-normal mt-0.5 opacity-70">Tanpa makanan</div>
+                      </button>
+                      {mealSsrs.map(meal => (
+                        <button key={meal.ssr_code}
+                          onClick={()=>setSelectedMeal(meal)}
+                          className={`py-2.5 px-2 text-xs font-semibold rounded-lg border transition-all text-center ${
+                            selectedMeal?.ssr_code===meal.ssr_code
+                              ?'border-slate-800 bg-slate-800 text-white'
+                              :'border-slate-200 text-slate-500 hover:border-slate-400'
+                          }`}>
+                          <div>{meal.name}</div>
+                          <div className="text-[10px] font-normal mt-0.5 opacity-70">{fmtIDR(meal.base_price)+'/org'}</div>
+                        </button>
+                      ))}
+                    </div>
+                    {selectedMeal && mealFee > 0 && (
+                      <div className="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center text-xs">
+                        <span className="text-slate-500">+{selectedMeal.name} × {adultCount + childCount} orang</span>
+                        <span className="font-semibold text-slate-800">{fmtIDR(mealFee)}</span>
                       </div>
-                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${showSeatMap?'bg-slate-800':'bg-slate-200'}`}
-                        onClick={()=>{ if(!showSeatMap){setShowSeatMap(true);fetchSeats();}else{setShowSeatMap(false);} }}>
-                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${showSeatMap?'translate-x-[22px]':'translate-x-[3px]'}`}/>
+                    )}
+                  </div>
+                )}
+
+                {/* Kursi */}
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-slate-800 text-sm">{t.seatSelection}</p>
+                      <p className="text-xs text-slate-400">{t.seatOptional}</p>
+                    </div>
+                    <button type="button" onClick={() => { setShowSeatMap(true); fetchSeats(); }}
+                      className="px-4 py-2 text-xs font-semibold text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg transition-all">
+                      {Object.keys(selectedSeats).length > 0 ? 'Ubah' : 'Pilih Kursi'}
+                    </button>
+                  </div>
+                  {Object.keys(selectedSeats).length > 0 ? (
+                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+                      {passengers.filter(p => p.pax_type !== 'INF').map((pax, i) => {
+                        const seat = Object.entries(selectedSeats).find(([k]) => k.endsWith(`__${i}`));
+                        const seatLabel = seat ? seat[1].seat_code : '-';
+                        const seatPrice = seat ? seat[1].base_price : 0;
+                        return (
+                          <div key={i} className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500">Pax {i + 1} ({pax.first_name || '-'})</span>
+                            <span className="font-semibold text-slate-800">{seatLabel}{seatPrice > 0 && <span className="text-slate-400 font-normal ml-1">({fmtIDR(seatPrice)})</span>}</span>
+                          </div>
+                        );
+                      })}
+                      <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100">
+                        <span className="text-slate-500">Total kursi</span>
+                        <span className="font-bold text-slate-800">{fmtIDR(seatFee)}</span>
                       </div>
                     </div>
-                    {showSeatMap && (
-                      <div className="mt-4">
-                        {seatsLoading && <div className="py-6 text-center"><div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-2"/><p className="text-xs text-slate-400">Memuat peta kursi...</p></div>}
+                  ) : (
+                    <p className="mt-2 pt-2 border-t border-slate-100 text-xs text-slate-400">Belum memilih kursi</p>
+                  )}
+                </div>
+
+                {/* Seat Map Modal */}
+                {showSeatMap && (
+                  <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setShowSeatMap(false)} />
+                    <div className="relative bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-800">{t.seatSelection}</h3>
+                          <p className="text-[11px] text-slate-400">{t.seatOptional}</p>
+                        </div>
+                        <button type="button" onClick={() => setShowSeatMap(false)}
+                          className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors">
+                          <i className="fa-solid fa-xmark text-sm"></i>
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-5">
+                        {seatsLoading && <div className="py-10 text-center"><div className="w-6 h-6 border-[3px] border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-2"/><p className="text-xs text-slate-400">Memuat peta kursi...</p></div>}
                         {seatsError && !seatsLoading && (
                           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-600">
                             <p className="font-semibold mb-1">{seatsError}</p>
                             {!seatsError.includes('tidak tersedia') && <button onClick={fetchSeats} className="mt-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg font-semibold text-[11px]">{tc.retry}</button>}
                           </div>
                         )}
-                        {!seatsLoading && !seatsError && segmentSeats.length>0 && (
-                          <div className="space-y-5 mt-2">
+                        {!seatsLoading && !seatsError && segmentSeats.length > 0 && (
+                          <div className="space-y-5">
                             <div className="flex items-center gap-3 text-[10px] text-slate-400 flex-wrap">
                               <div className="flex items-center gap-1"><div className="w-3 h-3 bg-emerald-50 border border-emerald-300 rounded-sm"></div>Gratis</div>
                               <div className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-50 border border-amber-300 rounded-sm"></div>Berbayar</div>
@@ -686,85 +1088,28 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                             {segmentSeats.map(seg => (
                               <div key={seg.segment_code}>
                                 <p className="text-xs font-semibold text-slate-600 mb-2">{seg.origin} → {seg.destination} · {seg.carrier_name}</p>
-                                <SeatMap segment={seg} passengerCount={passengers.filter(p=>p.pax_type!=='INF').length} selectedSeats={selectedSeats} onSelectSeat={handleSeatSelect}/>
+                                <SeatMap segment={seg} passengerCount={passengers.filter(p => p.pax_type !== 'INF').length} selectedSeats={selectedSeats} onSelectSeat={handleSeatSelect}/>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Addons */}
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Perlindungan & Asuransi</p>
-
-                  <div className={`bg-white rounded-xl border p-4 transition-all ${addRefund?'border-slate-800':'border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-800 text-sm">Jaminan Refund 100%</p>
-                        <p className="text-xs text-slate-400">Batalkan kapan saja, pengembalian dana penuh.</p>
-                      </div>
-                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addRefund?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddRefund(!addRefund)}>
-                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addRefund?'translate-x-[22px]':'translate-x-[3px]'}`}/>
+                      <div className="flex items-center justify-between px-5 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+                        <div className="text-xs text-slate-500">
+                          {Object.keys(selectedSeats).length > 0 ? (
+                            <span><span className="font-semibold text-slate-800">{Object.keys(selectedSeats).length}</span> kursi dipilih · {fmtIDR(seatFee)}</span>
+                          ) : (
+                            <span>Belum memilih kursi</span>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => setShowSeatMap(false)}
+                          className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg transition-colors">
+                          Selesai
+                        </button>
                       </div>
                     </div>
-                    {addRefund && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(refundFee)}</p>}
                   </div>
-
-                  <div className={`bg-white rounded-xl border p-4 transition-all ${addResched?'border-slate-800':'border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-800 text-sm">Perlindungan Reschedule</p>
-                        <p className="text-xs text-slate-400">Dilindungi jika maskapai ubah jadwal.</p>
-                      </div>
-                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addResched?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddResched(!addResched)}>
-                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addResched?'translate-x-[22px]':'translate-x-[3px]'}`}/>
-                      </div>
-                    </div>
-                    {addResched && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(reschedFee)}</p>}
-                  </div>
-
-                  <div className={`bg-white rounded-xl border p-4 transition-all ${addInsurance?'border-slate-800':'border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-800 text-sm">Asuransi Perjalanan</p>
-                        <p className="text-xs text-slate-400">Perlindungan jiwa, bagasi, biaya medis.</p>
-                      </div>
-                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addInsurance?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddInsurance(!addInsurance)}>
-                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addInsurance?'translate-x-[22px]':'translate-x-[3px]'}`}/>
-                      </div>
-                    </div>
-                    {addInsurance && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(insuranceFee)}</p>}
-                  </div>
-
-                  <div className={`bg-white rounded-xl border p-4 transition-all ${addDelay?'border-slate-800':'border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-800 text-sm">Asuransi Keterlambatan</p>
-                        <p className="text-xs text-slate-400">Kompensasi jika delay lebih dari 2 jam.</p>
-                      </div>
-                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addDelay?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddDelay(!addDelay)}>
-                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addDelay?'translate-x-[22px]':'translate-x-[3px]'}`}/>
-                      </div>
-                    </div>
-                    {addDelay && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(delayFee)}</p>}
-                  </div>
-
-                  <div className={`bg-white rounded-xl border p-4 transition-all ${addLostBag?'border-slate-800':'border-slate-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-800 text-sm">Perlindungan Bagasi Hilang</p>
-                        <p className="text-xs text-slate-400">Ganti rugi hingga Rp 2 juta jika bagasi hilang.</p>
-                      </div>
-                      <div className={`relative inline-flex items-center w-10 h-5 rounded-full transition-colors cursor-pointer ${addLostBag?'bg-slate-800':'bg-slate-200'}`} onClick={()=>setAddLostBag(!addLostBag)}>
-                        <div className={`absolute w-3.5 h-3.5 bg-white rounded-full shadow-sm transition-transform ${addLostBag?'translate-x-[22px]':'translate-x-[3px]'}`}/>
-                      </div>
-                    </div>
-                    {addLostBag && <p className="text-xs font-semibold text-slate-600 mt-2 pt-2 border-t border-slate-100">+ {fmtIDR(lostBagFee)}</p>}
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -848,6 +1193,18 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                     <span className="font-semibold">{fmtIDR((priceBreakdown.infantFare+priceBreakdown.infantTax)*priceBreakdown.infantCount)}</span>
                   </div>
                 )}
+                {priceBreakdown && priceBreakdown.otherCharges > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Biaya Tambahan</span>
+                    <span className="font-semibold">{fmtIDR(priceBreakdown.otherCharges)}</span>
+                  </div>
+                )}
+                {priceBreakdown && priceBreakdown.orbisAdminFee > 0 && (
+                  <div className="flex justify-between text-slate-600">
+                    <span>Biaya Maskapai</span>
+                    <span className="font-semibold">{fmtIDR(priceBreakdown.orbisAdminFee)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-slate-600">
                   <span>Biaya Admin</span>
                   <span className="font-semibold">{fmtIDR(adminFee)}</span>
@@ -858,6 +1215,22 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                     <span className="font-semibold">{fmtIDR(a.value)}</span>
                   </div>
                 ))}
+                <div className="pt-2">
+                  <CouponInput
+                    category="flight"
+                    totalAmount={pricingAmount + adminFee}
+                    onApply={(coupon, disc) => { setAppliedCoupon(coupon); setDiscountAmount(disc); }}
+                    onRemove={() => { setAppliedCoupon(null); setDiscountAmount(0); }}
+                    appliedCoupon={appliedCoupon}
+                    discountAmount={discountAmount}
+                  />
+                </div>
+                {discountAmount > 0 && (
+                <div className="flex justify-between text-emerald-600">
+                  <span>Diskon Kupon</span>
+                  <span className="font-semibold">-{fmtIDR(discountAmount)}</span>
+                </div>
+                )}
                 <div className="border-t border-slate-200 pt-3 mt-3 flex justify-between items-center">
                   <span className="font-bold text-slate-800">{t.total}</span>
                   <span className="font-bold text-slate-900 text-base">{fmtIDR(grandTotal)}</span>
@@ -872,7 +1245,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
               )}
               <button
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || !!bookingError}
                 className="mt-4 w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all text-sm active:scale-[0.98]"
               >
                 {submitting

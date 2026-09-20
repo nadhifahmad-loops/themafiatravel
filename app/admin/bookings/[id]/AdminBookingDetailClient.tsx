@@ -123,8 +123,8 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-bold text-slate-800">Detail Pesanan</h1>
-          <p className="text-slate-500 text-sm">{booking.orderNumber || booking.id}</p>
+          <h1 className="text-xl font-bold text-brand-ink">Detail Pesanan</h1>
+          <p className="text-brand-neutral text-sm">{booking.orderNumber || booking.id}</p>
         </div>
       </div>
 
@@ -200,7 +200,7 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
           {passengers.length > 0 && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-slate-100">
-                <h3 className="font-bold text-slate-800">Data Penumpang / Tamu</h3>
+                <h3 className="font-bold text-brand-ink">Data Penumpang / Tamu</h3>
               </div>
               <div className="divide-y divide-slate-50">
                 {passengers.map((p, i) => (
@@ -224,7 +224,7 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
         <div className="space-y-6">
           {/* Status Actions */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-            <h3 className="font-bold text-slate-800">Ubah Status</h3>
+            <h3 className="font-bold text-brand-ink">Ubah Status</h3>
             <div className="space-y-2">
               {STATUS_OPTIONS.map(opt => {
                 const isActive = status === opt.value;
@@ -250,7 +250,7 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
 
           {/* Quick Actions */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-3">
-            <h3 className="font-bold text-slate-800">Aksi Cepat</h3>
+            <h3 className="font-bold text-brand-ink">Aksi Cepat</h3>
             {status === 'refund_requested' && (
               <button
                 onClick={handleProcessRefund}

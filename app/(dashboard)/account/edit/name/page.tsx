@@ -21,7 +21,6 @@ export default function EditNamePage() {
 
   const [name, setName] = useState('');
   const [originalName, setOriginalName] = useState('');
-  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -39,7 +38,6 @@ export default function EditNamePage() {
         if (!res.ok) throw new Error(data.error);
         setName(data.user.name || '');
         setOriginalName(data.user.name || '');
-        setEmail(data.user.email || '');
         setLoaded(true);
       } catch { setLoaded(true); }
     }
