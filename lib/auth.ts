@@ -84,7 +84,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         const valid = await bcrypt.compare(credentials.password, user.password);
-        console.log('[Auth] password valid:', valid);
+        console.log('[Auth] password valid:', valid, 'inputLen:', credentials.password?.length, 'hashLen:', user.password?.length);
         if (!valid) {
           console.log('[Auth] password mismatch');
           return null;
