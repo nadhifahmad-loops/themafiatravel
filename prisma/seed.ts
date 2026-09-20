@@ -23,9 +23,7 @@ async function main() {
 
   const admin = await prisma.user.upsert({
     where:  { email: ADMIN_EMAIL! },
-    // Password TIDAK di-update pada seed ulang supaya admin yang sudah ada
-    // tidak pernah ter-reset otomatis ke nilai seed.
-    update: { role: 'admin', name: ADMIN_NAME },
+    update: { role: 'admin', name: ADMIN_NAME, password: hashedPassword },
     create: {
       email:    ADMIN_EMAIL!,
       name:     ADMIN_NAME,
