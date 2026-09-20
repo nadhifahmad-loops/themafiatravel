@@ -345,6 +345,17 @@ const ASIA_DESTINATIONS_BADGE_CLASS = [
 
 const DOMESTIC_CITIES = ['Bali', 'Medan', 'Surabaya', 'Yogyakarta', 'Palembang', 'Lombok', 'Balikpapan', 'Jakarta'];
 
+const DOMESTIC_BADGE: Record<string, { id: string; en: string; color: string }> = {
+  Bali:         { id: 'HEMAT', en: 'SAVE', color: 'bg-brand-orange' },
+  Medan:        { id: 'PROMO', en: 'PROMO', color: 'bg-brand-blue' },
+  Surabaya:     { id: 'PROMO', en: 'PROMO', color: 'bg-brand-blue' },
+  Yogyakarta:   { id: 'HEMAT', en: 'SAVE', color: 'bg-brand-orange' },
+  Palembang:    { id: 'HEMAT', en: 'SAVE', color: 'bg-brand-orange' },
+  Lombok:       { id: 'HEMAT', en: 'SAVE', color: 'bg-brand-orange' },
+  Balikpapan:   { id: 'PROMO', en: 'PROMO', color: 'bg-brand-blue' },
+  Jakarta:      { id: 'PROMO', en: 'PROMO', color: 'bg-brand-blue' },
+};
+
 const DOMESTIC_FLIGHTS: Record<string, { route: string; routeEN: string; dest: string; origin?: string; price: string; img: string }[]> = {
   Bali: [
     { route: 'Jakarta – Bali / Denpasar', routeEN: 'Jakarta – Bali / Denpasar', dest: 'DPS', origin: 'CGK', price: 'Rp 1.239.200', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
@@ -353,37 +364,37 @@ const DOMESTIC_FLIGHTS: Record<string, { route: string; routeEN: string; dest: s
     { route: 'Bandung – Bali / Denpasar', routeEN: 'Bandung – Bali / Denpasar', dest: 'DPS', origin: 'BDG', price: 'Rp 1.100.000', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
   ],
   Medan: [
-    { route: 'Jakarta – Medan / Kualanamu', routeEN: 'Jakarta – Medan / Kualanamu', dest: 'KNO', origin: 'CGK', price: 'Rp 989.000', img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=75' },
-    { route: 'Surabaya – Medan / Kualanamu', routeEN: 'Surabaya – Medan / Kualanamu', dest: 'KNO', origin: 'SUB', price: 'Rp 1.050.000', img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=75' },
-    { route: 'Yogyakarta – Medan / Kualanamu', routeEN: 'Yogyakarta – Medan / Kualanamu', dest: 'KNO', origin: 'JOG', price: 'Rp 980.000', img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=75' },
+    { route: 'Jakarta – Medan / Kualanamu', routeEN: 'Jakarta – Medan / Kualanamu', dest: 'KNO', origin: 'CGK', price: 'Rp 989.000', img: '/images/domestik/medan.png' },
+    { route: 'Surabaya – Medan / Kualanamu', routeEN: 'Surabaya – Medan / Kualanamu', dest: 'KNO', origin: 'SUB', price: 'Rp 1.050.000', img: '/images/domestik/medan.png' },
+    { route: 'Yogyakarta – Medan / Kualanamu', routeEN: 'Yogyakarta – Medan / Kualanamu', dest: 'KNO', origin: 'JOG', price: 'Rp 980.000', img: '/images/domestik/medan.png' },
   ],
   Surabaya: [
-    { route: 'Jakarta – Surabaya / Juanda', routeEN: 'Jakarta – Surabaya / Juanda', dest: 'SUB', origin: 'CGK', price: 'Rp 550.000', img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&q=75' },
-    { route: 'Bandung – Surabaya / Juanda', routeEN: 'Bandung – Surabaya / Juanda', dest: 'SUB', origin: 'BDG', price: 'Rp 580.000', img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&q=75' },
-    { route: 'Yogyakarta – Surabaya / Juanda', routeEN: 'Yogyakarta – Surabaya / Juanda', dest: 'SUB', origin: 'JOG', price: 'Rp 420.000', img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&q=75' },
+    { route: 'Jakarta – Surabaya / Juanda', routeEN: 'Jakarta – Surabaya / Juanda', dest: 'SUB', origin: 'CGK', price: 'Rp 550.000', img: '/images/domestik/surabaya.png' },
+    { route: 'Bandung – Surabaya / Juanda', routeEN: 'Bandung – Surabaya / Juanda', dest: 'SUB', origin: 'BDG', price: 'Rp 580.000', img: '/images/domestik/surabaya.png' },
+    { route: 'Yogyakarta – Surabaya / Juanda', routeEN: 'Yogyakarta – Surabaya / Juanda', dest: 'SUB', origin: 'JOG', price: 'Rp 420.000', img: '/images/domestik/surabaya.png' },
   ],
   Yogyakarta: [
-    { route: 'Jakarta – Yogyakarta / Adisutjipto', routeEN: 'Jakarta – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'CGK', price: 'Rp 480.000', img: 'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=400&q=75' },
-    { route: 'Surabaya – Yogyakarta / Adisutjipto', routeEN: 'Surabaya – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'SUB', price: 'Rp 350.000', img: 'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=400&q=75' },
-    { route: 'Bandung – Yogyakarta / Adisutjipto', routeEN: 'Bandung – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'BDG', price: 'Rp 520.000', img: 'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?w=400&q=75' },
+    { route: 'Jakarta – Yogyakarta / Adisutjipto', routeEN: 'Jakarta – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'CGK', price: 'Rp 480.000', img: '/images/domestik/yogyakarta.png' },
+    { route: 'Surabaya – Yogyakarta / Adisutjipto', routeEN: 'Surabaya – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'SUB', price: 'Rp 350.000', img: '/images/domestik/yogyakarta.png' },
+    { route: 'Bandung – Yogyakarta / Adisutjipto', routeEN: 'Bandung – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'BDG', price: 'Rp 520.000', img: '/images/domestik/yogyakarta.png' },
   ],
   Palembang: [
-    { route: 'Jakarta – Palembang / SMB II', routeEN: 'Jakarta – Palembang / SMB II', dest: 'PLM', origin: 'CGK', price: 'Rp 430.000', img: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=75' },
-    { route: 'Surabaya – Palembang / SMB II', routeEN: 'Surabaya – Palembang / SMB II', dest: 'PLM', origin: 'SUB', price: 'Rp 490.000', img: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=75' },
+    { route: 'Jakarta – Palembang / SMB II', routeEN: 'Jakarta – Palembang / SMB II', dest: 'PLM', origin: 'CGK', price: 'Rp 430.000', img: '/images/domestik/palembang.png' },
+    { route: 'Surabaya – Palembang / SMB II', routeEN: 'Surabaya – Palembang / SMB II', dest: 'PLM', origin: 'SUB', price: 'Rp 490.000', img: '/images/domestik/palembang.png' },
   ],
   Lombok: [
-    { route: 'Jakarta – Lombok / Praya', routeEN: 'Jakarta – Lombok / Praya', dest: 'LOP', origin: 'CGK', price: 'Rp 850.000', img: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&q=75' },
-    { route: 'Surabaya – Lombok / Praya', routeEN: 'Surabaya – Lombok / Praya', dest: 'LOP', origin: 'SUB', price: 'Rp 650.000', img: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&q=75' },
-    { route: 'Yogyakarta – Lombok / Praya', routeEN: 'Yogyakarta – Lombok / Praya', dest: 'LOP', origin: 'JOG', price: 'Rp 720.000', img: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=400&q=75' },
+    { route: 'Jakarta – Lombok / Praya', routeEN: 'Jakarta – Lombok / Praya', dest: 'LOP', origin: 'CGK', price: 'Rp 850.000', img: '/images/domestik/lombok.png' },
+    { route: 'Surabaya – Lombok / Praya', routeEN: 'Surabaya – Lombok / Praya', dest: 'LOP', origin: 'SUB', price: 'Rp 650.000', img: '/images/domestik/lombok.png' },
+    { route: 'Yogyakarta – Lombok / Praya', routeEN: 'Yogyakarta – Lombok / Praya', dest: 'LOP', origin: 'JOG', price: 'Rp 720.000', img: '/images/domestik/lombok.png' },
   ],
   Balikpapan: [
-    { route: 'Jakarta – Balikpapan / SAMS', routeEN: 'Jakarta – Balikpapan / SAMS', dest: 'BPN', origin: 'CGK', price: 'Rp 750.000', img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&q=75' },
-    { route: 'Surabaya – Balikpapan / SAMS', routeEN: 'Surabaya – Balikpapan / SAMS', dest: 'BPN', origin: 'SUB', price: 'Rp 780.000', img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&q=75' },
+    { route: 'Jakarta – Balikpapan / SAMS', routeEN: 'Jakarta – Balikpapan / SAMS', dest: 'BPN', origin: 'CGK', price: 'Rp 750.000', img: '/images/domestik/balikpapan.png' },
+    { route: 'Surabaya – Balikpapan / SAMS', routeEN: 'Surabaya – Balikpapan / SAMS', dest: 'BPN', origin: 'SUB', price: 'Rp 780.000', img: '/images/domestik/balikpapan.png' },
   ],
   Jakarta: [
-    { route: 'Bali – Jakarta / Soetta',     routeEN: 'Bali – Jakarta / Soetta',     dest: 'CGK', origin: 'DPS', price: 'Rp 620.000', img: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=400&q=75' },
-    { route: 'Surabaya – Jakarta / Soetta', routeEN: 'Surabaya – Jakarta / Soetta', dest: 'CGK', origin: 'SUB', price: 'Rp 540.000', img: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=400&q=75' },
-    { route: 'Yogyakarta – Jakarta / Soetta', routeEN: 'Yogyakarta – Jakarta / Soetta', dest: 'CGK', origin: 'JOG', price: 'Rp 380.000', img: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=400&q=75' },
+    { route: 'Bali – Jakarta / Soetta',     routeEN: 'Bali – Jakarta / Soetta',     dest: 'CGK', origin: 'DPS', price: 'Rp 620.000', img: '/images/domestik/jakarta.png' },
+    { route: 'Surabaya – Jakarta / Soetta', routeEN: 'Surabaya – Jakarta / Soetta', dest: 'CGK', origin: 'SUB', price: 'Rp 540.000', img: '/images/domestik/jakarta.png' },
+    { route: 'Yogyakarta – Jakarta / Soetta', routeEN: 'Yogyakarta – Jakarta / Soetta', dest: 'CGK', origin: 'JOG', price: 'Rp 380.000', img: '/images/domestik/jakarta.png' },
   ],
 };
 
@@ -1211,8 +1222,8 @@ export default function LandingPage() {
                   <div className="relative overflow-hidden h-40">
                     <img src={f.img} alt={f.route} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
-                    <span className="absolute top-3 left-3 bg-brand-orange text-white text-[11px] font-black px-3 py-1 rounded-full uppercase shadow-sm">
-                      {isEN ? 'FROM' : 'MULAI'}
+                    <span className={`absolute top-3 left-3 ${DOMESTIC_BADGE[activeDomesticCity]?.color || 'bg-brand-orange'} text-white text-[11px] font-black px-3 py-1 rounded-full uppercase shadow-sm`}>
+                      {DOMESTIC_BADGE[activeDomesticCity] ? (isEN ? DOMESTIC_BADGE[activeDomesticCity].en : DOMESTIC_BADGE[activeDomesticCity].id) : (isEN ? 'PROMO' : 'PROMO')}
                     </span>
                   </div>
                   <div className="p-4">
