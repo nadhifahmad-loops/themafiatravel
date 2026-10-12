@@ -3,6 +3,7 @@ import { memo, useState, useMemo } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { sanitizeInsuranceHtml } from '@/lib/insurance-html';
+import { buildInsuranceSummary, localizeSector } from '@/lib/insurance-summary';
 
 function fmtIDR(n: number) {
   if (!n) return 'Rp 0';
@@ -17,10 +18,20 @@ const PROVIDER_COLORS: Record<string, { bg: string; text: string; border: string
   oona:          { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200',label: 'Oona' },
 };
 
+// Logo provider — taruh file di public/images/insurance/<kode provider>.png
+const PROVIDER_LOGOS: Record<string, string> = {
+  assistcard:    '/images/insurance/assistcard.png',
+  bcainsurance:  '/images/insurance/bcainsurance.png',
+  zurich:        '/images/insurance/zurich.png',
+  great_eastern: '/images/insurance/great_eastern.png',
+  oona:          '/images/insurance/oona.png',
+};
+
 // Bersihkan & render HTML dari provider (BCA, Oona: HTML tabel; AssistCard: plain text + <br>)
-function InfoRenderer({ html }: { html: string }) {
+function InfoRenderer({ html, lang }: { html: string; lang: string }) {
   if (!html?.trim()) return null;
 
+  const t = i18n.insuranceSearch[lang as 'ID' | 'EN'] ?? i18n.insuranceSearch.ID;
   const hasRichHtml = /<(table|tr|td|th|ul|ol|li|div|p)\b/i.test(html);
 
   if (hasRichHtml) {
@@ -48,10 +59,10 @@ function InfoRenderer({ html }: { html: string }) {
       {lines.map((line, i) => {
         const clean = line
           .replace(/^Description:\s*/i, '')
-          .replace(/^Travel type:\s*/i, '')
-          .replace(/^Minimum age:\s*/i, '👶 Min Usia: ')
-          .replace(/^Maximum age:\s*/i, '👴 Maks Usia: ')
-          .replace(/^Age limits:\s*/i, '📋 ');
+          .replace(/^Travel type:\s*/i, `${t.travelType}: `)
+          .replace(/^Minimum age:\s*/i, `👶 ${t.minAge}: `)
+          .replace(/^Maximum age:\s*/i, `👴 ${t.maxAge}: `)
+          .replace(/^Age limits:\s*/i, `📋 ${t.ageLimits}: `);
         return (
           <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
             <i className="fa-solid fa-circle-check text-emerald-500 mt-0.5 shrink-0 text-xs"></i>
@@ -77,17 +88,19 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
   const badge    = PROVIDER_COLORS[provider] || { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200', label: provider.toUpperCase() };
   const price    = product.total_price || 0;
   const info     = product.info || '';
+  const logo     = PROVIDER_LOGOS[provider];
 
-  const summary  = product.service_charge_summary?.[0];
-  const commission = Math.abs(summary?.total_commission || summary?.base_commission || 0);
+  // Label tipe perjalanan: pakai nama dari API bila ada, jika tidak turunkan dari kode.
+  const tripIdText = `${product.type_trip_name || ''} ${product.master_trip_id || ''}`;
+  const tripLabel = product.type_trip_name
+    || (/annual|anual|yearly/i.test(tripIdText)
+      ? t.tripAnnual
+      : /single|short|daily/i.test(tripIdText)
+        ? t.tripSingle
+        : '');
 
-  const limitTags = useMemo(() => {
-    const tags: string[] = [];
-    if (product.minPax != null && product.maxPax != null) tags.push(`${product.minPax}–${product.maxPax} peserta`);
-    if (product.minAdultOld != null && product.maxAdultOld != null) tags.push(`Dewasa ${product.minAdultOld}–${product.maxAdultOld} thn`);
-    if (product.minChildOld != null && product.maxChildOld != null) tags.push(`Anak ${product.minChildOld}–${product.maxChildOld} thn`);
-    return tags;
-  }, [product]);
+  const summary = useMemo(() => buildInsuranceSummary(product, language), [product, language]);
+  const sectorLabel = localizeSector(product.sector_type, language);
 
   return (
     <div className={`bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-lg transition-all duration-200 group ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
@@ -95,20 +108,20 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
       <div className={`px-5 pt-3 pb-0 flex items-center gap-2`}>
         {isCheapest && (
           <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white px-2.5 py-1 rounded-full shadow-sm">
-            <i className="fa-solid fa-tags text-[9px]"></i> Harga Termurah
+            <i className="fa-solid fa-tags text-[9px]"></i> {t.cheapest}
           </span>
         )}
         <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 py-1 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
           {badge.label}
         </span>
-        {product.sector_type && (
+        {sectorLabel && (
           <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
-            {product.sector_type}
+            {sectorLabel}
           </span>
         )}
-        {(product.type_trip_name || product.master_trip_id) && (
+        {tripLabel && (
           <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
-            {product.type_trip_name || (product.master_trip_id === 'single_trip' ? 'Sekali Jalan' : 'Tahunan')}
+            {tripLabel}
           </span>
         )}
       </div>
@@ -116,8 +129,10 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
       <div className="p-5 flex flex-col md:flex-row items-stretch gap-4">
         {/* Kiri: Ikon + Nama */}
         <div className="flex items-start gap-3 md:w-52 shrink-0">
-          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${badge.bg} border ${badge.border}`}>
-            <i className={`fa-solid fa-shield-halved text-xl ${badge.text}`}></i>
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-white border ${badge.border} overflow-hidden`}>
+            {logo
+              ? <img src={logo} alt={badge.label} className="w-10 h-10 object-contain" />
+              : <i className={`fa-solid fa-shield-halved text-xl ${badge.text}`}></i>}
           </div>
           <div className="min-w-0">
             <p className="font-black text-brand-ink text-sm leading-snug">{product.product_name}</p>
@@ -130,31 +145,17 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
           </div>
         </div>
 
-        {/* Tengah: Limit & Info singkat */}
+        {/* Tengah: Ringkasan terstruktur (ID/EN) */}
         <div className="flex-1 flex flex-col justify-center min-w-0">
-          {limitTags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {limitTags.map((t, i) => (
-                <span key={i} className="text-[10px] font-semibold text-slate-500 bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-md">
-                  {t}
-                </span>
+          {summary.length > 0 && (
+            <ul className="space-y-1">
+              {summary.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                  <i className={`fa-solid ${item.icon} text-orange-500 mt-0.5 text-[10px] w-3.5 text-center shrink-0`}></i>
+                  <span className="leading-relaxed">{item.text}</span>
+                </li>
               ))}
-            </div>
-          )}
-
-          {/* Preview 2 baris info */}
-          {info && !showInfo && (
-            <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed"
-               dangerouslySetInnerHTML={{
-                 __html: sanitizeInsuranceHtml(
-                   info
-                     .replace(/<[^>]+>/g, ' ')
-                     .replace(/\s{2,}/g, ' ')
-                     .trim()
-                     .substring(0, 120) + (info.length > 120 ? '...' : '')
-                 )
-               }}
-            />
+            </ul>
           )}
 
           {/* Tombol toggle detail */}
@@ -164,7 +165,7 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
               className="mt-2 text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1 self-start"
             >
               <i className={`fa-solid fa-chevron-${showInfo ? 'up' : 'down'} text-[9px]`}></i>
-              {showInfo ? 'Sembunyikan manfaat' : 'Lihat detail manfaat'}
+              {showInfo ? t.hideBenefits : t.showBenefits}
             </button>
           )}
         </div>
@@ -177,11 +178,6 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
               {fmtIDR(price)}
             </p>
             <p className="text-[10px] text-slate-400 mt-0.5">{t.perPax} / IDR</p>
-            {commission > 0 && (
-              <p className="text-[10px] text-emerald-600 font-bold mt-1">
-                Komisi: {fmtIDR(commission)}
-              </p>
-            )}
           </div>
           <button
             onClick={() => onSelect(product)}
@@ -191,14 +187,14 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
             {isSelecting ? (
               <span className="flex items-center gap-2 justify-center">
                 <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Memproses...
+                {t.processing}
               </span>
             ) : t.selectPlan}
           </button>
           {product.pdf && (
             <a href={product.pdf} target="_blank" rel="noopener noreferrer"
                className="text-[10px] text-slate-400 hover:text-orange-600 mt-1.5 flex items-center gap-1 transition-colors">
-              <i className="fa-solid fa-file-pdf text-[9px]"></i> S&K Lengkap
+              <i className="fa-solid fa-file-pdf text-[9px]"></i> {t.termsPdf}
             </a>
           )}
         </div>
@@ -208,7 +204,7 @@ function InsuranceCard({ product, onSelect, isSelecting, isCheapest = false }: {
       {showInfo && info && (
         <div className="px-5 pb-5 bg-slate-50 border-t border-slate-100">
           <div className="pt-4">
-            <InfoRenderer html={info} />
+            <InfoRenderer html={info} lang={language} />
           </div>
         </div>
       )}

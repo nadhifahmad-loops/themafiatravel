@@ -19,6 +19,10 @@ function formatLocalDate(date: Date) {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
 
 /** Hitung total harga per penumpang dari fare (termasuk admin fee/charge lain) */
 function calcFarePerPax(summary: any): number {
@@ -447,6 +451,77 @@ function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMe
   );
 }
 
+// ─── No Results untuk satu leg (RT/Multi) ─────────────────────────────────────
+// Ditampilkan ketika sebuah leg tidak punya penerbangan, TANPA mereset leg lain
+// yang sudah dipilih user. User bisa cari ulang leg ini, ganti tanggal leg ini,
+// atau menukar asal/tujuan leg ini.
+function LegNoResults({ legIndex, totalLegs, legRoute, legDate, isRT, onRetry, onDateChange, onSwap }: {
+  legIndex: number;
+  totalLegs: number;
+  legRoute: { origin?: string; destination?: string };
+  legDate?: string;
+  isRT: boolean;
+  onRetry: () => void;
+  onDateChange: (date: string) => void;
+  onSwap: () => void;
+}) {
+  const { language } = useLanguage();
+  const t = i18n.flightSearch[language];
+
+  const legLabel = isRT ? (legIndex === 0 ? 'Pergi' : 'Pulang') : `Kota ${legIndex + 1}`;
+  const base = legDate ? parseLocalDate(legDate) : new Date();
+  const offsets = [-2, -1, 0, 1, 2];
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+      <div className="px-6 py-8 text-center">
+        <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <i className="fa-solid fa-plane-slash text-2xl text-orange-300"></i>
+        </div>
+        <p className="text-[11px] font-bold text-orange-600 uppercase tracking-wider mb-1">
+          {legLabel} · {legIndex + 1}/{totalLegs}
+        </p>
+        <h3 className="font-black text-brand-ink text-lg mb-1.5">{t.legNoResultTitle}</h3>
+        {legRoute?.origin && legRoute?.destination && (
+          <p className="text-slate-600 text-sm font-bold">{legRoute.origin} → {legRoute.destination}{legDate ? ` · ${legDate}` : ''}</p>
+        )}
+        <p className="text-slate-400 text-xs max-w-md mx-auto mt-1">{t.legNoResultDesc}</p>
+
+        {/* Date strip khusus leg ini */}
+        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mt-5 mb-2">{t.legOtherDate}</p>
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {offsets.map(offset => {
+            const d = new Date(base);
+            d.setDate(d.getDate() + offset);
+            const dateStr = formatLocalDate(d);
+            const isActive = offset === 0;
+            return (
+              <button key={offset} onClick={() => onDateChange(dateStr)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${isActive ? 'bg-orange-500 border-orange-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-orange-300'}`}>
+                {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2 justify-center mt-5">
+          <button onClick={onRetry} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-colors">
+            <i className="fa-solid fa-rotate-right"></i> {t.legRetry}
+          </button>
+          <button onClick={onSwap} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-white text-slate-600 font-bold rounded-xl text-sm border border-slate-200 hover:border-orange-300 transition-colors">
+            <i className="fa-solid fa-right-left"></i> {t.legSwap}
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 bg-emerald-50/60 px-6 py-3 flex items-center gap-2 justify-center">
+        <i className="fa-solid fa-circle-check text-emerald-500 text-xs"></i>
+        <p className="text-xs text-emerald-700 font-semibold">{t.legKept}</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
 function SkeletonLoader() {
   return (
@@ -533,7 +608,7 @@ function FlightLanding({ onSearch, loading }: { onSearch: (p: any) => void; load
 
   return (
     <>
-      <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
+      <section className="relative z-20 overflow-visible pt-4 md:pt-8 pb-2">
         <div className="max-w-[1280px] mx-auto px-4 md:px-8">
           <div className="mb-6 md:mb-8">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-brand-ink leading-tight tracking-tight">
@@ -771,6 +846,163 @@ function FlightSearchContent() {
     }
   };
 
+  // ── handleSearchLeg: cari ulang SATU leg saja (RT/Multi) ──
+  // Tidak mereset leg lain yang sudah dipilih user. Hasil hanya ditulis ke
+  // scheduleResults[legIndex].
+  const handleSearchLeg = useCallback(async (
+    legIndex: number,
+    overrides?: { origin?: string; destination?: string; departure_date?: string }
+  ) => {
+    const direction = searchMeta?.direction || 'OW';
+    let journey: { origin: string; destination: string; departure_date: string } | null = null;
+    let nextMeta = { ...searchMeta };
+
+    if (direction === 'RT') {
+      if (legIndex === 0) {
+        journey = {
+          origin: overrides?.origin || searchMeta.origin,
+          destination: overrides?.destination || searchMeta.destination,
+          departure_date: overrides?.departure_date || searchMeta.departure_date,
+        };
+        nextMeta = { ...nextMeta, origin: journey.origin, destination: journey.destination, departure_date: journey.departure_date };
+      } else {
+        journey = {
+          origin: overrides?.origin || searchMeta.destination,
+          destination: overrides?.destination || searchMeta.origin,
+          departure_date: overrides?.departure_date || searchMeta.return_date,
+        };
+        nextMeta = { ...nextMeta, return_date: journey.departure_date };
+      }
+    } else if (direction === 'Multi') {
+      const r = (searchMeta.routes || [])[legIndex] || {};
+      journey = {
+        origin: overrides?.origin || r.origin || '',
+        destination: overrides?.destination || r.destination || '',
+        departure_date: overrides?.departure_date || r.departure_date || '',
+      };
+      const newRoutes = (searchMeta.routes || []).map((rr: any, i: number) => (i === legIndex ? { ...rr, ...journey } : rr));
+      nextMeta = { ...nextMeta, routes: newRoutes };
+    } else {
+      journey = {
+        origin: overrides?.origin || searchMeta.origin,
+        destination: overrides?.destination || searchMeta.destination,
+        departure_date: overrides?.departure_date || searchMeta.departure_date,
+      };
+      nextMeta = { ...nextMeta, origin: journey.origin, destination: journey.destination, departure_date: journey.departure_date };
+    }
+
+    if (!journey.origin || !journey.destination || !journey.departure_date) return;
+    const legJourney = journey;
+
+    searchIdRef.current += 1;
+    const currentSearchId = searchIdRef.current;
+
+    setLoading(true);
+    setError('');
+    setSearchMeta(nextMeta);
+    setCurrentLegStep(legIndex);
+    // Kosongkan hanya pilihan leg ini; leg lain tetap.
+    setSelectedLegs(prev => {
+      const next = [...prev];
+      while (next.length < totalLegs) next.push(null);
+      next[legIndex] = null;
+      return next;
+    });
+    setScheduleResults(prev => {
+      const next = [...prev];
+      while (next.length < totalLegs) next.push([]);
+      next[legIndex] = [];
+      return next;
+    });
+    setFilterAirlines([]);
+    setFilterTransit([]);
+    setFilterMaxPrice(null);
+    setFilterDepartureTime([]);
+
+    const providers = FLIGHT_PROVIDERS.map(p => p.id);
+    setSearchedProviders(providers);
+    setProvidersTotal(providers.length);
+    setProvidersDone(0);
+
+    const scheduleMap: Map<number, any[]> = new Map();
+    let networkFailures = 0;
+    let serverFailures = 0;
+
+    const searchOne = async (provider: string) => {
+      try {
+        const res = await fetch('/api/flight/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            direction: 'OW',
+            origin: legJourney.origin,
+            destination: legJourney.destination,
+            departure_date: legJourney.departure_date,
+            adult: searchMeta?.adult || 1,
+            child: searchMeta?.child || 0,
+            infant: searchMeta?.infant || 0,
+            cabin_class: searchMeta?.cabin_class || 'Y',
+            provider,
+          }),
+        });
+        const data = await res.json();
+        if (searchIdRef.current !== currentSearchId) return;
+        if (!res.ok || !data.success) { serverFailures++; return; }
+
+        const perSchedule = parseSchedules(data.data);
+        const journeys = perSchedule[0] || [];
+        const existing = scheduleMap.get(0) || [];
+        const updatedExisting = [...existing];
+
+        journeys.forEach((newJ: any) => {
+          const key = newJ.journey_code || newJ.segments?.[0]?.segment_code;
+          const existingIdx = updatedExisting.findIndex(e => (e.journey_code || e.segments?.[0]?.segment_code) === key);
+          if (existingIdx >= 0) {
+            const oldFare = updatedExisting[existingIdx].segments?.[0]?.fares?.[0]?.service_charge_summary?.[0];
+            const newFare = newJ.segments?.[0]?.fares?.[0]?.service_charge_summary?.[0];
+            const oldPrice = calcFarePerPax(oldFare);
+            const newPrice = calcFarePerPax(newFare);
+            if (newPrice > 0 && (newPrice < oldPrice || oldPrice === 0)) updatedExisting[existingIdx] = newJ;
+          } else {
+            updatedExisting.push(newJ);
+          }
+        });
+
+        scheduleMap.set(0, updatedExisting);
+        setScheduleResults(prev => {
+          const next = [...prev];
+          while (next.length < totalLegs) next.push([]);
+          next[legIndex] = [...updatedExisting];
+          return next;
+        });
+      } catch {
+        if (searchIdRef.current === currentSearchId) networkFailures++;
+      } finally {
+        if (searchIdRef.current === currentSearchId) setProvidersDone(d => d + 1);
+      }
+    };
+
+    await Promise.all(providers.map((p, i) => new Promise<void>(r => setTimeout(() => searchOne(p).finally(r), i * 150))));
+
+    if (searchIdRef.current === currentSearchId) {
+      setLoading(false);
+      const total = Array.from(scheduleMap.values()).reduce((s, a) => s + a.length, 0);
+      if (total === 0) {
+        if (networkFailures >= providers.length) {
+          setError(
+            typeof navigator !== 'undefined' && navigator.onLine === false
+              ? 'Koneksi internet terputus. Periksa sinyalmu lalu coba lagi.'
+              : 'Gagal terhubung ke maskapai. Cek koneksi internetmu lalu coba lagi.'
+          );
+        } else if (serverFailures >= providers.length) {
+          setError('Gagal mendapatkan jadwal dari maskapai. Silakan coba lagi beberapa saat lagi.');
+        } else {
+          setError('Tidak ada penerbangan ditemukan untuk rute ini. Coba ubah tanggal atau rute.');
+        }
+      }
+    }
+  }, [searchMeta, totalLegs]);
+
   // ── Auto-search on mount ──
   useEffect(() => {
     const origin         = searchParamsHook.get('origin');
@@ -936,7 +1168,7 @@ function FlightSearchContent() {
         const { journey, fare } = leg;
         return {
           provider: journey.provider || journey.schedule_provider || searchMeta?.provider || 'citilink',
-          sequence: journey.schedule_sequence || idx + 1,
+          sequence: idx + 1,
           journeys: [{
             segments: (journey.segments || []).map((seg: any) => ({
               segment_code: seg.segment_code,
@@ -1017,7 +1249,7 @@ function FlightSearchContent() {
         const { journey, fare } = leg;
         return {
           provider: journey.provider || journey.schedule_provider || 'citilink',
-          sequence: journey.schedule_sequence || idx + 1,
+          sequence: idx + 1,
           journeys: [{ segments: [{ segment_code: journey.journey_code || journey.segments?.[0]?.segment_code, fare_code: fare?.fare_code }] }]
         };
       }).filter(Boolean);
@@ -1044,6 +1276,30 @@ function FlightSearchContent() {
 
   const isRT    = searchMeta?.direction === 'RT';
   const isMulti = searchMeta?.direction === 'Multi';
+
+  // Rute & tanggal untuk leg yang sedang aktif (dipakai panel no-result per leg)
+  const currentLegRoute = useMemo(() => {
+    if (isRT) {
+      return currentLegStep === 0
+        ? { origin: searchMeta?.origin, destination: searchMeta?.destination }
+        : { origin: searchMeta?.destination, destination: searchMeta?.origin };
+    }
+    if (isMulti) {
+      const r = (searchMeta?.routes || [])[currentLegStep];
+      return { origin: r?.origin, destination: r?.destination };
+    }
+    return { origin: searchMeta?.origin, destination: searchMeta?.destination };
+  }, [isRT, isMulti, currentLegStep, searchMeta]);
+
+  const currentLegDate = useMemo(() => {
+    if (isRT) return currentLegStep === 0 ? searchMeta?.departure_date : searchMeta?.return_date;
+    if (isMulti) return (searchMeta?.routes || [])[currentLegStep]?.departure_date;
+    return searchMeta?.departure_date;
+  }, [isRT, isMulti, currentLegStep, searchMeta]);
+
+  // Tampilkan panel "leg tidak tersedia" kalau ini trip multi-leg dan sudah ada
+  // leg yang dipilih (agar tidak mereset pilihan user).
+  const showLegNoResults = totalLegs > 1 && (currentLegStep > 0 || selectedLegs.some(Boolean));
 
   const toggleFilter = (arr: string[], val: string, setArr: (a: string[]) => void) => {
     setArr(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]);
@@ -1103,7 +1359,7 @@ function FlightSearchContent() {
                 d.setDate(d.getDate() + offset);
                 const dateStr = formatLocalDate(d);
                 return (
-                  <button key={offset} onClick={() => handleSearch({ ...searchMeta, departure_date: dateStr })}
+                  <button key={offset} onClick={() => (isRT || isMulti) ? handleSearchLeg(currentLegStep, { departure_date: dateStr }) : handleSearch({ ...searchMeta, departure_date: dateStr })}
                     className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${offset === 0 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>
                     {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
                   </button>
@@ -1368,7 +1624,20 @@ function FlightSearchContent() {
             )}
 
             {error && (
-              <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} onRetry={() => handleSearch(searchMeta)} />
+              showLegNoResults ? (
+                <LegNoResults
+                  legIndex={currentLegStep}
+                  totalLegs={totalLegs}
+                  legRoute={currentLegRoute}
+                  legDate={currentLegDate}
+                  isRT={isRT}
+                  onRetry={() => handleSearchLeg(currentLegStep)}
+                  onDateChange={(date) => handleSearchLeg(currentLegStep, { departure_date: date })}
+                  onSwap={() => handleSearchLeg(currentLegStep, { origin: currentLegRoute.destination, destination: currentLegRoute.origin })}
+                />
+              ) : (
+                <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} onRetry={() => handleSearch(searchMeta)} />
+              )
             )}
 
             {filtered.map((j, i) => (
@@ -1396,7 +1665,20 @@ function FlightSearchContent() {
             )}
 
             {!isSearching && currentJourneys.length === 0 && !error && (
-              <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} />
+              showLegNoResults ? (
+                <LegNoResults
+                  legIndex={currentLegStep}
+                  totalLegs={totalLegs}
+                  legRoute={currentLegRoute}
+                  legDate={currentLegDate}
+                  isRT={isRT}
+                  onRetry={() => handleSearchLeg(currentLegStep)}
+                  onDateChange={(date) => handleSearchLeg(currentLegStep, { departure_date: date })}
+                  onSwap={() => handleSearchLeg(currentLegStep, { origin: currentLegRoute.destination, destination: currentLegRoute.origin })}
+                />
+              ) : (
+                <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} />
+              )
             )}
           </div>
         </div>

@@ -741,8 +741,11 @@ export const trainAPI = {
     provider: string;
   }) => orbisRequest('/booking/train', 'search', params),
 
+  // Sesuai doc RODEXTRIP 1.3.3 — Actions List Train:
+  // endpoint `content`, header action `get_destinations`, body { provider_type: "train" }.
+  // (Sebelumnya salah: endpoint `/booking/train` + action `get_destination` → error 4001 "Invalid action type".)
   getDestinations: () =>
-    orbisRequest('/booking/train', 'get_destination', { provider_type: 'train' }),
+    orbisRequest('/content', 'get_destinations', { provider_type: 'train' }),
 
   getSeatAvailability: (params: { fare_codes: string[]; provider: string }) =>
     orbisRequest('/booking/train', 'get_seat_availability', params),
@@ -925,7 +928,9 @@ export const hotelAPI = {
     provider?: string;
     special_request?: string;
   }) => {
-    const { price_code, search_data, passenger, contact, booker, special_request, provider: _omitProvider, ...rest } = params;
+    const { price_code, search_data, passenger, contact, booker, special_request, ...rest } = params;
+    // §3.8.1.1: `provider` tidak ada di daftar field yang didukung — buang dari payload.
+    delete rest.provider;
     // Doc §3.8.1.1 search_data: checkin_date, checkout_date, destination_id,
     // search_name, adult, child, child_ages, room/rooms, nationality.
     // Strip hotel_id (not documented, may cause Orbis 500).

@@ -1,6 +1,9 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { TriangleAlert, ArrowLeft } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { TriangleAlert, ArrowLeft, X } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { i18n } from '@/lib/i18n';
 
 interface Props {
   active: boolean;
@@ -8,21 +11,76 @@ interface Props {
   description?: string;
   stayLabel?: string;
   leaveLabel?: string;
+  /** Tujuan cadangan bila tombol back ditekan tanpa halaman sebelumnya. */
+  fallbackHref?: string;
 }
 
 // Menjaga pengguna tetap di halaman checkout sampai pemesanan selesai diproses.
 // Menangani: keluar lewat link/klik, tombol back/forward browser, refresh, dan tutup tab.
-// Navigation programatik (router.push) tidak diblokir — hanya tindakan pengguna langsung.
+// Navigasi programatik (router.push) tidak diblokir — hanya tindakan pengguna langsung.
 export default function LeaveGuard({
   active,
-  title = 'Tinggalkan halaman checkout?',
-  description = 'Pemesanan Anda belum selesai diproses. Data yang sudah diisi dapat hilang jika Anda keluar sekarang.',
-  stayLabel = 'Tetap di Sini',
-  leaveLabel = 'Ya, Tinggalkan',
+  title,
+  description,
+  stayLabel,
+  leaveLabel,
+  fallbackHref = '/',
 }: Props) {
+  const router = useRouter();
+  const { language } = useLanguage();
+  const t = i18n.leaveGuard[language];
+
+  const resolvedTitle = title ?? t.title;
+  const resolvedDescription = description ?? t.description;
+  const resolvedStay = stayLabel ?? t.stayLabel;
+  const resolvedLeave = leaveLabel ?? t.leaveLabel;
+
   const [showDialog, setShowDialog] = useState(false);
   const bypassRef = useRef(false);
+  const leavingRef = useRef(false);
+  const stayButtonRef = useRef<HTMLButtonElement>(null);
+  const guardDepthRef = useRef(0);
   const pendingRef = useRef<{ type: 'anchor'; url: string } | { type: 'back' } | null>(null);
+
+  const stay = useCallback(() => {
+    pendingRef.current = null;
+    setShowDialog(false);
+  }, []);
+
+  const leave = useCallback(() => {
+    if (leavingRef.current) return;
+    const pending = pendingRef.current;
+    if (!pending) {
+      setShowDialog(false);
+      return;
+    }
+
+    leavingRef.current = true;
+    bypassRef.current = true;
+    setShowDialog(false);
+
+    if (pending.type === 'anchor' && pending.url) {
+      pendingRef.current = null;
+      window.location.assign(pending.url);
+      return;
+    }
+
+    // pending.type === 'back'
+    pendingRef.current = null;
+    const currentHref = window.location.href;
+    // Guard menyisipkan entri history (bisa >1 saat StrictMode dev). Mundur sebanyak
+    // kedalaman guard + 1 agar langsung meninggalkan halaman pada klik pertama.
+    const steps = Math.max(1, guardDepthRef.current) + 1;
+    window.history.go(-steps);
+
+    // Cadangan: bila tidak ada halaman sebelumnya (checkout dibuka langsung),
+    // go(-2) tidak berpindah — arahkan ke rute aman.
+    window.setTimeout(() => {
+      if (window.location.href === currentHref) {
+        router.push(fallbackHref);
+      }
+    }, 450);
+  }, [router, fallbackHref]);
 
   // Browser-native dialog untuk refresh / tutup tab (beforeunload).
   useEffect(() => {
@@ -67,81 +125,100 @@ export default function LeaveGuard({
   // Intersep tombol back/forward browser (popstate).
   useEffect(() => {
     if (!active) return;
+    // Pertahankan state internal Next App Router saat menyisipkan entri guard.
+    const pushGuard = (countDepth = false) => {
+      window.history.pushState(
+        { ...(window.history.state || {}), __leaveGuard: true },
+        '',
+        window.location.href,
+      );
+      if (countDepth) guardDepthRef.current += 1;
+    };
     const onPopState = () => {
       if (bypassRef.current) return;
+      pushGuard();
       pendingRef.current = { type: 'back' };
-      window.history.pushState(null, '', window.location.href);
       setShowDialog(true);
     };
-    window.history.pushState(null, '', window.location.href);
+    pushGuard(true);
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, [active]);
 
-  // Tutup dialog dengan tombol Escape = tetap di halaman.
+  // ESC = tetap di halaman.
   useEffect(() => {
     if (!showDialog) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        pendingRef.current = null;
-        setShowDialog(false);
-      }
+      if (e.key === 'Escape') stay();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showDialog]);
+  }, [showDialog, stay]);
 
-  const handleLeave = () => {
-    bypassRef.current = true;
-    setShowDialog(false);
-    const pending = pendingRef.current;
-    pendingRef.current = null;
-    if (pending?.type === 'anchor' && pending.url) {
-      window.location.assign(pending.url);
-    } else if (pending?.type === 'back') {
-      window.history.back();
-    }
-  };
+  // Kunci scroll body + fokus ke aksi aman saat dialog terbuka.
+  useEffect(() => {
+    if (!showDialog) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    stayButtonRef.current?.focus();
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [showDialog]);
 
   return (
     <>
       {showDialog && (
         <div
-          className="fixed inset-0 z-[1400] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm animate-fade-in"
-          onClick={() => {
-            pendingRef.current = null;
-            setShowDialog(false);
-          }}
+          role="presentation"
+          className="fixed inset-0 z-[1400] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+          onClick={stay}
         >
           <div
-            className="w-full max-w-sm rounded-2xl bg-white shadow-[0_25px_70px_-15px_rgba(15,23,42,0.4)] animate-pop-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-guard-title"
+            aria-describedby="leave-guard-desc"
+            className="relative w-full max-w-[380px] rounded-3xl bg-white shadow-[0_30px_80px_-20px_rgba(15,23,42,0.5)] ring-1 ring-slate-900/5 overflow-hidden animate-pop-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6 pb-5">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
-                <TriangleAlert className="w-6 h-6 text-amber-500" />
+            <button
+              type="button"
+              onClick={stay}
+              aria-label={language === 'EN' ? 'Close' : 'Tutup'}
+              className="absolute top-4 right-4 w-9 h-9 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="px-6 pt-7 pb-2">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 ring-4 ring-amber-100 flex items-center justify-center mb-4">
+                <TriangleAlert className="w-6 h-6 text-white" />
               </div>
-              <h2 className="text-base font-bold text-slate-900 leading-snug">{title}</h2>
-              <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">{description}</p>
+              <h2 id="leave-guard-title" className="text-base font-bold text-slate-900 leading-snug pr-6">
+                {resolvedTitle}
+              </h2>
+              <p id="leave-guard-desc" className="text-sm text-slate-500 mt-1.5 leading-relaxed">
+                {resolvedDescription}
+              </p>
             </div>
-            <div className="px-6 pb-6 flex flex-col sm:flex-row gap-2.5">
+
+            <div className="px-6 pt-4 pb-6 flex flex-col-reverse sm:flex-row gap-2.5">
               <button
                 type="button"
-                onClick={() => {
-                  pendingRef.current = null;
-                  setShowDialog(false);
-                }}
-                className="flex-1 px-4 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold transition-colors"
-              >
-                {stayLabel}
-              </button>
-              <button
-                type="button"
-                onClick={handleLeave}
-                className="flex-1 px-4 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+                onClick={leave}
+                className="flex-1 px-4 py-3 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-800 text-sm font-bold transition-colors flex items-center justify-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
               >
                 <ArrowLeft className="w-4 h-4" />
-                {leaveLabel}
+                {resolvedLeave}
+              </button>
+              <button
+                ref={stayButtonRef}
+                type="button"
+                onClick={stay}
+                className="flex-1 px-4 py-3 rounded-xl bg-brand-orange hover:bg-orange-600 text-white text-sm font-bold transition-colors shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2"
+              >
+                {resolvedStay}
               </button>
             </div>
           </div>

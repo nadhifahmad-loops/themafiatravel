@@ -19,6 +19,7 @@ import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 import UnifiedNavbar from '@/components/layout/UnifiedNavbar';
 import Footer from '@/components/layout/Footer';
+import SupportWidget from '@/components/layout/SupportWidget';
 import FlightSearchForm from '@/components/flight/FlightSearchForm';
 import TrainSearchForm from '@/components/train/TrainSearchForm';
 import InsuranceSearchForm from '@/components/insurance/InsuranceSearchForm';
@@ -838,14 +839,6 @@ export default function LandingPage() {
     promoRowRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
   };
 
-  const [showTop, setShowTop] = useState(false);
-  useEffect(() => {
-    const onScroll = () => setShowTop(window.scrollY > 600);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    onScroll();
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-
 
   return (
     <main className="bg-brand-bgLight min-h-screen">
@@ -854,7 +847,7 @@ export default function LandingPage() {
       {/* ══════════════════════════════════════════════════════
           1. HERO SECTION
       ══════════════════════════════════════════════════════ */}
-      <section className="relative z-10 pt-[120px] md:pt-[132px] pb-16 md:pb-20 overflow-hidden">
+      <section className="relative z-10 pt-[120px] md:pt-[132px] pb-16 md:pb-20 overflow-visible">
         {/* Hero card */}
         <div className="max-w-[1280px] mx-auto px-4 md:px-8">
           <div className="relative rounded-3xl md:rounded-[36px] overflow-hidden min-h-[400px] md:min-h-[520px] flex flex-col justify-between p-6 sm:p-10 lg:p-14 shadow-floating bg-slate-900">
@@ -1448,25 +1441,6 @@ export default function LandingPage() {
       </AnimatePresence>
 
       {/* ══════════════════════════════════════════════════════
-          BACK TO TOP
-      ══════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {showTop && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.7, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.7, y: 20 }}
-            transition={{ duration: 0.25 }}
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            aria-label={isEN ? 'Back to top' : 'Kembali ke atas'}
-            className="fixed bottom-6 left-6 z-[900] w-12 h-12 rounded-full bg-orange-600 text-white shadow-xl shadow-orange-600/40 flex items-center justify-center hover:bg-orange-700 hover:-translate-y-1 transition-all"
-          >
-            <i className="fa-solid fa-arrow-up text-sm" />
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      {/* ══════════════════════════════════════════════════════
           LOGIN POPUP (untuk favorit)
       ══════════════════════════════════════════════════════ */}
       <AnimatePresence>
@@ -1621,6 +1595,8 @@ export default function LandingPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <SupportWidget />
     </main>
   );
 }

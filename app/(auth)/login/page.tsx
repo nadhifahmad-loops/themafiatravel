@@ -22,7 +22,8 @@ export default function LoginPage() {
   // Menangkap URL asal untuk redirect otomatis setelah login.
   // Sanitasi untuk mencegah open redirect (hanya URL internal yang diizinkan).
   const searchParams = useSearchParams();
-  const callbackUrl = safeCallbackUrl(searchParams.get('callbackUrl'));
+  const rawCallback = searchParams.get('callbackUrl');
+  const callbackUrl = safeCallbackUrl(rawCallback);
 
   // ─── Pengaman ekstra: jika user SEBENARNYA sudah login (cookie sesi ada di browser)
   // tapi navigasi gagal/terblokir, halaman login otomatis pindah ke callbackUrl.
@@ -300,7 +301,7 @@ export default function LoginPage() {
             <div className="mt-8 text-center">
               <p className="text-sm text-slate-500 font-medium">
                 {t.noAccount}{' '}
-                <Link href="/register" className="text-orange-600 font-bold hover:underline underline-offset-4">
+                <Link href={rawCallback ? `/register?callbackUrl=${encodeURIComponent(callbackUrl)}` : '/register'} className="text-orange-600 font-bold hover:underline underline-offset-4">
                   {t.registerLink}
                 </Link>
               </p>

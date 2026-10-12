@@ -7,13 +7,14 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 
+// Gambar per kota (disamakan dengan pola beranda: public/images/domestik/<kota>.png)
 const POPULAR_HOTEL_DESTINATIONS = [
-  { destination_id: 'ID8731', name: 'Bali',        nameEN: 'Bali',        price: 750000,  img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600&q=80' },
-  { destination_id: 'ID339',  name: 'Jakarta',     nameEN: 'Jakarta',     price: 380000,  img: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=600&q=80' },
-  { destination_id: 'ID8735', name: 'Yogyakarta',  nameEN: 'Yogyakarta',  price: 450000,  img: 'https://images.unsplash.com/photo-1580981568153-81e4a20bf7ec?w=600&q=80' },
-  { destination_id: 'ID8734', name: 'Bandung',     nameEN: 'Bandung',     price: 400000,  img: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=600&q=80' },
-  { destination_id: 'ID8732', name: 'Surabaya',    nameEN: 'Surabaya',    price: 350000,  img: 'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=600&q=80' },
-  { destination_id: 'SG7355', name: 'Singapura',   nameEN: 'Singapore',   price: 1500000, img: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=600&q=80' },
+  { destination_id: 'ID8731', name: 'Bali',        nameEN: 'Bali',        price: 750000,  img: '/images/domestik/bali.png' },
+  { destination_id: 'ID339',  name: 'Jakarta',     nameEN: 'Jakarta',     price: 380000,  img: '/images/domestik/jakarta.png' },
+  { destination_id: 'ID8735', name: 'Yogyakarta',  nameEN: 'Yogyakarta',  price: 450000,  img: '/images/domestik/yogyakarta.png' },
+  { destination_id: 'ID8734', name: 'Bandung',     nameEN: 'Bandung',     price: 400000,  img: '/images/domestik/bandung.png' },
+  { destination_id: 'ID8732', name: 'Surabaya',    nameEN: 'Surabaya',    price: 350000,  img: '/images/domestik/surabaya.png' },
+  { destination_id: 'SG7355', name: 'Singapura',   nameEN: 'Singapore',   price: 1500000, img: '/images/domestik/singapura.png' },
 ];
 
 function formatLocalDate(date: Date): string {
@@ -140,7 +141,7 @@ function NoResultsWithAlternatives({ searchParams, onSearch, onRetry }: { search
             <button key={d.destination_id} onClick={() => quickHotel(d.destination_id)}
               className="group relative overflow-hidden rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
               <div className="aspect-[16/10] relative">
-                <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <img src={d.img} alt={isEN ? d.nameEN : d.name} onError={(e) => { e.currentTarget.src = '/images/background.jpg'; }} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-2.5">
                   <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
@@ -642,7 +643,7 @@ function HotelSearchContent() {
       {/* ── HERO HEADER (landing) ── */}
       {showInitialForm ? (
       <>
-      <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
+      <section className="relative z-20 overflow-visible pt-4 md:pt-8 pb-2">
         <div className="max-w-[1280px] mx-auto px-4 md:px-8">
           <div className="mb-6 md:mb-8">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-brand-ink leading-tight tracking-tight">
@@ -668,7 +669,7 @@ function HotelSearchContent() {
             <button key={d.destination_id} onClick={() => quickHotel(d.destination_id)}
               className="group relative overflow-hidden rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
               <div className="aspect-[16/10] relative">
-                <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <img src={d.img} alt={isEN ? d.nameEN : d.name} onError={(e) => { e.currentTarget.src = '/images/background.jpg'; }} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3">
                   <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>

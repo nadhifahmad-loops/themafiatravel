@@ -1,6 +1,6 @@
 'use client';
 import { Suspense, useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
@@ -8,6 +8,7 @@ import CouponInput from '@/components/checkout/CouponInput';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
+import { buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
 
 const TITLES = ['MR', 'MRS', 'MS', 'MSTR', 'MISS'];
 interface MarkupSettings { flight: number; hotel: number; train: number; insurance: number; }
@@ -24,8 +25,11 @@ function InsuranceCheckoutContent() {
   const tc = i18n.common[language];
   const sp             = useSearchParams();
   const router         = useRouter();
+  const pathname       = usePathname();
   const { data: session, status } = useSession();
   const isGuest = status !== 'authenticated';
+  // Callback agar guest kembali ke halaman checkout ini setelah login/register.
+  const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
 
   const productCode  = sp.get('product_code') || '';
   const packageId    = sp.get('package') || '1';
@@ -143,7 +147,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
   return (
     <>
       <div className="bg-slate-50 min-h-screen">
-        <LeaveGuard active={!checkoutDone} />
+        <LeaveGuard active={!checkoutDone} fallbackHref="/insurance/search" />
         {/* Header */}
         <div className="bg-white border-b border-slate-200 py-4 px-6">
           <div className="max-w-[1280px] mx-auto flex items-center justify-between">
@@ -166,7 +170,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
                 <div>
                   <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
-                  <p className="text-xs text-slate-400"><Link href="/login" className="text-slate-600 underline">Masuk</Link> atau <Link href="/register" className="text-slate-600 underline">daftar</Link> untuk melihat riwayat polis.</p>
+                  <p className="text-xs text-slate-400"><Link href={`/login?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">Masuk</Link> atau <Link href={`/register?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">daftar</Link> untuk melihat riwayat polis.</p>
                 </div>
               </div>
             </div>
@@ -320,7 +324,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
                     {dateEnd && <div className="flex justify-between"><span className="text-slate-500">Selesai</span><span className="font-semibold text-slate-700">{fmtDate(dateEnd)}</span></div>}
                     <div className="flex justify-between"><span className="text-slate-500">Durasi</span><span className="font-semibold text-slate-700">{nights} hari</span></div>
                     <div className="flex justify-between"><span className="text-slate-500">Peserta</span><span className="font-semibold text-slate-700">{paxCount} orang</span></div>
-                    {tripType && <div className="flex justify-between"><span className="text-slate-500">Tipe</span><span className="font-semibold text-slate-700">{tripType === 'annual_trip' ? 'Tahunan' : 'Sekali Jalan'}</span></div>}
+                    {tripType && <div className="flex justify-between"><span className="text-slate-500">Tipe</span><span className="font-semibold text-slate-700">{/annual|anual|yearly/i.test(String(tripType)) ? 'Tahunan' : 'Sekali Jalan'}</span></div>}
                     {sectorType && <div className="flex justify-between"><span className="text-slate-500">Sektor</span><span className="font-semibold text-slate-700">{sectorType}</span></div>}
                   </div>
 

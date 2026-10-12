@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import DatePicker from 'react-datepicker';
@@ -14,7 +14,7 @@ import LeaveGuard from '@/components/checkout/LeaveGuard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
-import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, isValidPassportExpiry, parsePhoneWithCode, scrollToFirstError } from '@/lib/checkout-utils';
+import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, isValidPassportExpiry, parsePhoneWithCode, scrollToFirstError, buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
 import CouponInput from '@/components/checkout/CouponInput';
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 
@@ -367,9 +367,13 @@ function FlightCheckoutContent() {
   const t = i18n.flightCheckout[language];
   const tc = i18n.common[language];
   const router = useRouter();
+  const pathname = usePathname();
+  const sp = useSearchParams();
   const { data: session, status } = useSession();
   const isGuest = status !== 'authenticated';
   const isSubmittingRef = useRef(false);
+  // Callback agar guest kembali ke halaman checkout ini setelah login/register.
+  const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
 
   usePageTitle('Pembayaran Pesawat');
 
@@ -723,13 +727,13 @@ function FlightCheckoutContent() {
   return (
     <div className="min-h-screen bg-slate-50 pt-[56px]">
       <CheckoutNavbar />
-      <LeaveGuard active={!checkoutDone} />
+      <LeaveGuard active={!checkoutDone} fallbackHref="/flight/search" />
 
       {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-[56px] z-10">
         <div className="max-w-[1280px] mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <button onClick={()=>router.push('/flight/search')} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
+            <button onClick={()=>router.back()} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
               ← {tc.back}
             </button>
             <div className="flex items-center gap-2">
@@ -773,7 +777,7 @@ function FlightCheckoutContent() {
               <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
               <div>
                 <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
-                <p className="text-xs text-slate-400"><Link href="/login" className="text-slate-600 underline">Masuk</Link> atau <Link href="/register" className="text-slate-600 underline">daftar</Link> untuk melihat riwayat pesanan.</p>
+                <p className="text-xs text-slate-400"><Link href={`/login?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">Masuk</Link> atau <Link href={`/register?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">daftar</Link> untuk melihat riwayat pesanan.</p>
               </div>
             </div>
           </div>

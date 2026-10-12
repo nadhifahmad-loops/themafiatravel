@@ -1,9 +1,42 @@
 'use client';
 
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
+import { getSupportWhatsAppUrl, SUPPORT_EMAIL } from '@/lib/support';
+
+const SUPPORT_WA_LINK = 'text-blue-600 font-semibold hover:underline underline-offset-2 transition-colors';
+
+function linkify(text: string): ReactNode[] {
+  const waUrl = getSupportWhatsAppUrl('Halo The Mafia Travel, saya butuh bantuan dari tim support.');
+  const regex = /(WhatsApp|support@themafiatravel\.com)/g;
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    const token = match[0];
+    if (token === 'WhatsApp') {
+      parts.push(
+        <a key={key++} href={waUrl} target="_blank" rel="noopener noreferrer" className={SUPPORT_WA_LINK}>
+          WhatsApp
+        </a>
+      );
+    } else {
+      parts.push(
+        <a key={key++} href={`mailto:${token}`} className={SUPPORT_WA_LINK}>
+          {token}
+        </a>
+      );
+    }
+    last = match.index + token.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
 
 export default function HelpPage() {
   const { language } = useLanguage();
@@ -56,7 +89,7 @@ export default function HelpPage() {
               <i className="fa-solid fa-chevron-down text-slate-400 group-open:rotate-180 transition-transform shrink-0 text-[12px] sm:text-[13px]"></i>
             </summary>
             <div className="px-4 sm:px-6 pb-4 text-slate-600 leading-relaxed text-[13px] sm:text-[14px]">
-              {faq.a}
+              {linkify(faq.a)}
             </div>
           </details>
         ))}
@@ -66,6 +99,24 @@ export default function HelpPage() {
         <div className="text-center p-6 sm:p-8 bg-white rounded-2xl border border-slate-100 shadow-card">
           <h3 className="text-lg sm:text-xl font-black text-brand-ink mb-2">{t.stillQuestions}</h3>
           <p className="text-slate-500 font-medium text-[13px] sm:text-[14px]">{t.supportReady}</p>
+          <div className="mt-5 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <a
+              href={getSupportWhatsAppUrl('Halo The Mafia Travel, saya butuh bantuan dari tim support.')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-5 h-11 rounded-full bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
+            >
+              <i className="fa-brands fa-whatsapp text-base"></i>
+              WhatsApp
+            </a>
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className="inline-flex items-center gap-2 px-5 h-11 rounded-full border border-slate-200 text-sm font-bold text-blue-600 hover:bg-blue-50 hover:border-blue-200 transition-colors"
+            >
+              <i className="fa-solid fa-envelope text-base"></i>
+              {SUPPORT_EMAIL}
+            </a>
+          </div>
         </div>
       </section>
     </>

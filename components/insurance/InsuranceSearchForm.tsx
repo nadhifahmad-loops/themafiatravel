@@ -16,6 +16,19 @@ interface Props {
   variant?: FormVariant;
 }
 
+interface ProviderTripConfig {
+  code: string;
+  family: string;
+  dateSetting: number | null;
+}
+
+interface ProviderConfigEntry {
+  trips?: ProviderTripConfig[];
+  supportsSenior?: boolean;
+}
+
+type ProviderConfigMap = Record<string, ProviderConfigEntry>;
+
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const PROVIDERS = [
   { value: 'all',           label: 'Semua Provider',  icon: 'fa-globe' },
@@ -73,10 +86,9 @@ const PROVIDER_AREAS: Record<string, { value: string; label: string }[]> = {
   ],
 };
 
-const TRIP_TYPES = [
-  { value: 'single_trip', label: 'Sekali Jalan' },
-  { value: 'annual_trip', label: 'Tahunan' },
-];
+// Nilai `trip_type` bersifat generik; kode master_trip resmi per provider
+// (mis. great_eastern: DAILY/ANNUALLY) dipetakan backend dari get_config.
+const isAnnualType = (value: unknown) => /annual|anual|yearly/i.test(String(value ?? ''));
 
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
@@ -164,9 +176,26 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData, va
 
   const [provider, setProvider] = useState<string>(initialData?.provider || 'all');
   const [area, setArea]         = useState<string>(initialData?.destination_area || 'Asia');
-  const [tripType, setTripType] = useState<string>(initialData?.trip_type || 'single_trip');
+  const [tripType, setTripType] = useState<string>(() => (isAnnualType(initialData?.trip_type) ? 'annual' : 'single_trip'));
   const [pax, setPax]           = useState<number>(initialData?.pax || 1);
   const [isSenior, setIsSenior] = useState<boolean>(initialData?.is_senior || false);
+
+  // Master data provider (master_trip & date_setting) untuk penentuan tipe & tanggal tahunan.
+  const [providerConfig, setProviderConfig] = useState<ProviderConfigMap | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/insurance/config')
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled && d?.success) setProviderConfig(d.data || {}); })
+      .catch(() => { /* fallback: pakai default 365 hari */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const TRIP_TYPES = [
+    { value: 'single_trip', label: t.singleTrip },
+    { value: 'annual', label: t.annualTrip },
+  ];
 
   const [startDate, setStartDate] = useState<Date | null>(() => {
     if (initialData?.date_start) return new Date(initialData.date_start);
@@ -190,18 +219,52 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData, va
     return () => document.removeEventListener('mousedown', outside);
   }, []);
 
-  // Reset area when provider changes
+  // Reset area when provider changes (dan turunkan tipe tahunan bila provider
+  // baru tidak menyediakannya — mis. Zurich hanya single trip).
   const handleProviderChange = (val: string) => {
     setProvider(val);
     const areas = PROVIDER_AREAS[val] || PROVIDER_AREAS.all;
     setArea(areas[0].value);
+    if (tripType === 'annual' && val !== 'all') {
+      const cfg = providerConfig?.[val];
+      if (cfg && !(cfg.trips || []).some((x) => x.family === 'annual')) setTripType('single_trip');
+    }
   };
 
   const currentAreas = PROVIDER_AREAS[provider] || PROVIDER_AREAS.all;
 
+  // Provider tanpa opsi tahunan tidak bisa dipilih (mis. Zurich hanya single trip).
+  const providerHasAnnual = useMemo(() => {
+    if (provider === 'all') return true;
+    const cfg = providerConfig?.[provider];
+    if (!cfg) return true; // config belum termuat → biarkan
+    return (cfg.trips || []).some((x) => x.family === 'annual');
+  }, [provider, providerConfig]);
+
+  // date_setting tipe tahunan untuk provider terpilih (default 365 hari).
+  const annualDateSetting = useMemo(() => {
+    if (tripType !== 'annual' || provider === 'all') return 365;
+    const annual = (providerConfig?.[provider]?.trips || []).find((x) => x.family === 'annual');
+    return annual?.dateSetting || 365;
+  }, [tripType, provider, providerConfig]);
+
+  // Tipe efektif: paksa single bila provider tidak punya opsi tahunan.
+  const effectiveTripType = tripType === 'annual' && !providerHasAnnual ? 'single_trip' : tripType;
+
+  // Tanggal selesai tipe tahunan = tanggal mulai + date_setting (dikunci, tanpa
+  // setState di effect — cukup diturunkan saat render).
+  const annualEndDate = useMemo(() => {
+    if (effectiveTripType !== 'annual' || !startDate) return null;
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + annualDateSetting);
+    return d;
+  }, [effectiveTripType, startDate, annualDateSetting]);
+
+  const effectiveEndDate = effectiveTripType === 'annual' ? annualEndDate : endDate;
+
   const nights =
-    startDate && endDate
-      ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000))
+    startDate && effectiveEndDate
+      ? Math.max(1, Math.round((effectiveEndDate.getTime() - startDate.getTime()) / 86400000))
       : 7;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -210,8 +273,8 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData, va
       provider,
       destination_area: area,
       date_start: startDate ? formatLocalDate(startDate) : undefined,
-      date_end:   endDate ? formatLocalDate(endDate) : undefined,
-      trip_type:  tripType,
+      date_end:   effectiveEndDate ? formatLocalDate(effectiveEndDate) : undefined,
+      trip_type:  effectiveTripType,
       pax,
       is_senior:  isSenior,
       nights,
@@ -221,22 +284,48 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData, va
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2 animate-fade-up">
 
-      {/* Baris 1: Toggle */}
-      <div className={`flex gap-1 p-1 rounded-lg w-fit ${vToggle(variant)}`}>
-        {TRIP_TYPES.map(t => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => setTripType(t.value)}
-            className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap ${
-              tripType === t.value
-                ? 'bg-orange-500 text-white shadow-md'
-                : vToggleIdle(variant)
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      {/* Baris 1: Toggle tipe perjalanan (kiri) + checkbox Senior (kanan) */}
+      <div className="flex items-center justify-between gap-2">
+        <div className={`flex gap-1 p-1 rounded-lg w-fit ${vToggle(variant)}`}>
+          {TRIP_TYPES.map(opt => {
+            const disabled = opt.value === 'annual' && !providerHasAnnual;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                disabled={disabled}
+                title={disabled ? t.annualUnsupported : undefined}
+                onClick={() => setTripType(opt.value)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap ${
+                  effectiveTripType === opt.value
+                    ? 'bg-orange-500 text-white shadow-md'
+                    : vToggleIdle(variant)
+                } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <label
+          title={t.seniorHint}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-colors ${
+            isSenior
+              ? vToggle(variant)
+              : variant === 'light'
+                ? 'bg-white border border-slate-200 hover:border-orange-300/50'
+                : 'bg-white/5 border border-white/10 hover:border-white/25'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={isSenior}
+            onChange={() => setIsSenior(!isSenior)}
+            className="accent-orange-500 w-4 h-4"
+          />
+          <span className={`text-[11px] font-medium whitespace-nowrap ${vValue(variant)}`}>{t.senior}</span>
+        </label>
       </div>
 
       {/* Baris 2: Semua field dalam 1 baris */}
@@ -281,27 +370,42 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData, va
           </div>
         </div>
 
-        {/* Tanggal Selesai */}
-        <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
-          <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>
-            {t.return}
-            {nights > 0 && (
-              <span className="ml-1 text-orange-400">· {nights} {tc.night}</span>
-            )}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <i className="fa-regular fa-calendar-check text-orange-500 text-[13px]" />
-            <DatePicker
-              selected={endDate}
-              onChange={(d: Date | null) => setEndDate(d)}
-              minDate={startDate ? new Date(startDate.getTime() + 86400000) : minDateTomorrow}
-              locale="id"
-              className={`bg-transparent text-[13px] font-medium outline-none w-full cursor-pointer ${vValue(variant)}`}
-              dateFormat="dd MMM yyyy"
-              placeholderText="Pilih"
-            />
+        {/* Tanggal Selesai — otomatis & dikunci untuk tipe tahunan */}
+        {effectiveTripType === 'annual' ? (
+          <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center ${vField(variant)}`}>
+            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>
+              {t.return}
+              <span className="ml-1 text-orange-400">· {t.annualLocked}</span>
+            </span>
+            <div className="flex items-center gap-1.5">
+              <i className="fa-solid fa-lock text-orange-500 text-[13px]" />
+              <span className={`text-[13px] font-medium truncate ${vValue(variant)}`}>
+                {effectiveEndDate ? effectiveEndDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
+            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>
+              {t.return}
+              {nights > 0 && (
+                <span className="ml-1 text-orange-400">· {nights} {tc.night}</span>
+              )}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <i className="fa-regular fa-calendar-check text-orange-500 text-[13px]" />
+              <DatePicker
+                selected={endDate}
+                onChange={(d: Date | null) => setEndDate(d)}
+                minDate={startDate ? new Date(startDate.getTime() + 86400000) : minDateTomorrow}
+                locale="id"
+                className={`bg-transparent text-[13px] font-medium outline-none w-full cursor-pointer ${vValue(variant)}`}
+                dateFormat="dd MMM yyyy"
+                placeholderText="Pilih"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Peserta */}
         <div className="relative flex-1 min-w-[140px] shrink-0" ref={paxRef}>
@@ -314,7 +418,7 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData, va
               <div className="flex items-center gap-1.5">
                 <i className="fa-solid fa-users text-orange-500 text-[13px]" />
                 <div className={`text-[13px] font-medium ${vValue(variant)}`}>
-                  {pax} Peserta{isSenior && <span className="ml-1 text-[10px] text-orange-400 font-medium">· Senior</span>}
+                  {pax} Peserta
                 </div>
               </div>
               <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`} />
@@ -343,13 +447,6 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData, va
                   </button>
                 </div>
               </div>
-              <label className={`flex items-center gap-3 cursor-pointer p-2.5 rounded-lg transition-colors ${isSenior ? vToggle(variant) : variant === 'light' ? 'bg-white/60 border border-white/40' : 'bg-white/5 border border-white/10'}`}>
-                <input type="checkbox" checked={isSenior} onChange={() => setIsSenior(!isSenior)} className="accent-orange-500 w-4 h-4" />
-                <div>
-                  <span className={`text-[13px] font-medium block ${vValue(variant)}`}>Peserta Senior</span>
-                  <span className={`text-[10px] ${vSub(variant)}`}>Usia 65 tahun ke atas</span>
-                </div>
-              </label>
             </div>
           )}
         </div>

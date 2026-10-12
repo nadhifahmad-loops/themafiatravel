@@ -146,7 +146,7 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
             {/* RIGHT: UTILITY CLUSTER */}
             <div className="flex items-center gap-3 md:gap-4">
                             {!user && showLanguageToggle && (
-                <div className="flex items-center rounded-full bg-slate-100 p-0.5">
+                <div className="hidden xl:flex items-center rounded-full bg-slate-100 p-0.5">
                 {(['ID', 'EN'] as const).map((lang) => (
                   <button
                     key={lang}
@@ -336,6 +336,29 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
                 <i className="fa-solid fa-circle-question w-5"></i>
                 {t.help}
               </Link>
+
+              {/* Toggle bahasa ID/EN untuk tamu (mis. di halaman /search) */}
+              {showLanguageToggle && (
+                <div className="mt-6 flex items-center justify-between px-4 py-3 rounded-2xl bg-slate-50 border border-slate-100">
+                  <span className="flex items-center gap-3 text-[13px] font-bold text-slate-600">
+                    <i className="fa-solid fa-language text-slate-400 w-5 text-center"></i>
+                    {language === 'ID' ? 'Bahasa' : 'Language'}
+                  </span>
+                  <div className="flex items-center rounded-full bg-white border border-slate-200 p-0.5">
+                    {(['ID', 'EN'] as const).map((lang) => (
+                      <button
+                        key={lang}
+                        onClick={() => setLanguage(lang)}
+                        className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all duration-200 ${
+                          language === lang ? 'bg-brand-orange text-white shadow-sm' : 'text-slate-500'
+                        }`}
+                      >
+                        {lang}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 space-y-3">
                 <Link href="/login" className="w-full flex items-center justify-center py-3.5 rounded-full bg-brand-blue text-white text-sm font-bold shadow-lg shadow-brand-blue/20">

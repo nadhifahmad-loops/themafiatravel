@@ -59,7 +59,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const session = token ? { user: { id: token.sub || '', name: token.name || '', email: token.email || '', image: token.picture || null } } : null;
 
   return (
-    <html lang="id">
+    <html lang="id" data-scroll-behavior="smooth">
       <head>
         <meta httpEquiv="Content-Security-Policy" content={csp} />
         <link

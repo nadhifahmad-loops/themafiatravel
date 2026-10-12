@@ -63,6 +63,9 @@ export async function POST(req: NextRequest) {
     return apiSuccess({ message: 'Jika email terdaftar, link reset password telah dikirim. Periksa inbox atau folder spam kamu.' });
   } catch (e: any) {
     console.error('[Forgot Password]', e.message);
-    return apiError('Gagal memproses permintaan reset password', 500);
+    if (e?.message === 'RESEND_API_KEY not configured') {
+      return apiError('Layanan email belum dikonfigurasi. Hubungi admin untuk mengaktifkan fitur lupa password.', 503);
+    }
+    return apiError('Terjadi kesalahan pada server. Silakan coba lagi.', 500);
   }
 }

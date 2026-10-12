@@ -3,6 +3,15 @@
 // Dipakai oleh: flight, train, hotel, insurance
 // ============================================================
 
+// Membangun callbackUrl agar pengguna kembali ke halaman checkout yang sama
+// setelah login/register. Query string wajib disertakan karena halaman checkout
+// hotel/train/insurance membaca data dari parameter URL. Hasil sudah ter-encode
+// sehingga siap ditempel langsung pada href (mis. `/login?callbackUrl=${cb}`).
+export function buildCheckoutCallbackUrl(pathname: string, search?: string | null): string {
+  const qs = (search || '').replace(/^\?/, '');
+  return encodeURIComponent(pathname + (qs ? `?${qs}` : ''));
+}
+
 export function isValidName(value: string): boolean {
   return value.trim().length >= 2;
 }

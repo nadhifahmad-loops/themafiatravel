@@ -1,13 +1,13 @@
 'use client';
 import { Suspense, useState, useEffect, useRef } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
-import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, parsePhoneWithCode, scrollToFirstError } from '@/lib/checkout-utils';
+import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, parsePhoneWithCode, scrollToFirstError, buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
 import CouponInput from '@/components/checkout/CouponInput';
 
 const TITLES = ['MR', 'MRS', 'MS'];
@@ -105,9 +105,12 @@ function TrainCheckoutContent() {
 
   const sp = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, status } = useSession();
   const isGuest = status !== 'authenticated';
   const isSubmittingRef = useRef(false);
+  // Callback agar guest kembali ke halaman checkout ini setelah login/register.
+  const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
 
   const origin       = sp.get('origin') || '';
   const destination  = sp.get('destination') || '';
@@ -240,7 +243,7 @@ function TrainCheckoutContent() {
   const selectCls = inputCls + ' cursor-pointer appearance-none';
 
   return (    <div className="min-h-screen bg-slate-50">
-      <LeaveGuard active={!checkoutDone} />
+      <LeaveGuard active={!checkoutDone} fallbackHref="/train/search" />
       <div className="bg-white border-b border-slate-200 sticky top-16 z-10">
         <div className="max-w-[1280px] mx-auto flex items-center justify-between px-4 py-3">
           <button onClick={() => router.back()} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
@@ -262,7 +265,7 @@ function TrainCheckoutContent() {
               <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
               <div>
                 <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
-                <p className="text-xs text-slate-400"><Link href="/login" className="text-slate-600 underline">Masuk</Link> atau <Link href="/register" className="text-slate-600 underline">daftar</Link> untuk melihat e-tiket.</p>
+                <p className="text-xs text-slate-400"><Link href={`/login?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">Masuk</Link> atau <Link href={`/register?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">daftar</Link> untuk melihat e-tiket.</p>
               </div>
             </div>
           </div>

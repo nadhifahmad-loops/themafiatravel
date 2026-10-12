@@ -257,7 +257,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, product, searchMeta, priceDat
                 { icon: 'fa-calendar-check', label: 'Selesai',     val: fmtDate(searchMeta?.date_end) },
                 { icon: 'fa-clock',          label: 'Durasi',      val: `${nights} ${t.days}` },
                 { icon: 'fa-users',          label: 'Peserta',     val: `${searchMeta?.pax || 1} orang` },
-                { icon: 'fa-plane',          label: t.type,        val: searchMeta?.trip_type === 'annual_trip' ? 'Tahunan' : 'Perjalanan Tunggal' },
+                { icon: 'fa-plane',          label: t.type,        val: /annual|anual|yearly/i.test(String(searchMeta?.trip_type || '')) ? t.tripAnnual : t.tripSingle },
               ].filter(r => r.val).map((r, i) => (
                 <div key={i} className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-500">
@@ -456,7 +456,6 @@ function InsuranceSearchContent() {
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState('');
   const [searched,       setSearched]       = useState(false);
-  const [providerErrors, setProviderErrors] = useState<Record<string, string>>({});
   const [filterProvider, setFilterProvider] = useState('all');
   const [sortBy,         setSortBy]         = useState<'price_asc' | 'price_desc'>('price_asc');
   const [showTimeout,    setShowTimeout]    = useState(false);
@@ -478,7 +477,7 @@ function InsuranceSearchContent() {
   // ── Auto-search dari homepage ──
   const handleSearch = useCallback(async (params: any) => {
     setLoading(true); setError(''); setProducts([]);
-    setProviderErrors({}); setFilterProvider('all'); setSearched(false);
+    setFilterProvider('all'); setSearched(true);
     setSearchMeta(params);
 
     try {
@@ -514,7 +513,6 @@ function InsuranceSearchContent() {
       if (!res.ok || !data.success) throw new Error(data.error || 'Gagal mencari asuransi');
 
       setProducts(data.data?.all || []);
-      setProviderErrors(data.data?.errors || {});
       setSearched(true);
     } catch (e: any) {
       setError(e instanceof TypeError
@@ -619,7 +617,7 @@ function InsuranceSearchContent() {
   }, [products, filterProvider, sortBy]);
 
   const hasResults = products.length > 0;
-  const noResultsAfterSearch = !loading && searched && !hasResults;
+  const noResultsAfterSearch = !loading && searched && !hasResults && !error;
 
   // ── Paket termurah (badge highlight) ──
   const cheapestKey = useMemo(() => {
@@ -657,7 +655,7 @@ function InsuranceSearchContent() {
 
       {/* ── HERO HEADER (landing) ── */}
       {!searched ? (
-      <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
+      <section className="relative z-20 overflow-visible pt-4 md:pt-8 pb-2">
         <div className="max-w-[1280px] mx-auto px-4 md:px-8">
           <div className="mb-6 md:mb-8">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-brand-ink leading-tight tracking-tight">
@@ -689,21 +687,6 @@ function InsuranceSearchContent() {
 
       {/* ── MAIN LAYOUT ── */}
       <div className="max-w-[1280px] mx-auto px-4 md:px-8 pt-5 pb-10">
-
-        {/* Provider partial errors */}
-        {Object.keys(providerErrors).length > 0 && !loading && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-center gap-2">
-            <div className="flex-1 text-xs text-amber-800">
-              <span className="font-bold">Beberapa provider tidak merespons: </span>
-              {Object.entries(providerErrors).map(([p, _], i) => (
-                <span key={p}>{i > 0 ? ', ' : ''}{PROVIDER_BADGE[p]?.label || p}</span>
-              ))}
-            </div>
-            <button onClick={() => setProviderErrors({})} className="text-amber-400 hover:text-amber-600 transition-colors shrink-0">
-              <i className="fa-solid fa-xmark text-sm"></i>
-            </button>
-          </div>
-        )}
 
         {/* Loading with filter skeleton */}
         {loading && (

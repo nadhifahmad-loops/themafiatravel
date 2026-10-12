@@ -26,13 +26,14 @@ const CABIN_LABELS: Record<string, string> = {
   E: 'Eksekutif', B: 'Bisnis', K: 'Ekonomi', P: 'Prioritas',
 };
 
+// Gambar per kota tujuan (disamakan dengan pola beranda: public/images/domestik/<kota>.png)
 const POPULAR_TRAIN_ROUTES = [
-  { origin: 'GMR', destination: 'BD',  name: 'Jakarta – Bandung',    nameEN: 'Jakarta – Bandung',    price: 75000,  img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&q=80' },
-  { origin: 'GMR', destination: 'YK',  name: 'Jakarta – Yogyakarta', nameEN: 'Jakarta – Yogyakarta', price: 200000, img: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=600&q=80' },
-  { origin: 'GMR', destination: 'SGU', name: 'Jakarta – Surabaya',   nameEN: 'Jakarta – Surabaya',   price: 180000, img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=600&q=80' },
-  { origin: 'BD',  destination: 'YK',  name: 'Bandung – Yogyakarta', nameEN: 'Bandung – Yogyakarta', price: 120000, img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=600&q=80' },
-  { origin: 'GMR', destination: 'SMC', name: 'Jakarta – Semarang',   nameEN: 'Jakarta – Semarang',   price: 150000, img: 'https://images.unsplash.com/photo-1541592106381-b31e9677c0e5?w=600&q=80' },
-  { origin: 'YK',  destination: 'SGU', name: 'Yogyakarta – Surabaya', nameEN: 'Yogyakarta – Surabaya', price: 95000,  img: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=600&q=80' },
+  { origin: 'GMR', destination: 'BD',  name: 'Jakarta – Bandung',    nameEN: 'Jakarta – Bandung',    price: 75000,  img: '/images/domestik/bandung.png' },
+  { origin: 'GMR', destination: 'YK',  name: 'Jakarta – Yogyakarta', nameEN: 'Jakarta – Yogyakarta', price: 200000, img: '/images/domestik/yogyakarta.png' },
+  { origin: 'GMR', destination: 'SGU', name: 'Jakarta – Surabaya',   nameEN: 'Jakarta – Surabaya',   price: 180000, img: '/images/domestik/surabaya.png' },
+  { origin: 'BD',  destination: 'YK',  name: 'Bandung – Yogyakarta', nameEN: 'Bandung – Yogyakarta', price: 120000, img: '/images/domestik/yogyakarta.png' },
+  { origin: 'GMR', destination: 'SMC', name: 'Jakarta – Semarang',   nameEN: 'Jakarta – Semarang',   price: 150000, img: '/images/domestik/semarang.png' },
+  { origin: 'YK',  destination: 'SGU', name: 'Yogyakarta – Surabaya', nameEN: 'Yogyakarta – Surabaya', price: 95000,  img: '/images/domestik/surabaya.png' },
 ];
 
 function formatLocalDate(date: Date): string {
@@ -84,7 +85,7 @@ function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMe
             <button key={`${d.origin}-${d.destination}`} onClick={() => quickTrain(d)}
               className="group relative overflow-hidden rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
               <div className="aspect-[16/10] relative">
-                <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <img src={d.img} alt={isEN ? d.nameEN : d.name} onError={(e) => { e.currentTarget.src = '/images/train.jpg'; }} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-2.5">
                   <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
@@ -239,7 +240,7 @@ function TrainLanding({ onSearch, loading }: { onSearch: (p: any) => void; loadi
 
   return (
     <>
-      <section className="relative z-10 overflow-hidden pt-4 md:pt-8 pb-2">
+      <section className="relative z-20 overflow-visible pt-4 md:pt-8 pb-2">
         <div className="max-w-[1280px] mx-auto px-4 md:px-8">
           <div className="mb-6 md:mb-8">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-brand-ink leading-tight tracking-tight">
@@ -264,7 +265,7 @@ function TrainLanding({ onSearch, loading }: { onSearch: (p: any) => void; loadi
             <button key={`${r.origin}-${r.destination}`} onClick={() => quickSearch(r)}
               className="group relative overflow-hidden rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-1 text-left">
               <div className="aspect-[4/3] relative">
-                <img src={r.img} alt={isEN ? r.nameEN : r.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                <img src={r.img} alt={isEN ? r.nameEN : r.name} onError={(e) => { e.currentTarget.src = '/images/train.jpg'; }} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3">
                   <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? r.nameEN : r.name}</p>

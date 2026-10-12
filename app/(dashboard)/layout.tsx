@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { usePathname } from 'next/navigation';
 import UnifiedNavbar from '@/components/layout/UnifiedNavbar';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
@@ -8,7 +9,13 @@ import { i18n } from '@/lib/i18n';
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   const { language } = useLanguage();
+  const pathname = usePathname();
   const t = i18n.common[language];
+
+  // Toggle bahasa (ID/EN) hanya untuk TAMU di halaman hasil pencarian.
+  // UnifiedNavbar sudah menahan toggle ini ketika user login (`!user`),
+  // jadi cukup tentukan apakah halaman sekarang termasuk /search.
+  const isSearchPage = pathname?.includes('/search') ?? false;
 
   // FIX: Next.js 16 can cause useSession fetch to hang/fail for guests.
   // Show children after a short timeout even if status is still 'loading'.
@@ -30,7 +37,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-brand-bgLight">
-      <UnifiedNavbar user={session?.user || null} showLanguageToggle={false} />
+      <UnifiedNavbar user={session?.user || null} showLanguageToggle={isSearchPage} />
       <main className="pt-[36px]">{children}</main>
     </div>
   );

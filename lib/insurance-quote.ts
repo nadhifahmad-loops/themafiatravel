@@ -1,4 +1,12 @@
 import { insuranceAPI } from '@/lib/orbis';
+import {
+  addDays,
+  getInsuranceConfig,
+  normalizeTripFamily,
+  resolveProductTypeFromConfig,
+  resolveTripFromConfig,
+  supportsSeniorFromConfig,
+} from '@/lib/insurance-providers';
 
 const PROVIDER_AREAS: Record<string, string[]> = {
   assistcard: ['Europe', 'North America', 'Central America and Caribbean', 'South America', 'Africa', 'Asia', 'Oceania', 'Domestic', 'Receptive', 'Annual Card', 'Multiple Destinations'],
@@ -55,18 +63,28 @@ export async function revalidateInsurancePrice(params: {
   type?: string;
   productType?: string;
 }) {
+  // `type` dari UI generik; kode master_trip resmi & date_setting diambil dari get_config.
+  const family = normalizeTripFamily(params.type);
+  const config = await getInsuranceConfig();
+  const trip = resolveTripFromConfig(config, params.provider, family);
+  const supportsSenior = supportsSeniorFromConfig(config, params.provider);
+  const productType = resolveProductTypeFromConfig(config, params.provider, params.productType || 'individual');
+  const dateEnd = family === 'annual'
+    ? addDays(params.dateStart, trip?.dateSetting ?? 365)
+    : params.dateEnd;
+
   const area = pickArea(params.provider, params.destinationArea || params.destination || 'Asia');
   const result = await insuranceAPI.getAvailability({
     date_start: params.dateStart,
-    date_end: params.dateEnd,
+    date_end: dateEnd,
     pax: params.pax,
     destination: params.destination || '',
-    is_senior: params.isSenior ?? false,
+    is_senior: (params.isSenior ?? false) && supportsSenior,
     international: params.international ?? !/domestic|domestik/i.test(area),
     destination_area: area,
-    type: params.type || 'single_trip',
+    type: trip?.code ?? params.type ?? 'single_trip',
     provider: params.provider,
-    product_type: params.productType || 'individual',
+    product_type: productType,
     carrier_code: params.carrierCode || params.provider,
     age: '',
   }, { timeoutMs: 30000, maxRetries: 1 });

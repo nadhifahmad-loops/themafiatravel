@@ -1,6 +1,12 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResend(): Resend {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY not configured');
+  }
+  return new Resend(apiKey);
+}
 
 export async function sendVerificationEmail({
   to,
@@ -11,6 +17,7 @@ export async function sendVerificationEmail({
   token: string;
   userName: string;
 }) {
+  const resend = getResend();
   const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/user/verify-email?token=${token}`;
 
   await resend.emails.send({
@@ -58,6 +65,7 @@ export async function sendPasswordResetEmail({
   token: string;
   userName: string;
 }) {
+  const resend = getResend();
   const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
 
   await resend.emails.send({
@@ -119,12 +127,9 @@ export async function sendBookingConfirmationEmail({
   const bookingLabel = booking.orderNumber || booking.id;
   const amount = booking.totalAmount ? `Rp ${booking.totalAmount.toLocaleString('id-ID')}` : 'Segera cek detail pesanan';
 
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('[Email] RESEND_API_KEY tidak dikonfigurasi; melewati notifikasi booking.');
-    return;
-  }
-
-  await resend.emails.send({
+  try {
+    const resend = getResend();
+    await resend.emails.send({
     from: 'The Mafia Travel <onboarding@resend.dev>',
     to,
     subject: `Pembayaran Berhasil - ${bookingLabel}`,
@@ -161,4 +166,7 @@ export async function sendBookingConfirmationEmail({
       </html>
     `,
   });
+  } catch (err) {
+    console.warn('[Email] RESEND_API_KEY tidak dikonfigurasi; melewati notifikasi booking.');
+  }
 }

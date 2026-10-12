@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { trainAPI } from '@/lib/orbis';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
+interface TrainStationRow {
+  code: string;
+  name: string;
+  city: string;
+  label: string;
+}
+
+interface OrbisCountry {
+  code?: string;
+  destinations?: Array<{ code: string; name: string; city: string; active?: boolean }>;
+}
+
 // Cache sederhana in-memory (daftar stasiun jarang berubah)
-let _cache: any[] | null = null;
+let _cache: TrainStationRow[] | null = null;
 let _cacheAt = 0;
 const CACHE_TTL = 1000 * 60 * 60 * 6; // 6 jam
 
-export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+// Orbis `get_destinations` mengembalikan SELURUH stasiun dunia
+// (~131.000 stasiun / ~13 MB). Karena provider kereta di sini KAI
+// (Indonesia) dan contoh di doc RODEXTRIP hanya berisi Indonesia,
+// kita batasi ke negara Indonesia saja (code "ID") supaya payload
+// yang dikirim ke browser wajar (~300 stasiun).
+const TRAIN_COUNTRY_CODE = 'ID';
 
+export async function GET(req: NextRequest) {
   const ip = getClientIp(req);
   const rateLimit = await checkRateLimit(`search:${ip}`, 'search');
   if (!rateLimit.allowed) {
@@ -29,10 +44,12 @@ export async function GET(req: NextRequest) {
 
     const raw = await trainAPI.getDestinations();
 
-    // Flatten: ambil semua destinations dari semua negara
-    const stations: any[] = [];
-    const countries = Array.isArray(raw) ? raw : [raw];
+    // Flatten: ambil destinations dari negara terkait saja (lihat TRAIN_COUNTRY_CODE)
+    const stations: TrainStationRow[] = [];
+    const countries: OrbisCountry[] = Array.isArray(raw) ? raw : [raw];
+    const matchedCountry = countries.some((c) => c?.code === TRAIN_COUNTRY_CODE);
     for (const country of countries) {
+      if (matchedCountry && country?.code !== TRAIN_COUNTRY_CODE) continue;
       if (Array.isArray(country.destinations)) {
         for (const d of country.destinations) {
           if (d.active !== false) {
@@ -54,8 +71,9 @@ export async function GET(req: NextRequest) {
     _cacheAt = now;
 
     return NextResponse.json({ success: true, data: stations });
-  } catch (e: any) {
-    console.error('[Train Destinations ERROR]', e.message);
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Gagal mengambil daftar stasiun kereta';
+    console.error('[Train Destinations ERROR]', message);
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

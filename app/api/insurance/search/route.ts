@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { insuranceAPI } from '@/lib/orbis';
 import { insuranceSearchSchema, validateBody } from '@/lib/validate';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import {
+  addDays,
+  getInsuranceConfig,
+  normalizeTripFamily,
+  resolveProductTypeFromConfig,
+  resolveTripFromConfig,
+  supportsSeniorFromConfig,
+} from '@/lib/insurance-providers';
 
 // Map destination_area per provider agar API tidak error
 const PROVIDER_AREAS: Record<string, string[]> = {
@@ -126,20 +134,36 @@ export async function POST(req: NextRequest) {
 
     console.log('[INSURANCE SEARCH] Providers:', providerList, '| Area:', destination_area);
 
+    // `type` dari UI bersifat generik ("single_trip" | "annual"). Kode resmi
+    // per provider ("DAILY", "ANNUALLY", "annual_180", ...) diambil dari get_config.
+    const family = normalizeTripFamily(type);
+    const config = await getInsuranceConfig();
+
     // Search semua provider secara parallel
     const searchPromises = providerList.map(async (provider) => {
+      const trip = resolveTripFromConfig(config, provider, family);
+      // Provider tanpa tipe yang diminta (mis. zurich + tahunan) dilewati.
+      if (!trip) {
+        console.log(`[INSURANCE SEARCH] Provider ${provider} tidak punya tipe "${family}", dilewati.`);
+        return { provider, products: [] as InsuranceProduct[], area: '', error: null, skipped: true as const };
+      }
+
+      const supportsSenior = supportsSeniorFromConfig(config, provider);
+      const providerProductType = resolveProductTypeFromConfig(config, provider, product_type);
       const area = pickBestArea(provider, destination_area || (international ? 'Asia' : 'Domestic'));
+      // Tipe tahunan: date_end dihitung dari date_setting provider.
+      const providerDateEnd = family === 'annual' ? addDays(date_start, trip.dateSetting ?? 365) : date_end;
       const payload = {
         date_start,
-        date_end,
+        date_end: providerDateEnd,
         pax: passengerCount,
         destination,
-        is_senior,
+        is_senior: Boolean(is_senior) && supportsSenior,
         international,
         destination_area: area,
-        type,
+        type: trip.code,
         provider,
-        product_type,
+        product_type: providerProductType,
         carrier_code: provider,
         age: '',
       };
@@ -147,14 +171,14 @@ export async function POST(req: NextRequest) {
       try {
         const result = await insuranceAPI.getAvailability(payload, { timeoutMs: 30000, maxRetries: 1 });
         const products = normalizeProducts(result, provider);
-        return { provider, products, area, error: null };
+        return { provider, products, area, error: null, skipped: false as const };
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Provider gagal merespons.';
         const friendlyMessage = /timeout|terputus/i.test(message)
           ? 'Provider tidak merespons dalam 30 detik.'
           : message;
         console.error(`[INSURANCE SEARCH] Provider ${provider} error:`, e);
-        return { provider, products: [], area, error: friendlyMessage };
+        return { provider, products: [] as InsuranceProduct[], area, error: friendlyMessage, skipped: false as const };
       }
     });
 
@@ -164,8 +188,13 @@ export async function POST(req: NextRequest) {
     const allProducts: InsuranceProduct[] = [];
     const providerResults: Record<string, InsuranceProduct[]> = {};
     const errors: Record<string, string> = {};
+    const skippedProviders: string[] = [];
 
     for (const r of results) {
+      if (r.skipped) {
+        skippedProviders.push(r.provider);
+        continue;
+      }
       providerResults[r.provider] = r.products;
       if (r.error) errors[r.provider] = r.error;
       // Tandai produk dengan info provider
@@ -180,7 +209,16 @@ export async function POST(req: NextRequest) {
         all: allProducts,
         byProvider: providerResults,
         errors,
-        meta: { date_start, date_end, pax: passengerCount, destination_area, international, providers: providerList },
+        skippedProviders,
+        meta: {
+          date_start,
+          date_end,
+          pax: passengerCount,
+          destination_area,
+          international,
+          providers: providerList,
+          trip_family: family,
+        },
       },
     });
 

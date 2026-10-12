@@ -1,19 +1,31 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { safeCallbackUrl } from '@/lib/security';
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-brand-bgLight"><div className="w-8 h-8 border-[3px] border-slate-200 border-t-slate-600 rounded-full animate-spin"/></div>}>
+      <RegisterForm />
+    </Suspense>
+  );
+}
+
+function RegisterForm() {
   const { language } = useLanguage();
   const t = i18n.register[language];
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirm: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  // Kembali ke halaman yang memicu register (mis. checkout) setelah berhasil.
+  const searchParams = useSearchParams();
+  const rawCallback = searchParams.get('callbackUrl');
+  const callbackUrl = safeCallbackUrl(rawCallback, '/dashboard');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +68,9 @@ export default function RegisterPage() {
         setError(t.errorAutoLogin);
         setLoading(false);
       } else {
-        router.push('/dashboard');
+        // Navigasi FULL agar cookie sesi terpasang lebih dulu (konsisten dengan /login),
+        // lalu kembali ke halaman checkout/asal bila ada.
+        window.location.href = callbackUrl;
       }
     } catch {
       setError(t.errorServer);
@@ -130,7 +144,7 @@ export default function RegisterPage() {
             <div className="mb-6">
               <button 
                 type="button" 
-                onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
+                onClick={() => signIn('google', { callbackUrl })}
                 className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-slate-200 rounded-lg font-bold text-sm text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
               >
                 <Image src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
@@ -253,7 +267,7 @@ export default function RegisterPage() {
             <div className="mt-8 text-center">
               <p className="text-sm text-slate-500 font-medium">
                 {t.hasAccount}{' '}
-                <Link href="/login" className="text-orange-600 font-bold hover:underline underline-offset-4">
+                <Link href={rawCallback ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}` : '/login'} className="text-orange-600 font-bold hover:underline underline-offset-4">
                   {t.loginLink}
                 </Link>
               </p>

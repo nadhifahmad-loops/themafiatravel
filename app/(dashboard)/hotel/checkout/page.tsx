@@ -1,6 +1,6 @@
 'use client';
 import { Suspense, useState, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
@@ -8,6 +8,7 @@ import CouponInput from '@/components/checkout/CouponInput';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
+import { buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
 
 type Passenger = {
   pax_type: string;
@@ -69,8 +70,11 @@ function CheckoutContent() {
   const tc = i18n.common[language];
   const sp = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, status } = useSession();
   const isGuest = status !== 'authenticated';
+  // Callback agar guest kembali ke halaman checkout ini setelah login/register.
+  const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
 
   const hotelId       = sp.get('hotel_id') || '';
   const priceCode     = sp.get('price_code') || '';
@@ -203,7 +207,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
   return (
     <>
       <div className="min-h-screen bg-slate-50">
-        <LeaveGuard active={!checkoutDone} />
+        <LeaveGuard active={!checkoutDone} fallbackHref="/hotel/search" />
         {/* Header */}
         <div className="bg-white border-b border-slate-200 py-4 px-6">
           <div className="max-w-[1020px] mx-auto flex items-center justify-between">
@@ -226,7 +230,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
                 <div>
                   <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
-                  <p className="text-xs text-slate-400"><Link href="/login" className="text-slate-600 underline">Masuk</Link> atau <Link href="/register" className="text-slate-600 underline">daftar</Link> untuk melihat riwayat pesanan.</p>
+                  <p className="text-xs text-slate-400"><Link href={`/login?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">Masuk</Link> atau <Link href={`/register?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">daftar</Link> untuk melihat riwayat pesanan.</p>
                 </div>
               </div>
             </div>
