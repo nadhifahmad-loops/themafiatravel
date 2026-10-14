@@ -1,11 +1,9 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import DatePicker from 'react-datepicker';
-import "react-datepicker/dist/react-datepicker.css";
-import { registerLocale } from "react-datepicker";
-import { id as localeId } from 'date-fns/locale';
-registerLocale('id', localeId);
+import { format } from 'date-fns';
+import { id as dateFnsId } from 'date-fns/locale';
+import { CalendarField, CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { loadAirportGeo, GeoAirport } from '@/lib/geo';
@@ -352,15 +350,21 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
                 </button>
                 <AirportInput label={tf.to} value={leg.destination} onChange={(v) => { clearError(`dest_${i}`); clearError(`same_${i}`); const n=[...legs]; n[i].destination=v; setLegs(n); }} icon="fa-plane-arrival" variant={variant} error={!!destErr} />
               </div>
-              <div className={`mt-2 px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)} ${dateErr ? vFieldError(variant) : ''}`}>
-                <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{tf.departure}</span>
-                <div className="flex items-center gap-1.5">
-                  <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
-                  <DatePicker selected={leg.date} onChange={(d: Date | null) => { clearError(`date_${i}`); const n=[...legs]; n[i].date=d as Date; setLegs(n); }}
-                    minDate={tomorrow} className={`bg-transparent font-medium outline-none w-full text-[12px] cursor-pointer ${vValue(variant)}`} dateFormat="dd MMM yyyy"
-                    popperClassName="z-[9999]" wrapperClassName="z-[9999] relative" portalId="datepicker-root" />
+              <CalendarField
+                value={leg.date}
+                onChange={(d) => { clearError(`date_${i}`); const n=[...legs]; n[i].date=(d ?? tomorrow) as Date; setLegs(n); }}
+                minDate={tomorrow}
+              >
+                <div className={`mt-2 px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)} ${dateErr ? vFieldError(variant) : ''}`}>
+                  <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{tf.departure}</span>
+                  <div className="flex items-center gap-1.5">
+                    <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
+                    <div className={`font-medium text-[12px] truncate ${vValue(variant)}`}>
+                      {format(leg.date, 'dd MMM yyyy', { locale: dateFnsId })}
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </CalendarField>
             </div>
             );
           })}
@@ -526,25 +530,42 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
             </button>
             <AirportInput label={tf.to} value={destination} onChange={(v) => { clearError('destination'); clearError('same'); setDestination(v); }} icon="fa-plane-arrival" variant={variant} error={!!errors.destination || !!errors.same} />
           </div>
-          <div className={`flex-[0.7] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)} ${errors.departure ? vFieldError(variant) : ''}`}>
-            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{tf.departure}</span>
-            <div className="flex items-center gap-1.5">
-              <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
-              <DatePicker selected={startDate} onChange={(d: Date | null) => { clearError('departure'); setStartDate(d); }} minDate={tomorrow}
-                className={`bg-transparent font-medium outline-none w-full text-[12px] cursor-pointer ${vValue(variant)}`} dateFormat="dd MMM yyyy" placeholderText="Pilih"
-                popperClassName="z-[9999]" wrapperClassName="z-[9999] relative" portalId="datepicker-root" />
-            </div>
-          </div>
-          {tripType === 'RT' && (
-            <div className={`flex-[0.7] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all animate-fade-in ${vField(variant)} ${(errors.return || errors.returnAfter) ? vFieldError(variant) : ''}`}>
-              <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{tf.return}</span>
-              <div className="flex items-center gap-1.5">
-                <i className="fa-regular fa-calendar-check text-orange-500 text-[13px]"></i>
-                <DatePicker selected={endDate} onChange={(d: Date | null) => { clearError('return'); clearError('returnAfter'); setEndDate(d); }} minDate={startDate || tomorrow}
-                  className={`bg-transparent font-medium outline-none w-full text-[12px] cursor-pointer ${vValue(variant)}`} dateFormat="dd MMM yyyy" placeholderText="Pilih"
-                  popperClassName="z-[9999]" wrapperClassName="z-[9999] relative" portalId="datepicker-root" />
+          {tripType === 'RT' ? (
+            <CalendarRangeField
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(r) => { clearError('departure'); clearError('return'); clearError('returnAfter'); setStartDate(r.from); setEndDate(r.to); }}
+              minDate={tomorrow}
+              defaultMonth={startDate ?? tomorrow}
+            >
+              <div className={`flex-1 min-w-[170px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all animate-fade-in ${vField(variant)} ${(errors.departure || errors.return || errors.returnAfter) ? vFieldError(variant) : ''}`}>
+                <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{tf.departure} – {tf.return}</span>
+                <div className="flex items-center gap-1.5">
+                  <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
+                  <div className={`font-medium text-[12px] truncate ${startDate ? vValue(variant) : vSub(variant)}`}>
+                    {startDate
+                      ? `${format(startDate, 'dd MMM', { locale: dateFnsId })}${endDate ? ` – ${format(endDate, 'dd MMM yyyy', { locale: dateFnsId })}` : ' – Pilih pulang'}`
+                      : 'Pilih tanggal'}
+                  </div>
+                </div>
               </div>
-            </div>
+            </CalendarRangeField>
+          ) : (
+            <CalendarField
+              value={startDate}
+              onChange={(d) => { clearError('departure'); setStartDate(d); }}
+              minDate={tomorrow}
+            >
+              <div className={`flex-[0.7] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)} ${errors.departure ? vFieldError(variant) : ''}`}>
+                <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{tf.departure}</span>
+                <div className="flex items-center gap-1.5">
+                  <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
+                  <div className={`font-medium text-[12px] truncate ${startDate ? vValue(variant) : vSub(variant)}`}>
+                    {startDate ? format(startDate, 'dd MMM yyyy', { locale: dateFnsId }) : 'Pilih'}
+                  </div>
+                </div>
+              </div>
+            </CalendarField>
           )}
           <button type="submit" disabled={loading} className={`shrink-0 w-full sm:w-full lg:w-12 h-12 lg:h-full min-h-[52px] flex items-center justify-center rounded-xl ${vBtnSearch(variant)}`}>
             {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> :

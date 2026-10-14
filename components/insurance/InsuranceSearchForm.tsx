@@ -1,13 +1,11 @@
 'use client';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
-import { registerLocale } from 'react-datepicker';
-import { id as localeId } from 'date-fns/locale';
+import { format } from 'date-fns';
+import { id as dateFnsId } from 'date-fns/locale';
+import { CalendarField, CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { type FormVariant, vField, vLabel, vValue, vPanel, vItem, vStepper, vStepBtn, vIconCircle, vToggle, vToggleIdle, vChevron, vFieldLabel, vSub, vBtnSearch } from '@/lib/formVariants';
-registerLocale('id', localeId);
 
 interface Props {
   onSearch: (p: any) => void;
@@ -347,64 +345,60 @@ export default function InsuranceSearchForm({ onSearch, loading, initialData, va
           variant={variant}
         />
 
-        {/* Tanggal Mulai */}
-        <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
-          <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{t.departure}</span>
-          <div className="flex items-center gap-1.5">
-            <i className="fa-regular fa-calendar text-orange-500 text-[13px]" />
-            <DatePicker
-              selected={startDate}
-              onChange={(d: Date | null) => {
-                setStartDate(d);
-                if (d && endDate && d >= endDate) {
-                  const nd = new Date(d); nd.setDate(nd.getDate() + 7);
-                  setEndDate(nd);
-                }
-              }}
-              minDate={minDateTomorrow}
-              locale="id"
-              className={`bg-transparent text-[13px] font-medium outline-none w-full cursor-pointer ${vValue(variant)}`}
-              dateFormat="dd MMM yyyy"
-              placeholderText="Pilih"
-            />
-          </div>
-        </div>
-
-        {/* Tanggal Selesai — otomatis & dikunci untuk tipe tahunan */}
         {effectiveTripType === 'annual' ? (
-          <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center ${vField(variant)}`}>
-            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>
-              {t.return}
-              <span className="ml-1 text-orange-400">· {t.annualLocked}</span>
-            </span>
-            <div className="flex items-center gap-1.5">
-              <i className="fa-solid fa-lock text-orange-500 text-[13px]" />
-              <span className={`text-[13px] font-medium truncate ${vValue(variant)}`}>
-                {effectiveEndDate ? effectiveEndDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+          <>
+            {/* Tanggal Mulai (tahunan) */}
+            <CalendarField value={startDate} onChange={setStartDate} minDate={minDateTomorrow}>
+              <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
+                <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{t.departure}</span>
+                <div className="flex items-center gap-1.5">
+                  <i className="fa-regular fa-calendar text-orange-500 text-[13px]" />
+                  <div className={`text-[12px] font-medium truncate ${startDate ? vValue(variant) : vSub(variant)}`}>
+                    {startDate ? format(startDate, 'dd MMM yyyy', { locale: dateFnsId }) : 'Pilih'}
+                  </div>
+                </div>
+              </div>
+            </CalendarField>
+
+            {/* Tanggal Selesai — otomatis & dikunci untuk tipe tahunan */}
+            <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center ${vField(variant)}`}>
+              <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>
+                {t.return}
+                <span className="ml-1 text-orange-400">· {t.annualLocked}</span>
               </span>
+              <div className="flex items-center gap-1.5">
+                <i className="fa-solid fa-lock text-orange-500 text-[13px]" />
+                <span className={`text-[13px] font-medium truncate ${vValue(variant)}`}>
+                  {effectiveEndDate ? effectiveEndDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                </span>
+              </div>
             </div>
-          </div>
+          </>
         ) : (
-          <div className={`flex-[0.8] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
-            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>
-              {t.return}
-              {nights > 0 && (
-                <span className="ml-1 text-orange-400">· {nights} {tc.night}</span>
-              )}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <i className="fa-regular fa-calendar-check text-orange-500 text-[13px]" />
-              <DatePicker
-                selected={endDate}
-                onChange={(d: Date | null) => setEndDate(d)}
-                minDate={startDate ? new Date(startDate.getTime() + 86400000) : minDateTomorrow}
-                locale="id"
-                className={`bg-transparent text-[13px] font-medium outline-none w-full cursor-pointer ${vValue(variant)}`}
-                dateFormat="dd MMM yyyy"
-                placeholderText="Pilih"
-              />
+          <CalendarRangeField
+            startDate={startDate}
+            endDate={endDate}
+            onChange={(r) => { setStartDate(r.from); setEndDate(r.to); }}
+            minDate={minDateTomorrow}
+            defaultMonth={startDate ?? minDateTomorrow}
+          >
+            <div className={`flex-[1.4] min-w-[170px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
+              <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>
+                {t.departure} – {t.return}
+                {startDate && endDate && nights > 0 && (
+                  <span className="ml-1 text-orange-400">· {nights} {tc.night}</span>
+                )}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <i className="fa-regular fa-calendar text-orange-500 text-[13px]" />
+                <div className={`text-[12px] font-medium truncate ${startDate ? vValue(variant) : vSub(variant)}`}>
+                  {startDate
+                    ? `${format(startDate, 'dd MMM', { locale: dateFnsId })}${endDate ? ` – ${format(endDate, 'dd MMM yyyy', { locale: dateFnsId })}` : ' – Pilih selesai'}`
+                    : 'Pilih tanggal'}
+                </div>
+              </div>
             </div>
-          </div>
+          </CalendarRangeField>
         )}
 
         {/* Peserta */}

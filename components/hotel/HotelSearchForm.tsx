@@ -1,11 +1,9 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import DatePicker from 'react-datepicker';
-import "react-datepicker/dist/react-datepicker.css";
-import { registerLocale } from "react-datepicker";
-import { id as localeId } from 'date-fns/locale';
-registerLocale('id', localeId);
+import { format } from 'date-fns';
+import { id as dateFnsId } from 'date-fns/locale';
+import { CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { type FormVariant, vField, vLabel, vValue, vPanel, vInput, vItem, vSub, vMuted, vCode, vDiv, vSection, vToggle, vToggleIdle, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vFieldLabel, vBtnSearch, vItemBg } from '@/lib/formVariants';
@@ -517,23 +515,25 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
         <DestinationInput label={tfh.destination} value={destination} onChange={setDestination} icon="fa-bed" variant={variant} />
 
         {/* DATE RANGE */}
-        <div className={`flex-[1.5] min-w-[180px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
-          <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{language === 'EN' ? 'Check-in - Check-out' : 'Check-in - Check-out'}</span>
-          <div className="flex items-center gap-1.5">
-            <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
-            <DatePicker
-              selectsRange
-              startDate={dateRange[0]}
-              endDate={dateRange[1]}
-              onChange={setDateRange}
-              minDate={new Date()}
-              className={`bg-transparent text-[13px] font-medium outline-none w-full cursor-pointer ${vValue(variant)}`}
-              dateFormat="dd MMM yyyy"
-              placeholderText={language === 'EN' ? 'Select dates' : 'Pilih tanggal'}
-              locale={language === 'EN' ? undefined : localeId}
-            />
+        <CalendarRangeField
+          startDate={dateRange[0]}
+          endDate={dateRange[1]}
+          onChange={(r) => setDateRange([r.from, r.to])}
+          minDate={new Date()}
+          defaultMonth={dateRange[0] ?? undefined}
+        >
+          <div className={`flex-[1.5] min-w-[180px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
+            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>Check-in - Check-out</span>
+            <div className="flex items-center gap-1.5">
+              <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
+              <div className={`font-medium text-[12px] truncate ${dateRange[0] ? vValue(variant) : vSub(variant)}`}>
+                {dateRange[0]
+                  ? `${format(dateRange[0], 'dd MMM', { locale: dateFnsId })}${dateRange[1] ? ` – ${format(dateRange[1], 'dd MMM yyyy', { locale: dateFnsId })}` : ' – Pilih checkout'}`
+                  : 'Pilih tanggal'}
+              </div>
+            </div>
           </div>
-        </div>
+        </CalendarRangeField>
 
         {renderGuestDropdown()}
 

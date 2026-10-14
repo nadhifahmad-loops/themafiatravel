@@ -3,12 +3,8 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import DatePicker from 'react-datepicker';
-import "react-datepicker/dist/react-datepicker.css";
-import { registerLocale } from "react-datepicker";
-import { id as localeId } from 'date-fns/locale';
-registerLocale('id', localeId);
 import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
+import DatePickerField from '@/components/checkout/DatePickerField';
 import { COUNTRY_CODES } from '@/app/(dashboard)/account/edit/components';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -295,23 +291,15 @@ function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onCh
           </select>
         </div>
         <div><label className={labelCls}>{t.birthDate}</label>
-          <div className="relative">
-            <i className="fa-regular fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[13px] pointer-events-none z-10"></i>
-            <DatePicker
-              id={k('pax_birth')}
-              selected={pax.birth_date ? new Date(pax.birth_date + 'T00:00:00') : null}
-              onChange={(d: Date | null) => onChange(index, 'birth_date', d ? d.toISOString().split('T')[0] : '')}
-              dateFormat="dd MMM yyyy"
-              locale="id"
-              showMonthDropdown
-              showYearDropdown
-              dropdownMode="select"
-              maxDate={new Date()}
-              placeholderText="Pilih tanggal lahir"
-              className={`w-full pl-9 pr-4 py-2.5 bg-white border rounded-lg text-slate-800 text-sm outline-none transition-colors cursor-pointer ${errBirth ? 'border-red-400 focus:border-red-400' : 'border-slate-200 focus:border-slate-400'}`}
-              wrapperClassName="w-full"
-            />
-          </div>
+          <DatePickerField
+            id={k('pax_birth')}
+            value={pax.birth_date}
+            onChange={(iso) => onChange(index, 'birth_date', iso)}
+            error={errBirth}
+            maxDate={new Date()}
+            placeholder="Pilih tanggal lahir"
+            defaultMonth={new Date(2000, 0, 1)}
+          />
           {errBirth && <p className="text-[11px] text-red-600 mt-1">{errBirth}</p>}
         </div>
         <div><label className={labelCls}>{t.gender || 'Jenis Kelamin'}</label>
@@ -333,22 +321,13 @@ function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onCh
         {pax.identity.identity_type==='passport'&&(
           <>
             <div><label className={labelCls}>{t.idExpiry}</label>
-              <div className="relative">
-                <i className="fa-regular fa-calendar absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[13px] pointer-events-none z-10"></i>
-                <DatePicker
-                  selected={pax.identity.identity_expdate ? new Date(pax.identity.identity_expdate + 'T00:00:00') : null}
-                  onChange={(d: Date | null) => onChange(index, 'identity', { ...pax.identity, identity_expdate: d ? d.toISOString().split('T')[0] : '' })}
-                  dateFormat="dd MMM yyyy"
-                  locale="id"
-                  showMonthDropdown
-                  showYearDropdown
-                  dropdownMode="select"
-                  minDate={new Date()}
-                  placeholderText="Pilih tanggal kedaluwarsa"
-                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-sm outline-none transition-colors focus:border-slate-400 cursor-pointer"
-                  wrapperClassName="w-full"
-                />
-              </div>
+              <DatePickerField
+                value={pax.identity.identity_expdate}
+                onChange={(iso) => onChange(index, 'identity', { ...pax.identity, identity_expdate: iso })}
+                minDate={new Date()}
+                endMonth={new Date(new Date().getFullYear() + 15, 11, 31)}
+                placeholder="Pilih tanggal kedaluwarsa"
+              />
             </div>
             <div><label className={labelCls}>{t.idCountry}</label>
               <select value={pax.identity.identity_country_of_issued_code} onChange={e=>onChange(index,'identity',{...pax.identity,identity_country_of_issued_code:e.target.value})} className={selectCls}>
@@ -934,9 +913,6 @@ function FlightCheckoutContent() {
                     <input id="booker_phone" value={booker.mobile} onChange={e=>{setBooker(b=>({...b,mobile:e.target.value.replace(/\D/g,'')})); clearErr('booker_phone');}} className={fieldCls(formErrors.booker_phone)} placeholder="8xxxxxxxxxx"/>
                   </div>
                   {formErrors.booker_phone && <p className="text-[11px] text-red-600 mt-1">{formErrors.booker_phone}</p>}
-                  {!formErrors.booker_phone && booker.mobile && (
-                    <p className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1"><i className="fa-solid fa-circle-check text-[9px]"></i>Nomor terisi otomatis dari akun</p>
-                  )}
                 </div>
                 <div>
                   <label className={labelCls}>{t.contactEmail}</label>

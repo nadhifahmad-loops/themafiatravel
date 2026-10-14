@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import CouponInput from '@/components/checkout/CouponInput';
+import DatePickerField from '@/components/checkout/DatePickerField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
@@ -210,7 +211,13 @@ const [discountAmount, setDiscountAmount] = useState(0);
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                       <div>
                         <label className={labelCls}>{t.birthDate} *</label>
-                        <input type="date" value={pax.birth_date} onChange={e => updatePax(i, 'birth_date', e.target.value)} required className={inp} />
+                        <DatePickerField
+                          value={pax.birth_date}
+                          onChange={(iso) => updatePax(i, 'birth_date', iso)}
+                          maxDate={new Date()}
+                          placeholder="Pilih tanggal lahir"
+                          defaultMonth={new Date(2000, 0, 1)}
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>{t.passport} *</label>
@@ -218,7 +225,13 @@ const [discountAmount, setDiscountAmount] = useState(0);
                       </div>
                       <div>
                         <label className={labelCls}>Paspor Berlaku Sampai *</label>
-                        <input type="date" value={pax.identity.identity_expdate} onChange={e => updatePax(i, 'identity.identity_expdate', e.target.value)} required className={inp} />
+                        <DatePickerField
+                          value={pax.identity.identity_expdate}
+                          onChange={(iso) => updatePax(i, 'identity.identity_expdate', iso)}
+                          minDate={new Date()}
+                          endMonth={new Date(new Date().getFullYear() + 15, 11, 31)}
+                          placeholder="Pilih tanggal kedaluwarsa"
+                        />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">

@@ -7,6 +7,7 @@ import TrainCard from '@/components/train/TrainCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
+import { toLocalISODate } from '@/lib/checkout-utils';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtIDR(n: number) {
@@ -235,7 +236,7 @@ function TrainLanding({ onSearch, loading }: { onSearch: (p: any) => void; loadi
   const quickSearch = (route: { origin: string; destination: string }) => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    onSearch({ origin: route.origin, destination: route.destination, depart: d.toISOString().split('T')[0], adult: 1, infant: 0, direction: 'OW' });
+    onSearch({ origin: route.origin, destination: route.destination, depart: toLocalISODate(d), adult: 1, infant: 0, direction: 'OW' });
   };
 
   return (
@@ -508,7 +509,7 @@ function TrainSearchContent() {
               {[-2, -1, 0, 1, 2].map(offset => {
                 const d = new Date(outDate || todayDefault);
                 d.setDate(d.getDate() + offset);
-                const dateStr = d.toISOString().split('T')[0];
+                const dateStr = toLocalISODate(d);
                 return (
                   <button key={offset} onClick={() => {
                     const params = {...searchMeta};

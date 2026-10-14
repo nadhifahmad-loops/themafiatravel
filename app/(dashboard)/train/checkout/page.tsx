@@ -9,6 +9,7 @@ import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, parsePhoneWithCode, scrollToFirstError, buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
 import CouponInput from '@/components/checkout/CouponInput';
+import DatePickerField from '@/components/checkout/DatePickerField';
 
 const TITLES = ['MR', 'MRS', 'MS'];
 const INFANT_TITLES = ['MSTR', 'MISS'];
@@ -69,7 +70,15 @@ function PassengerForm({ pax, index, fieldCls, labelCls, selectCls, errors, onCh
           </select>
         </div>
         <div><label className={labelCls}>{t.birthDate}</label>
-          <input id={k('pax_birth')} type="date" value={pax.birth_date} onChange={e=>onChange(index,'birth_date',e.target.value)} className={fieldCls(errBirth)}/>
+          <DatePickerField
+            id={k('pax_birth')}
+            value={pax.birth_date}
+            onChange={(iso) => onChange(index, 'birth_date', iso)}
+            error={errBirth}
+            maxDate={new Date()}
+            placeholder="Pilih tanggal lahir"
+            defaultMonth={new Date(2000, 0, 1)}
+          />
           {errBirth && <p className="text-[11px] text-red-600 mt-1">{errBirth}</p>}
         </div>
         <div><label className={labelCls}>{t.idType}</label>
@@ -85,7 +94,13 @@ function PassengerForm({ pax, index, fieldCls, labelCls, selectCls, errors, onCh
         {pax.identity.identity_type==='passport'&&(
           <>
             <div><label className={labelCls}>Berlaku Hingga</label>
-              <input type="date" value={pax.identity.identity_expdate} onChange={e=>onChange(index,'identity',{...pax.identity,identity_expdate:e.target.value})} className={fieldCls()}/>
+              <DatePickerField
+                value={pax.identity.identity_expdate}
+                onChange={(iso) => onChange(index, 'identity', { ...pax.identity, identity_expdate: iso })}
+                minDate={new Date()}
+                endMonth={new Date(new Date().getFullYear() + 15, 11, 31)}
+                placeholder="Pilih tanggal kedaluwarsa"
+              />
             </div>
             <div><label className={labelCls}>Negara Penerbit</label>
               <select value={pax.identity.identity_country_of_issued_code} onChange={e=>onChange(index,'identity',{...pax.identity,identity_country_of_issued_code:e.target.value})} className={selectCls}>
@@ -307,9 +322,6 @@ function TrainCheckoutContent() {
                     <input id="booker_phone" value={contact.mobile} onChange={e=>{setContact(c=>({...c, mobile:e.target.value.replace(/\D/g,'')})); clearErr('booker_phone');}} className={fieldCls(formErrors.booker_phone)} placeholder="8123456xxxx"/>
                   </div>
                   {formErrors.booker_phone && <p className="text-[11px] text-red-600 mt-1">{formErrors.booker_phone}</p>}
-                  {!formErrors.booker_phone && contact.mobile && (
-                    <p className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1"><i className="fa-solid fa-circle-check text-[9px]"></i>Nomor terisi otomatis dari akun</p>
-                  )}
                 </div>
                 <div>
                   <label className={labelCls}>{t.contactEmail}</label>

@@ -12,6 +12,25 @@ export function buildCheckoutCallbackUrl(pathname: string, search?: string | nul
   return encodeURIComponent(pathname + (qs ? `?${qs}` : ''));
 }
 
+// Konversi Date → 'YYYY-MM-DD' memakai komponen tanggal LOKAL (bukan UTC).
+// Dipakai agar memilih 27 Feb tidak tersimpan menjadi 26 Feb di zona WIB (UTC+7).
+export function toLocalISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Konversi 'YYYY-MM-DD' → Date pada tengah malam waktu LOKAL.
+// Aman untuk date picker yang bekerja dengan waktu lokal.
+export function parseLocalISODate(iso: string): Date | null {
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const date = new Date(y, m - 1, d);
+  return isNaN(date.getTime()) ? null : date;
+}
+
 export function isValidName(value: string): boolean {
   return value.trim().length >= 2;
 }

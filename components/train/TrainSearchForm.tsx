@@ -1,11 +1,9 @@
 'use client';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import DatePicker from 'react-datepicker';
-import "react-datepicker/dist/react-datepicker.css";
-import { registerLocale } from "react-datepicker";
-import { id as localeId } from 'date-fns/locale';
-registerLocale('id', localeId);
+import { format } from 'date-fns';
+import { id as dateFnsId } from 'date-fns/locale';
+import { CalendarField, CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { i18n } from '@/lib/i18n';
@@ -286,23 +284,42 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
           </button>
           <StationInput label={t.to} value={destination} onChange={setDestination} stations={stations} icon="fa-train" variant={variant} />
         </div>
-        <div className={`flex-[0.7] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
-          <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{t.departure}</span>
-          <div className="flex items-center gap-1.5">
-            <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
-            <DatePicker selected={startDate} onChange={(d: Date | null) => setStartDate(d)} minDate={minDateToday}
-              className={`bg-transparent font-medium outline-none w-full text-[12px] cursor-pointer ${vValue(variant)}`} dateFormat="dd MMM yyyy" placeholderText="Pilih" />
-          </div>
-        </div>
-        {tripType === 'RT' && (
-          <div className={`flex-[0.7] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all animate-fade-in ${vField(variant)}`}>
-            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>Pulang</span>
-            <div className="flex items-center gap-1.5">
-              <i className="fa-regular fa-calendar-check text-orange-500 text-[13px]"></i>
-              <DatePicker selected={endDate} onChange={(d: Date | null) => setEndDate(d)} minDate={startDate || minDateToday}
-                className={`bg-transparent font-medium outline-none w-full text-[12px] cursor-pointer ${vValue(variant)}`} dateFormat="dd MMM yyyy" placeholderText="Pilih" />
+        {tripType === 'RT' ? (
+          <CalendarRangeField
+            startDate={startDate}
+            endDate={endDate}
+            onChange={(r) => { setStartDate(r.from); setEndDate(r.to); }}
+            minDate={minDateToday}
+            defaultMonth={startDate ?? minDateToday}
+          >
+            <div className={`flex-1 min-w-[170px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all animate-fade-in ${vField(variant)}`}>
+              <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{t.departure} – Pulang</span>
+              <div className="flex items-center gap-1.5">
+                <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
+                <div className={`font-medium text-[12px] truncate ${startDate ? vValue(variant) : vSub(variant)}`}>
+                  {startDate
+                    ? `${format(startDate, 'dd MMM', { locale: dateFnsId })}${endDate ? ` – ${format(endDate, 'dd MMM yyyy', { locale: dateFnsId })}` : ' – Pilih pulang'}`
+                    : 'Pilih tanggal'}
+                </div>
+              </div>
             </div>
-          </div>
+          </CalendarRangeField>
+        ) : (
+          <CalendarField
+            value={startDate}
+            onChange={setStartDate}
+            minDate={minDateToday}
+          >
+            <div className={`flex-[0.7] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
+              <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{t.departure}</span>
+              <div className="flex items-center gap-1.5">
+                <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
+                <div className={`font-medium text-[12px] truncate ${startDate ? vValue(variant) : vSub(variant)}`}>
+                  {startDate ? format(startDate, 'dd MMM yyyy', { locale: dateFnsId }) : 'Pilih'}
+                </div>
+              </div>
+            </div>
+          </CalendarField>
         )}
         {renderPaxDropdown()}
         <button type="submit" disabled={loading} className={`shrink-0 w-full sm:w-full lg:w-12 h-12 lg:h-full min-h-[52px] flex items-center justify-center rounded-xl ${vBtnSearch(variant)}`}>

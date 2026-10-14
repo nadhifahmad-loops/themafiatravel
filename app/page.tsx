@@ -7,11 +7,9 @@ import { useState, Suspense, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
-import { registerLocale } from 'react-datepicker';
-import { id as localeId } from 'date-fns/locale';
-registerLocale('id', localeId);
+import { format } from 'date-fns';
+import { id as dateFnsId } from 'date-fns/locale';
+import { CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { i18n } from '@/lib/i18n';
@@ -230,21 +228,23 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
 
         {/* Date Range */}
         <div className="lg:col-span-3">
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{lang === 'EN' ? 'Check-in - Check-out' : 'Check-in - Check-out'}</label>
-          <div className="flex items-center gap-2 border border-white/30 rounded-lg px-3 py-2 bg-white/50 hover:border-orange-300/50 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-500/10 transition-all duration-200">
-            <i className="fa-regular fa-calendar text-orange-500 text-xs shrink-0" />
-            <DatePicker
-              selectsRange
-              startDate={dateRange[0]}
-              endDate={dateRange[1]}
-              onChange={setDateRange}
-              minDate={new Date()}
-              className="flex-1 outline-none bg-transparent text-sm font-medium text-slate-800"
-              dateFormat="dd MMM yyyy"
-              placeholderText={lang === 'EN' ? 'Select dates' : 'Pilih tanggal'}
-              locale={lang === 'EN' ? undefined : localeId}
-            />
-          </div>
+          <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">Check-in - Check-out</label>
+          <CalendarRangeField
+            startDate={dateRange[0]}
+            endDate={dateRange[1]}
+            onChange={(r) => setDateRange([r.from, r.to])}
+            minDate={new Date()}
+            defaultMonth={dateRange[0] ?? undefined}
+          >
+            <div className="flex items-center gap-2 border border-white/30 rounded-lg px-3 py-2 bg-white/50 hover:border-orange-300/50 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-500/10 transition-all duration-200 cursor-pointer">
+              <i className="fa-regular fa-calendar text-orange-500 text-xs shrink-0" />
+              <span className="flex-1 text-sm font-medium text-slate-800 truncate">
+                {dateRange[0]
+                  ? `${format(dateRange[0], 'dd MMM', { locale: dateFnsId })}${dateRange[1] ? ` – ${format(dateRange[1], 'dd MMM yyyy', { locale: dateFnsId })}` : ''}`
+                  : (lang === 'EN' ? 'Select dates' : 'Pilih tanggal')}
+              </span>
+            </div>
+          </CalendarRangeField>
         </div>
 
         {/* Rooms & Guests */}
@@ -867,17 +867,6 @@ export default function LandingPage() {
 
             {/* Headline */}
             <div className="relative z-10 max-w-2xl pt-4">
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.1 }}
-                className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-brand-blue/10 border border-brand-blue/25 mb-4 backdrop-blur-sm"
-              >
-                <span className="w-2 h-2 rounded-full bg-brand-orange animate-pulse"></span>
-                <span className="text-xs font-bold uppercase tracking-widest text-brand-blue">
-                  {isEN ? 'Explore Indonesia & the World' : 'Jelajahi Indonesia & Dunia'}
-                </span>
-              </motion.div>
               <motion.h1
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -966,39 +955,6 @@ export default function LandingPage() {
             </div>
           </div>
         </motion.div>
-
-        {/* Trust badges */}
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8 mt-10">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-slate-100 shadow-card">
-              <div className="w-12 h-12 rounded-xl bg-brand-blue/10 flex items-center justify-center shrink-0">
-                <i className="fa-solid fa-bolt text-brand-blue text-lg"></i>
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-brand-ink">{isEN ? 'Fast & Easy Booking' : 'Booking Cepat & Mudah'}</h4>
-                <p className="text-xs text-brand-neutral mt-0.5">{isEN ? 'Instant ticket & hotel voucher confirmation' : 'Konfirmasi instan tiket & voucher hotel'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-slate-100 shadow-card">
-              <div className="w-12 h-12 rounded-xl bg-brand-forest/10 flex items-center justify-center shrink-0">
-                <i className="fa-solid fa-shield-halved text-brand-forest text-lg"></i>
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-brand-ink">{isEN ? '100% Secure Transactions' : 'Transaksi 100% Aman'}</h4>
-                <p className="text-xs text-brand-neutral mt-0.5">{isEN ? 'Trusted encryption & refund guarantee' : 'Enkripsi terpercaya & garansi refund'}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-slate-100 shadow-card">
-              <div className="w-12 h-12 rounded-xl bg-brand-orange/10 flex items-center justify-center shrink-0">
-                <i className="fa-solid fa-tags text-brand-orange text-lg"></i>
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-brand-ink">{isEN ? 'Best Price Guarantee' : 'Jaminan Harga Terbaik'}</h4>
-                <p className="text-xs text-brand-neutral mt-0.5">{isEN ? 'Exclusive promos with no hidden fees' : 'Promo eksklusif tanpa biaya tersembunyi'}</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
 
 
