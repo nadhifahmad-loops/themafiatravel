@@ -3,7 +3,6 @@
 import { useSession } from 'next-auth/react';
 import UnifiedNavbar from '@/components/layout/UnifiedNavbar';
 import Footer from '@/components/layout/Footer';
-import SupportWidget from '@/components/layout/SupportWidget';
 
 export default function PublicLayoutWrapper({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
@@ -15,7 +14,6 @@ export default function PublicLayoutWrapper({ children }: { children: React.Reac
         {children}
       </main>
       <Footer />
-      <SupportWidget />
     </div>
   );
 }

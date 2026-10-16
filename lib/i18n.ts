@@ -156,7 +156,7 @@ export const i18n = {
         flights: 'Pesawat',
         hotels: 'Hotel',
         trains: 'Kereta',
-        insurance: 'Asuransi',
+        insurance: 'Asuransi Perjalanan',
       },
       hotel: {
         destination: 'Kota / Destinasi',
@@ -222,7 +222,7 @@ export const i18n = {
         flights: 'Flights',
         hotels: 'Hotels',
         trains: 'Trains',
-        insurance: 'Insurance',
+        insurance: 'Travel Insurance',
       },
       hotel: {
         destination: 'City / Destination',

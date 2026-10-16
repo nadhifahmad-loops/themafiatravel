@@ -107,7 +107,15 @@ function StationInput({ label, value, onChange, stations, icon, variant = 'dark'
 
   useEffect(() => { const s = localStorage.getItem('mafia_recent_stations'); if (s) setRecent(JSON.parse(s)); }, []);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node;
+      // Panel daftar stasiun di-portal ke document.body, sehingga klik di
+      // dalamnya BUKAN bagian dari `ref`. Tanpa pengecualian ini, mousedown di
+      // dalam panel dihitung "klik di luar" → panel menutup sebelum event
+      // click sempat sampai ke item, dan stasiun tidak pernah bisa dipilih.
+      // (Pola yang sama dengan FlightSearchForm.)
+      if (ref.current && !ref.current.contains(t) && !(e.target as HTMLElement).closest?.('[data-floating-panel]')) setOpen(false);
+    };
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, []);
 
@@ -214,7 +222,13 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
     }).catch(() => {});
   }, []);
   useEffect(() => {
-    const h = (e: MouseEvent) => { if (paxRef.current && !paxRef.current.contains(e.target as Node)) setOpenPax(false); };
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node;
+      // Panel penumpang juga di-portal ke document.body — sama seperti
+      // StationInput di atas, klik di dalamnya tidak boleh dihitung "klik di
+      // luar"; tanpa itu tombol +/− tidak akan pernah bisa ditekan.
+      if (paxRef.current && !paxRef.current.contains(t) && !(e.target as HTMLElement).closest?.('[data-floating-panel]')) setOpenPax(false);
+    };
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, []);
 

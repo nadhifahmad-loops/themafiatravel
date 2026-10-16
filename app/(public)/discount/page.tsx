@@ -59,9 +59,9 @@ const PROMOS_ID: Record<string, Promo[]> = {
     { module: 'hotel', title: 'Villa Ubud', subtitle: 'Mulai Rp 1.200.000/malam', img: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=500&q=80', badge: 'Pilihan Editor', dest: 'ID8731', q: 'Bali' },
   ],
   trains: [
-    { module: 'train', title: 'Jakarta – Surabaya', subtitle: 'Mulai Rp 180.000', img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=500&q=80', badge: 'Eksekutif', origin: 'GMR', dest: 'SGU' },
-    { module: 'train', title: 'Bandung – Yogyakarta', subtitle: 'Mulai Rp 120.000', img: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=500&q=80', badge: 'Populer', origin: 'BD', dest: 'YK' },
-    { module: 'train', title: 'Jakarta – Bandung', subtitle: 'Mulai Rp 75.000', img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=500&q=80', badge: 'Harian', origin: 'GMR', dest: 'BD' },
+    { module: 'train', title: 'Jakarta – Surabaya', subtitle: 'Mulai Rp 180.000', img: '/images/domestik/surabaya.png', badge: 'Eksekutif', origin: 'GMR', dest: 'SGU' },
+    { module: 'train', title: 'Bandung – Yogyakarta', subtitle: 'Mulai Rp 120.000', img: '/images/domestik/yogyakarta.png', badge: 'Populer', origin: 'BD', dest: 'YK' },
+    { module: 'train', title: 'Jakarta – Bandung', subtitle: 'Mulai Rp 75.000', img: '/images/domestik/bandung.png', badge: 'Harian', origin: 'GMR', dest: 'BD' },
   ],
   insurance: [
     { module: 'insurance', title: 'Asuransi Asia', subtitle: 'Mulai Rp 150.000', img: 'https://images.unsplash.com/photo-1533050487297-09b450131914?w=500&q=80', badge: 'Populer', area: 'Asia' },
@@ -86,9 +86,9 @@ const PROMOS_EN: Record<string, Promo[]> = {
     { module: 'hotel', title: 'Ubud Villa', subtitle: 'From Rp 1,200,000/night', img: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=500&q=80', badge: "Editor's Pick", dest: 'ID8731', q: 'Bali' },
   ],
   trains: [
-    { module: 'train', title: 'Jakarta – Surabaya', subtitle: 'From Rp 180,000', img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=500&q=80', badge: 'Executive', origin: 'GMR', dest: 'SGU' },
-    { module: 'train', title: 'Bandung – Yogyakarta', subtitle: 'From Rp 120,000', img: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=500&q=80', badge: 'Popular', origin: 'BD', dest: 'YK' },
-    { module: 'train', title: 'Jakarta – Bandung', subtitle: 'From Rp 75,000', img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=500&q=80', badge: 'Daily', origin: 'GMR', dest: 'BD' },
+    { module: 'train', title: 'Jakarta – Surabaya', subtitle: 'From Rp 180,000', img: '/images/domestik/surabaya.png', badge: 'Executive', origin: 'GMR', dest: 'SGU' },
+    { module: 'train', title: 'Bandung – Yogyakarta', subtitle: 'From Rp 120,000', img: '/images/domestik/yogyakarta.png', badge: 'Popular', origin: 'BD', dest: 'YK' },
+    { module: 'train', title: 'Jakarta – Bandung', subtitle: 'From Rp 75,000', img: '/images/domestik/bandung.png', badge: 'Daily', origin: 'GMR', dest: 'BD' },
   ],
   insurance: [
     { module: 'insurance', title: 'Asia Travel Insurance', subtitle: 'From Rp 150,000', img: 'https://images.unsplash.com/photo-1533050487297-09b450131914?w=500&q=80', badge: 'Popular', area: 'Asia' },
@@ -293,7 +293,7 @@ export default function DiscountPage() {
                   className="flex-none w-[210px] sm:w-[240px] bg-white rounded-2xl overflow-hidden shadow-card hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group snap-start text-left"
                 >
                   <div className="relative overflow-hidden h-[118px]">
-                    <img src={p.img} alt={p.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <img src={p.img} alt={p.title} onError={p.module === 'train' ? (e) => { e.currentTarget.src = '/images/train.jpg'; } : undefined} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
                     <span className="absolute top-2 left-2 bg-brand-orange text-white text-[10px] font-black px-2 py-1 rounded-full shadow">{p.badge}</span>
                   </div>

@@ -12,9 +12,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const t = i18n.common[language];
 
-  // Toggle bahasa (ID/EN) hanya untuk TAMU di halaman hasil pencarian.
-  // UnifiedNavbar sudah menahan toggle ini ketika user login (`!user`),
-  // jadi cukup tentukan apakah halaman sekarang termasuk /search.
+  // Toggle bahasa (ID/EN) di navbar desktop hanya tampil di halaman hasil
+  // pencarian — berlaku untuk tamu maupun user login (flag `!user` sudah
+  // dilepas agar user login juga bisa ganti bahasa dari navbar). Sidebar
+  // mobile tidak digest dan selalu menampilkannya, jadi cukup tentukan
+  // apakah halaman sekarang termasuk /search.
   const isSearchPage = pathname?.includes('/search') ?? false;
 
   // FIX: Next.js 16 can cause useSession fetch to hang/fail for guests.

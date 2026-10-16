@@ -16,9 +16,11 @@ interface Props {
     image?: string | null;
   } | null;
   showLanguageToggle?: boolean;
+  /** Mode hero: navbar transparan di atas foto (halaman awal). Otomatis kembali solid saat scroll > 20px. */
+  transparent?: boolean;
 }
 
-export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props) {
+export default function UnifiedNavbar({ user, showLanguageToggle = true, transparent = false }: Props) {
   const pathname = usePathname();
   const { language, setLanguage } = useLanguage();
   const t = i18n.navbar[language];
@@ -60,17 +62,20 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
 
   const isActive = (href: string) => pathname?.startsWith(href);
 
+  // Mode hero: transparan di atas foto, kembali solid saat scroll > 20px
+  const overHero = transparent && !isScrolled;
+
   const displayInitial = user?.name?.charAt(0)?.toUpperCase() || 'U';
 
   const rightCluster = user ? (
     <>
       <div className="hidden md:block">
-        <NotificationBell isTransparent={false} />
+        <NotificationBell isTransparent={overHero} />
       </div>
 
       <div className="relative hidden md:block" ref={menuRef}>
         <button onClick={() => setMenuOpen(!menuOpen)}
-          className={`flex items-center gap-2 px-2 py-1.5 rounded-full transition-all hover:bg-slate-100`}>
+          className={`flex items-center gap-2 px-2 py-1.5 rounded-full transition-all ${overHero ? 'hover:bg-white/10' : 'hover:bg-slate-100'}`}>
           <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-brand-orange bg-brand-orange/5 flex items-center justify-center">
             {user.image ? (
               <Image src={user.image} alt="Profile" width={36} height={36} className="w-full h-full object-cover" />
@@ -78,7 +83,7 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
               <span className="font-black text-sm text-brand-orange">{displayInitial}</span>
             )}
           </div>
-          <i className={`fa-solid fa-chevron-down text-[9px] text-slate-400 transition-transform duration-200 ${menuOpen ? 'rotate-180' : ''}`}></i>
+          <i className={`fa-solid fa-chevron-down text-[9px] transition-transform duration-200 ${overHero ? 'text-white/70' : 'text-slate-400'} ${menuOpen ? 'rotate-180' : ''}`}></i>
         </button>
 
         {menuOpen && (
@@ -114,7 +119,7 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
     </>
   ) : (
     <>
-      <Link href="/register" className="hidden md:flex items-center px-4 py-1.5 rounded-full text-[12px] font-bold border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-brand-blue transition-all duration-200">
+      <Link href="/register" className={`hidden md:flex items-center px-4 py-1.5 rounded-full text-[12px] font-bold border transition-all duration-200 ${overHero ? 'border-white/50 text-white hover:bg-white/10 hover:border-white' : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-brand-blue'}`}>
         {t.register}
       </Link>
       <Link href="/login" className="hidden md:flex items-center px-4 py-1.5 rounded-full text-[12px] font-bold bg-brand-blue hover:bg-[#28708f] text-white shadow-sm shadow-brand-blue/20 transition-all duration-200">
@@ -127,7 +132,7 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
     <>
       <header className="fixed top-0 left-0 right-0 z-[1000]">
         {/* ===== ROW 1: LOGO + UTILITY (ID/EN • Find Booking • Auth) ===== */}
-        <div className="bg-white border-b border-slate-100">
+        <div className={`border-b transition-colors duration-300 ${overHero ? 'bg-transparent border-white/15' : 'bg-white border-slate-100'}`}>
           <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3">
 
             {/* LEFT: LOGO */}
@@ -136,41 +141,54 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
                 <Image src="/icon.png" alt="The Mafia Travel" width={40} height={40} className="w-full h-full object-cover" />
               </div>
               <div className="flex flex-col">
-                <div className="text-[15px] sm:text-lg font-extrabold tracking-tight text-brand-ink group-hover:text-brand-blue transition-colors duration-300 leading-tight">
+                <div className={`text-[15px] sm:text-lg font-extrabold tracking-tight transition-colors duration-300 leading-tight ${overHero ? 'text-white group-hover:text-white/90' : 'text-brand-ink group-hover:text-brand-blue'}`}>
                   THE <span className="text-brand-orange">MAFIA</span> TRAVEL
                 </div>
-                <span className="text-[8px] sm:text-[10px] uppercase font-bold tracking-widest text-brand-blue -mt-0.5">{t.tagline}</span>
+                <span className={`text-[8px] sm:text-[10px] uppercase font-bold tracking-widest -mt-0.5 ${overHero ? 'text-white/70' : 'text-brand-blue'}`}>{t.tagline}</span>
               </div>
             </Link>
 
             {/* RIGHT: UTILITY CLUSTER */}
             <div className="flex items-center gap-3 md:gap-4">
-                            {!user && showLanguageToggle && (
-                <div className="hidden xl:flex items-center rounded-full bg-slate-100 p-0.5">
-                {(['ID', 'EN'] as const).map((lang) => (
-                  <button
-                    key={lang}
-                    onClick={() => setLanguage(lang)}
-                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold transition-all duration-200 ${
-                      language === lang ? 'bg-brand-orange text-white shadow-sm' : 'text-slate-500 hover:text-brand-blue'
-                    }`}
-                  >
-                    {lang}
-                  </button>
-                ))}
-              </div>
+              {showLanguageToggle && (
+                <div className={`hidden lg:flex items-center rounded-full p-0.5 ${overHero ? 'bg-white/15' : 'bg-slate-100'}`}>
+                  {(['ID', 'EN'] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      onClick={() => setLanguage(lang)}
+                      aria-label={lang === 'ID' ? 'Bahasa Indonesia' : 'English'}
+                      aria-pressed={language === lang}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all duration-200 ${
+                        language === lang
+                          ? 'bg-brand-orange text-white shadow-sm'
+                          : overHero
+                            ? 'text-white/80 hover:text-white'
+                            : 'text-slate-500 hover:text-brand-blue'
+                      }`}
+                    >
+                      <Image
+                        src={lang === 'ID' ? '/images/flags/ID.png' : '/images/flags/GB.png'}
+                        alt=""
+                        width={16}
+                        height={12}
+                        className="w-4 h-3 object-cover rounded-[2px] ring-1 ring-black/10"
+                      />
+                      {lang}
+                    </button>
+                  ))}
+                </div>
               )}
 
               {!user && (
                 <>
-                  <span className="hidden md:block w-px h-4 bg-slate-200" />
+                  <span className={`hidden md:block w-px h-4 ${overHero ? 'bg-white/30' : 'bg-slate-200'}`} />
 
-                  <Link href="/find-booking" className="hidden md:flex items-center gap-1.5 text-[12px] font-bold text-slate-600 hover:text-brand-blue transition-colors">
-                    <i className="fa-solid fa-magnifying-glass text-[10px] text-brand-blue"></i>
+                  <Link href="/find-booking" className={`hidden md:flex items-center gap-1.5 text-[12px] font-bold transition-colors ${overHero ? 'text-white/90 hover:text-white' : 'text-slate-600 hover:text-brand-blue'}`}>
+                    <i className={`fa-solid fa-magnifying-glass text-[10px] ${overHero ? 'text-white' : 'text-brand-blue'}`}></i>
                     {t.findBooking}
                   </Link>
 
-                  <span className="hidden md:block w-px h-4 bg-slate-200" />
+                  <span className={`hidden md:block w-px h-4 ${overHero ? 'bg-white/30' : 'bg-slate-200'}`} />
                 </>
               )}
 
@@ -180,7 +198,7 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
               <button onClick={() => setIsMobileOpen(true)}
                 className={`xl:hidden w-10 h-10 flex flex-col items-center justify-center gap-1.5 transition-all duration-300`}>
                 {[0, 1, 2].map((i) => (
-                  <span key={i} className={`w-5 h-[2px] rounded-full bg-slate-700`}></span>
+                  <span key={i} className={`w-5 h-[2px] rounded-full ${overHero ? 'bg-white' : 'bg-slate-700'}`}></span>
                 ))}
               </button>
             </div>
@@ -188,7 +206,7 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
         </div>
 
         {/* ===== ROW 2: MENU NAVBAR (Flights • Hotels • Trains • Insurance • Discount • About • Help) ===== */}
-        <div className={`hidden xl:block bg-white border-t border-slate-100 transition-all duration-300 ${isScrolled ? 'shadow-md shadow-slate-900/5' : ''}`}>
+        <div className={`hidden xl:block border-t transition-all duration-300 ${overHero ? 'bg-transparent border-white/15' : 'bg-white border-slate-100'} ${isScrolled ? 'shadow-md shadow-slate-900/5' : ''}`}>
           <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-8 h-12 flex items-center justify-center">
             <nav className="flex items-center md:gap-6 lg:gap-7">
               {navLinks.map((link) => (
@@ -197,8 +215,12 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
                   href={link.href}
                   className={`relative text-sm font-medium tracking-tight transition-all duration-300 ${
                     isActive(link.href)
-                      ? 'text-brand-blue'
-                      : 'text-slate-600 hover:text-brand-blue'
+                      ? overHero
+                        ? 'text-white'
+                        : 'text-brand-blue'
+                      : overHero
+                        ? 'text-white/85 hover:text-white'
+                        : 'text-slate-600 hover:text-brand-blue'
                   }`}
                 >
                   <span className="flex items-center gap-1.5">
@@ -208,7 +230,7 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
                     {link.label}
                   </span>
                   {isActive(link.href) && (
-                    <div className="absolute -bottom-2 left-0 w-full h-[2px] bg-brand-blue rounded-full"></div>
+                    <div className={`absolute -bottom-2 left-0 w-full h-[2px] rounded-full ${overHero ? 'bg-white' : 'bg-brand-blue'}`}></div>
                   )}
                 </Link>
               ))}
@@ -217,7 +239,7 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
               <div className="relative" ref={helpRef}>
                 <button
                   onClick={() => setHelpOpen(!helpOpen)}
-                  className={`relative text-sm font-medium tracking-tight transition-all duration-300 flex items-center gap-1.5 text-slate-600 hover:text-brand-blue`}
+                  className={`relative text-sm font-medium tracking-tight transition-all duration-300 flex items-center gap-1.5 ${overHero ? 'text-white/85 hover:text-white' : 'text-slate-600 hover:text-brand-blue'}`}
                 >
                   {t.help}
                   <i className={`fa-solid fa-chevron-down text-[9px] transition-transform duration-300 ${helpOpen ? 'rotate-180' : ''}`}></i>
@@ -305,6 +327,36 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
                 </Link>
               </div>
 
+              {/* Ganti bahasa ID/EN — selalu tampil untuk user login */}
+              <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-slate-50 border border-slate-100">
+                <span className="flex items-center gap-3 text-[13px] font-bold text-slate-600">
+                  <i className="fa-solid fa-language text-slate-400 w-5 text-center"></i>
+                  {language === 'ID' ? 'Bahasa' : 'Language'}
+                </span>
+                <div className="flex items-center rounded-full bg-white border border-slate-200 p-0.5">
+                  {(['ID', 'EN'] as const).map((lang) => (
+                    <button
+                      key={lang}
+                      onClick={() => setLanguage(lang)}
+                      aria-label={lang === 'ID' ? 'Bahasa Indonesia' : 'English'}
+                      aria-pressed={language === lang}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all duration-200 ${
+                        language === lang ? 'bg-brand-orange text-white shadow-sm' : 'text-slate-500'
+                      }`}
+                    >
+                      <Image
+                        src={lang === 'ID' ? '/images/flags/ID.png' : '/images/flags/GB.png'}
+                        alt=""
+                        width={16}
+                        height={12}
+                        className="w-4 h-3 object-cover rounded-[2px] ring-1 ring-black/10"
+                      />
+                      {lang}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <LogoutConfirmButton
                 callbackUrl="/"
                 title={t.logout}
@@ -349,10 +401,19 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true }: Props
                       <button
                         key={lang}
                         onClick={() => setLanguage(lang)}
-                        className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all duration-200 ${
+                        aria-label={lang === 'ID' ? 'Bahasa Indonesia' : 'English'}
+                        aria-pressed={language === lang}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all duration-200 ${
                           language === lang ? 'bg-brand-orange text-white shadow-sm' : 'text-slate-500'
                         }`}
                       >
+                        <Image
+                          src={lang === 'ID' ? '/images/flags/ID.png' : '/images/flags/GB.png'}
+                          alt=""
+                          width={16}
+                          height={12}
+                          className="w-4 h-3 object-cover rounded-[2px] ring-1 ring-black/10"
+                        />
                         {lang}
                       </button>
                     ))}

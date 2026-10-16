@@ -1,6 +1,6 @@
 'use client';
 
-import { useSession, signIn } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, Suspense, useEffect, useRef, useCallback } from 'react';
@@ -17,7 +17,6 @@ import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 import UnifiedNavbar from '@/components/layout/UnifiedNavbar';
 import Footer from '@/components/layout/Footer';
-import SupportWidget from '@/components/layout/SupportWidget';
 import FlightSearchForm from '@/components/flight/FlightSearchForm';
 import TrainSearchForm from '@/components/train/TrainSearchForm';
 import InsuranceSearchForm from '@/components/insurance/InsuranceSearchForm';
@@ -284,118 +283,43 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
 
 const PROMO_BANNERS_ID = {
   Pesawat: [
-    { title: 'Travel to South Korea', subtitle: 'Mulai Rp 2.499.000', img: 'https://images.unsplash.com/photo-1538485399081-7191377e8241?w=500&q=80', badge: 'Hemat 35%', dest: 'ICN' },
-    { title: 'Travel to Malaysia',    subtitle: 'Mulai Rp 899.000',   img: 'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=500&q=80', badge: 'Promo Spesial', dest: 'KUL' },
-    { title: 'Travel to Singapore',   subtitle: 'Mulai Rp 1.199.000', img: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=500&q=80', badge: 'Terlaris', dest: 'SIN' },
-    { title: 'Travel to Bali',        subtitle: 'Mulai Rp 599.000',   img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=500&q=80', badge: 'Domestik', dest: 'DPS' },
-    { title: 'Travel to New Zealand', subtitle: 'Mulai Rp 6.799.000', img: 'https://images.unsplash.com/photo-1507699622108-4be3abd695ad?w=500&q=80', badge: 'Impian', dest: 'AKL' },
+    { title: 'Jakarta – Yogyakarta',      subtitle: 'Rp 684.400',    img: '/images/domestik/yogyakarta.png', badge: 'Sekali Jalan', dest: 'JOG', airline: 'Batik Air',       airlineImg: '/images/airlines/batik.png',       date: '18 Okt 2026' },
+    { title: 'Jakarta – Surabaya',        subtitle: 'Rp 876.800',    img: '/images/domestik/surabaya.png',  badge: 'Sekali Jalan', dest: 'SUB', airline: 'Garuda Indonesia', airlineImg: '/images/airlines/garuda.png',      date: '25 Okt 2026' },
+    { title: 'Jakarta – Bali / Denpasar', subtitle: 'Rp 1.240.900',  img: '/images/domestik/bali.png',      badge: 'Sekali Jalan', dest: 'DPS', airline: 'Super Air Jet',   airlineImg: '/images/airlines/superairjet.png', date: '18 Okt 2026' },
+    { title: 'Jakarta – Medan',           subtitle: 'Rp 1.294.400',  img: '/images/domestik/medan.png',     badge: 'Sekali Jalan', dest: 'KNO', airline: 'Citilink',        airlineImg: '/images/airlines/citilink.png',    date: '15 Nov 2026' },
+    { title: 'Jakarta – Lombok',          subtitle: 'Rp 850.000',    img: '/images/domestik/lombok.png',    badge: 'Sekali Jalan', dest: 'LOP', airline: 'AirAsia',         airlineImg: '/images/airlines/airasia.png',     date: '2 Nov 2026' },
   ],
   Hotel: [
-    { title: 'Hotel Bali Mewah',     subtitle: 'Mulai Rp 750.000/malam',   img: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=500&q=80', badge: 'Bintang 5', dest: 'ID8731', q: 'Bali' },
-    { title: 'Resort Lombok',        subtitle: 'Mulai Rp 450.000/malam',   img: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=500&q=80', badge: 'Best Value', dest: 'ID8731', q: 'Bali' },
-    { title: 'Hotel Jakarta Pusat',  subtitle: 'Mulai Rp 380.000/malam',   img: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=500&q=80', badge: 'Flash Sale', dest: 'ID339', q: 'Jakarta' },
-    { title: 'Villa Ubud',           subtitle: 'Mulai Rp 1.200.000/malam', img: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=500&q=80', badge: 'Pilihan Editor', dest: 'ID8731', q: 'Bali' },
+    { title: 'Hotel Bali Mewah',     subtitle: 'Rp 750.000/malam',   img: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=500&q=80', badge: 'Bintang 5', dest: 'ID8731', q: 'Bali', city: 'Bali', date: '18 Okt 2026' },
+    { title: 'Resort Lombok',        subtitle: 'Rp 450.000/malam',   img: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=500&q=80', badge: 'Best Value', dest: 'ID8731', q: 'Bali', city: 'Lombok', date: '25 Okt 2026' },
+    { title: 'Hotel Jakarta Pusat',  subtitle: 'Rp 380.000/malam',   img: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=500&q=80', badge: 'Flash Sale', dest: 'ID339', q: 'Jakarta', city: 'Jakarta', date: '2 Nov 2026' },
+    { title: 'Villa Ubud',           subtitle: 'Rp 1.200.000/malam', img: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=500&q=80', badge: 'Pilihan Editor', dest: 'ID8731', q: 'Bali', city: 'Ubud', date: '9 Nov 2026' },
   ],
   Kereta: [
-    { title: 'Jakarta – Surabaya',      subtitle: 'Mulai Rp 180.000', img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=500&q=80', badge: 'Eksekutif', origin: 'GMR', destination: 'SGU' },
-    { title: 'Bandung – Yogyakarta',    subtitle: 'Mulai Rp 120.000', img: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=500&q=80', badge: 'Populer', origin: 'BD', destination: 'YK' },
-    { title: 'Jakarta – Bandung',       subtitle: 'Mulai Rp 75.000',  img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=500&q=80', badge: 'Harian', origin: 'GMR', destination: 'BD' },
+    { title: 'Jakarta – Surabaya',      subtitle: 'Rp 180.000', img: '/images/domestik/surabaya.png', badge: 'Eksekutif', origin: 'GMR', destination: 'SGU', date: '18 Okt 2026' },
+    { title: 'Bandung – Yogyakarta',    subtitle: 'Rp 120.000', img: '/images/domestik/yogyakarta.png', badge: 'Populer', origin: 'BD', destination: 'YK', date: '22 Okt 2026' },
+    { title: 'Jakarta – Bandung',       subtitle: 'Rp 75.000',  img: '/images/domestik/bandung.png', badge: 'Harian', origin: 'GMR', destination: 'BD', date: '2 Nov 2026' },
   ],
 };
 
 const PROMO_BANNERS_EN = {
-  Flights: [
-    { title: 'Travel to South Korea', subtitle: 'From Rp 2,499,000', img: 'https://images.unsplash.com/photo-1538485399081-7191377e8241?w=500&q=80', badge: 'Save 35%', dest: 'ICN' },
-    { title: 'Travel to Malaysia',    subtitle: 'From Rp 899,000',   img: 'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=500&q=80', badge: 'Special Promo', dest: 'KUL' },
-    { title: 'Travel to Singapore',   subtitle: 'From Rp 1,199,000', img: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=500&q=80', badge: 'Best Seller', dest: 'SIN' },
-    { title: 'Travel to Bali',        subtitle: 'From Rp 599,000',   img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=500&q=80', badge: 'Domestic', dest: 'DPS' },
-    { title: 'Travel to New Zealand', subtitle: 'From Rp 6,799,000', img: 'https://images.unsplash.com/photo-1507699622108-4be3abd695ad?w=500&q=80', badge: 'Dream Trip', dest: 'AKL' },
+  Pesawat: [
+    { title: 'Jakarta – Yogyakarta',      subtitle: 'Rp 684,400',   img: '/images/domestik/yogyakarta.png', badge: 'One Way', dest: 'JOG', airline: 'Batik Air',       airlineImg: '/images/airlines/batik.png',       date: '18 Oct 2026' },
+    { title: 'Jakarta – Surabaya',        subtitle: 'Rp 876,800',   img: '/images/domestik/surabaya.png',  badge: 'One Way', dest: 'SUB', airline: 'Garuda Indonesia', airlineImg: '/images/airlines/garuda.png',      date: '25 Oct 2026' },
+    { title: 'Jakarta – Bali / Denpasar', subtitle: 'Rp 1,240,900', img: '/images/domestik/bali.png',      badge: 'One Way', dest: 'DPS', airline: 'Super Air Jet',   airlineImg: '/images/airlines/superairjet.png', date: '18 Oct 2026' },
+    { title: 'Jakarta – Medan',           subtitle: 'Rp 1,294,400', img: '/images/domestik/medan.png',     badge: 'One Way', dest: 'KNO', airline: 'Citilink',        airlineImg: '/images/airlines/citilink.png',    date: '15 Nov 2026' },
+    { title: 'Jakarta – Lombok',          subtitle: 'Rp 850,000',   img: '/images/domestik/lombok.png',    badge: 'One Way', dest: 'LOP', airline: 'AirAsia',         airlineImg: '/images/airlines/airasia.png',     date: '2 Nov 2026' },
   ],
-  Hotels: [
-    { title: 'Luxury Bali Hotel',     subtitle: 'From Rp 750,000/night',   img: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=500&q=80', badge: '5 Stars', dest: 'ID8731', q: 'Bali' },
-    { title: 'Lombok Resort',         subtitle: 'From Rp 450,000/night',   img: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=500&q=80', badge: 'Best Value', dest: 'ID8731', q: 'Bali' },
-    { title: 'Central Jakarta Hotel', subtitle: 'From Rp 380,000/night',   img: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=500&q=80', badge: 'Flash Sale', dest: 'ID339', q: 'Jakarta' },
-    { title: 'Ubud Villa',            subtitle: 'From Rp 1,200,000/night', img: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=500&q=80', badge: "Editor's Pick", dest: 'ID8731', q: 'Bali' },
+  Hotel: [
+    { title: 'Luxury Bali Hotel',     subtitle: 'Rp 750,000/night',   img: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=500&q=80', badge: '5 Stars', dest: 'ID8731', q: 'Bali', city: 'Bali', date: '18 Oct 2026' },
+    { title: 'Lombok Resort',         subtitle: 'Rp 450,000/night',   img: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=500&q=80', badge: 'Best Value', dest: 'ID8731', q: 'Bali', city: 'Lombok', date: '25 Oct 2026' },
+    { title: 'Central Jakarta Hotel', subtitle: 'Rp 380,000/night',   img: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=500&q=80', badge: 'Flash Sale', dest: 'ID339', q: 'Jakarta', city: 'Jakarta', date: '2 Nov 2026' },
+    { title: 'Ubud Villa',            subtitle: 'Rp 1,200,000/night', img: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=500&q=80', badge: "Editor's Pick", dest: 'ID8731', q: 'Bali', city: 'Ubud', date: '9 Nov 2026' },
   ],
-  Trains: [
-    { title: 'Jakarta – Surabaya',   subtitle: 'From Rp 180,000', img: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=500&q=80', badge: 'Executive', origin: 'GMR', destination: 'SGU' },
-    { title: 'Bandung – Yogyakarta', subtitle: 'From Rp 120,000', img: 'https://images.unsplash.com/photo-1553361371-9b22f78e8b1d?w=500&q=80', badge: 'Popular', origin: 'BD', destination: 'YK' },
-    { title: 'Jakarta – Bandung',    subtitle: 'From Rp 75,000',  img: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=500&q=80', badge: 'Daily', origin: 'GMR', destination: 'BD' },
-  ],
-};
-
-const ASIA_DESTINATIONS = [
-  { name: 'Singapura',    nameEN: 'Singapore',     code: 'SIN', img: 'https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=600&q=80', price: 'Rp 1.100.000',  priceEN: 'Rp 1.100.000' },
-  { name: 'Malaysia',     nameEN: 'Malaysia',       code: 'KUL', img: 'https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=600&q=80', price: 'Rp 899.000', priceEN: 'Rp 899.000' },
-  { name: 'Thailand',     nameEN: 'Thailand',       code: 'BKK', img: 'https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=600&q=80', price: 'Rp 1.300.000',  priceEN: 'Rp 1.300.000' },
-  { name: 'Korea Selatan',nameEN: 'South Korea',    code: 'ICN', img: 'https://images.unsplash.com/photo-1538485399081-7191377e8241?w=600&q=80', price: 'Rp 2.400.000',  priceEN: 'Rp 2.400.000' },
-  { name: 'Jepang',       nameEN: 'Japan',          code: 'NRT', img: 'https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=600&q=80', price: 'Rp 3.100.000',  priceEN: 'Rp 3.100.000' },
-  { name: 'Hong Kong',    nameEN: 'Hong Kong',      code: 'HKG', img: 'https://images.unsplash.com/photo-1506970845246-18f21d533b20?w=600&q=80', price: 'Rp 1.800.000',  priceEN: 'Rp 1.800.000' },
-];
-
-const ASIA_DESTINATIONS_BADGES_ID = ['Favorit Wisatawan', 'Termurah', 'Eksotis', 'Top Rated', 'Best Seller', 'City Trip'];
-const ASIA_DESTINATIONS_BADGES_EN = ['Top Pick', 'Best Value', 'Exotic', 'Top Rated', 'Best Seller', 'City Trip'];
-const ASIA_DESTINATIONS_BADGE_CLASS = [
-  'bg-white/90 text-brand-ink',
-  'bg-brand-forest text-white',
-  'bg-brand-cream text-brand-ink',
-  'bg-brand-blue text-white',
-  'bg-white/90 text-brand-ink',
-  'bg-brand-orange text-white',
-];
-
-const DOMESTIC_CITIES = ['Bali', 'Medan', 'Surabaya', 'Yogyakarta', 'Palembang', 'Lombok', 'Balikpapan', 'Jakarta'];
-
-const DOMESTIC_BADGE: Record<string, { id: string; en: string; color: string }> = {
-  Bali:         { id: 'HEMAT', en: 'SAVE', color: 'bg-brand-orange' },
-  Medan:        { id: 'PROMO', en: 'PROMO', color: 'bg-brand-blue' },
-  Surabaya:     { id: 'PROMO', en: 'PROMO', color: 'bg-brand-blue' },
-  Yogyakarta:   { id: 'HEMAT', en: 'SAVE', color: 'bg-brand-orange' },
-  Palembang:    { id: 'HEMAT', en: 'SAVE', color: 'bg-brand-orange' },
-  Lombok:       { id: 'HEMAT', en: 'SAVE', color: 'bg-brand-orange' },
-  Balikpapan:   { id: 'PROMO', en: 'PROMO', color: 'bg-brand-blue' },
-  Jakarta:      { id: 'PROMO', en: 'PROMO', color: 'bg-brand-blue' },
-};
-
-const DOMESTIC_FLIGHTS: Record<string, { route: string; routeEN: string; dest: string; origin?: string; price: string; img: string }[]> = {
-  Bali: [
-    { route: 'Jakarta – Bali / Denpasar', routeEN: 'Jakarta – Bali / Denpasar', dest: 'DPS', origin: 'CGK', price: 'Rp 1.239.200', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
-    { route: 'Surabaya – Bali / Denpasar', routeEN: 'Surabaya – Bali / Denpasar', dest: 'DPS', origin: 'SUB', price: 'Rp 890.000', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
-    { route: 'Yogyakarta – Bali / Denpasar', routeEN: 'Yogyakarta – Bali / Denpasar', dest: 'DPS', origin: 'JOG', price: 'Rp 950.000', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
-    { route: 'Bandung – Bali / Denpasar', routeEN: 'Bandung – Bali / Denpasar', dest: 'DPS', origin: 'BDG', price: 'Rp 1.100.000', img: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&q=75' },
-  ],
-  Medan: [
-    { route: 'Jakarta – Medan / Kualanamu', routeEN: 'Jakarta – Medan / Kualanamu', dest: 'KNO', origin: 'CGK', price: 'Rp 989.000', img: '/images/domestik/medan.png' },
-    { route: 'Surabaya – Medan / Kualanamu', routeEN: 'Surabaya – Medan / Kualanamu', dest: 'KNO', origin: 'SUB', price: 'Rp 1.050.000', img: '/images/domestik/medan.png' },
-    { route: 'Yogyakarta – Medan / Kualanamu', routeEN: 'Yogyakarta – Medan / Kualanamu', dest: 'KNO', origin: 'JOG', price: 'Rp 980.000', img: '/images/domestik/medan.png' },
-  ],
-  Surabaya: [
-    { route: 'Jakarta – Surabaya / Juanda', routeEN: 'Jakarta – Surabaya / Juanda', dest: 'SUB', origin: 'CGK', price: 'Rp 550.000', img: '/images/domestik/surabaya.png' },
-    { route: 'Bandung – Surabaya / Juanda', routeEN: 'Bandung – Surabaya / Juanda', dest: 'SUB', origin: 'BDG', price: 'Rp 580.000', img: '/images/domestik/surabaya.png' },
-    { route: 'Yogyakarta – Surabaya / Juanda', routeEN: 'Yogyakarta – Surabaya / Juanda', dest: 'SUB', origin: 'JOG', price: 'Rp 420.000', img: '/images/domestik/surabaya.png' },
-  ],
-  Yogyakarta: [
-    { route: 'Jakarta – Yogyakarta / Adisutjipto', routeEN: 'Jakarta – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'CGK', price: 'Rp 480.000', img: '/images/domestik/yogyakarta.png' },
-    { route: 'Surabaya – Yogyakarta / Adisutjipto', routeEN: 'Surabaya – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'SUB', price: 'Rp 350.000', img: '/images/domestik/yogyakarta.png' },
-    { route: 'Bandung – Yogyakarta / Adisutjipto', routeEN: 'Bandung – Yogyakarta / Adisutjipto', dest: 'JOG', origin: 'BDG', price: 'Rp 520.000', img: '/images/domestik/yogyakarta.png' },
-  ],
-  Palembang: [
-    { route: 'Jakarta – Palembang / SMB II', routeEN: 'Jakarta – Palembang / SMB II', dest: 'PLM', origin: 'CGK', price: 'Rp 430.000', img: '/images/domestik/palembang.png' },
-    { route: 'Surabaya – Palembang / SMB II', routeEN: 'Surabaya – Palembang / SMB II', dest: 'PLM', origin: 'SUB', price: 'Rp 490.000', img: '/images/domestik/palembang.png' },
-  ],
-  Lombok: [
-    { route: 'Jakarta – Lombok / Praya', routeEN: 'Jakarta – Lombok / Praya', dest: 'LOP', origin: 'CGK', price: 'Rp 850.000', img: '/images/domestik/lombok.png' },
-    { route: 'Surabaya – Lombok / Praya', routeEN: 'Surabaya – Lombok / Praya', dest: 'LOP', origin: 'SUB', price: 'Rp 650.000', img: '/images/domestik/lombok.png' },
-    { route: 'Yogyakarta – Lombok / Praya', routeEN: 'Yogyakarta – Lombok / Praya', dest: 'LOP', origin: 'JOG', price: 'Rp 720.000', img: '/images/domestik/lombok.png' },
-  ],
-  Balikpapan: [
-    { route: 'Jakarta – Balikpapan / SAMS', routeEN: 'Jakarta – Balikpapan / SAMS', dest: 'BPN', origin: 'CGK', price: 'Rp 750.000', img: '/images/domestik/balikpapan.png' },
-    { route: 'Surabaya – Balikpapan / SAMS', routeEN: 'Surabaya – Balikpapan / SAMS', dest: 'BPN', origin: 'SUB', price: 'Rp 780.000', img: '/images/domestik/balikpapan.png' },
-  ],
-  Jakarta: [
-    { route: 'Bali – Jakarta / Soetta',     routeEN: 'Bali – Jakarta / Soetta',     dest: 'CGK', origin: 'DPS', price: 'Rp 620.000', img: '/images/domestik/jakarta.png' },
-    { route: 'Surabaya – Jakarta / Soetta', routeEN: 'Surabaya – Jakarta / Soetta', dest: 'CGK', origin: 'SUB', price: 'Rp 540.000', img: '/images/domestik/jakarta.png' },
-    { route: 'Yogyakarta – Jakarta / Soetta', routeEN: 'Yogyakarta – Jakarta / Soetta', dest: 'CGK', origin: 'JOG', price: 'Rp 380.000', img: '/images/domestik/jakarta.png' },
+  Kereta: [
+    { title: 'Jakarta – Surabaya',   subtitle: 'Rp 180,000', img: '/images/domestik/surabaya.png', badge: 'Executive', origin: 'GMR', destination: 'SGU', date: '18 Oct 2026' },
+    { title: 'Bandung – Yogyakarta', subtitle: 'Rp 120,000', img: '/images/domestik/yogyakarta.png', badge: 'Popular', origin: 'BD', destination: 'YK', date: '22 Oct 2026' },
+    { title: 'Jakarta – Bandung',    subtitle: 'Rp 75,000',  img: '/images/domestik/bandung.png', badge: 'Daily', origin: 'GMR', destination: 'BD', date: '2 Nov 2026' },
   ],
 };
 
@@ -524,12 +448,44 @@ const MARQUEE_EN = [
   { icon: 'fa-wallet', label: 'Many Payment Options' },
 ];
 
-const FEATURES = [
-  { icon: 'fa-bolt', color: 'bg-brand-orange/10 text-brand-orange', ring: 'group-hover:bg-orange-500' },
-  { icon: 'fa-tags', color: 'bg-brand-blue/10 text-brand-blue', ring: 'group-hover:bg-blue-500' },
-  { icon: 'fa-shield-halved', color: 'bg-brand-forest/10 text-brand-forest', ring: 'group-hover:bg-emerald-500' },
-  { icon: 'fa-headset', color: 'bg-brand-blue/10 text-brand-blue', ring: 'group-hover:bg-blue-500' },
-];
+// Baris kartu promo horizontal dengan panah bulat mengambang
+function PromoScrollRow({ children, prevLabel, nextLabel }: { children: React.ReactNode; prevLabel: string; nextLabel: string }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  const update = () => {
+    const el = rowRef.current;
+    if (!el) return;
+    setAtStart(el.scrollLeft <= 8);
+    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 8);
+    setOverflow(el.scrollWidth > el.clientWidth + 8);
+  };
+  useEffect(() => {
+    update();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const scrollBy = (dir: 1 | -1) => rowRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
+  return (
+    <div className="relative">
+      <div ref={rowRef} onScroll={update} className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 scroll-smooth snap-x snap-mandatory">
+        {children}
+      </div>
+      {overflow && !atStart && (
+        <button onClick={() => scrollBy(-1)} aria-label={prevLabel}
+          className="hidden sm:flex absolute left-[-10px] top-[75px] -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white border border-slate-200 shadow-md items-center justify-center text-slate-500 hover:text-brand-blue hover:border-brand-blue transition-all">
+          <i className="fa-solid fa-chevron-left text-xs" />
+        </button>
+      )}
+      {overflow && !atEnd && (
+        <button onClick={() => scrollBy(1)} aria-label={nextLabel}
+          className="hidden sm:flex absolute right-[-10px] top-[75px] -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white border border-slate-200 shadow-md items-center justify-center text-slate-500 hover:text-brand-blue hover:border-brand-blue transition-all">
+          <i className="fa-solid fa-chevron-right text-xs" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 /* ─────────────────────────────────────────────────────────────
    MAIN PAGE
@@ -604,23 +560,12 @@ export default function LandingPage() {
     { id: 'insurance', label: t.tabs.insurance, icon: 'fa-plane-circle-check',  color: 'text-violet-400', activeColor: 'text-violet-500' },
   ];
 
-  const PROMO_TABS_ID   = ['Pesawat', 'Hotel', 'Kereta'];
-  const PROMO_TABS_EN   = ['Flights', 'Hotels', 'Trains'];
-  const PROMO_TABS      = isEN ? PROMO_TABS_EN : PROMO_TABS_ID;
   const PROMO_BANNERS   = isEN ? PROMO_BANNERS_EN : PROMO_BANNERS_ID;
 
   const SEO_LINKS = isEN ? SEO_LINKS_EN : SEO_LINKS_ID;
 
   const [activeTab, setActiveTab]             = useState('flights');
   const [isSearching, setIsSearching]         = useState(false);
-  const [activePromoTab, setActivePromoTab]   = useState(PROMO_TABS[0]);
-  const [activeDomesticCity, setActiveDomesticCity] = useState('Bali');
-
-  // Reset promo tab when language changes
-  useEffect(() => {
-    setActivePromoTab(PROMO_TABS[0]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
 
   useEffect(() => {
     setIsSearching(false);
@@ -732,13 +677,11 @@ export default function LandingPage() {
     }
   };
 
-  const [copiedCoupon, setCopiedCoupon] = useState<string | null>(null);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   const copyCoupon = async (code: string) => {
     try { await navigator.clipboard.writeText(code); } catch {}
-    setCopiedCoupon(code);
     setShowCopiedToast(true);
-    setTimeout(() => { setCopiedCoupon(null); setShowCopiedToast(false); }, 2000);
+    setTimeout(() => setShowCopiedToast(false), 2000);
   };
 
   const couponRowRef = useRef<HTMLDivElement>(null);
@@ -748,20 +691,14 @@ export default function LandingPage() {
     couponRowRef.current.scrollBy({ left: dir * scrollAmount, behavior: 'smooth' });
   };
 
-  const fallbackBg = '/images/background.jpg';
-  const [favIds, setFavIds] = useState<string[]>([]);
-  const [showLoginPopup, setShowLoginPopup] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [loginLoading, setLoginLoading] = useState(false);
-  const toggleFav = (code: string) => {
-    if (!session) {
-      setShowLoginPopup(true);
-      return;
-    }
-    setFavIds(prev => (prev.includes(code) ? prev.filter(x => x !== code) : [...prev, code]));
+  // Status scroll baris kupon — tombol "sebelumnya" hanya muncul setelah digeser
+  const [couponAtStart, setCouponAtStart] = useState(true);
+  const handleCouponScroll = () => {
+    const el = couponRowRef.current;
+    if (el) setCouponAtStart(el.scrollLeft <= 8);
   };
+
+  const fallbackBg = '/images/background.jpg';
 
   // ─── Kupon dinamis dari database ───
   interface DbCoupon { id: number; code: string; name: string; description: string | null; type: string; value: number; category: string; minOrderAmount: number; maxDiscount: number | null; isFeatured: boolean; }
@@ -784,6 +721,27 @@ export default function LandingPage() {
   const couponLabel = (c: DbCoupon) => {
     if (c.type === 'percentage') return `${c.value}%`;
     return `Rp${c.value.toLocaleString('id-ID')}`;
+  };
+
+  // Ikon & warna lingkaran kategori kartu kupon (mengikuti gaya Traveloka)
+  const couponCategoryStyle = (c: DbCoupon): { icon: string; bg: string } => {
+    const map: Record<string, { icon: string; bg: string }> = {
+      flight:    { icon: 'fa-plane',          bg: 'bg-blue-500' },
+      hotel:     { icon: 'fa-hotel',          bg: 'bg-blue-600' },
+      train:     { icon: 'fa-train',          bg: 'bg-indigo-500' },
+      insurance: { icon: 'fa-shield-halved',  bg: 'bg-violet-500' },
+      transfer:  { icon: 'fa-car',            bg: 'bg-teal-500' },
+      activity:  { icon: 'fa-ticket',         bg: 'bg-rose-500' },
+      all:       { icon: 'fa-percent',        bg: 'bg-slate-500' },
+    };
+    return map[c.category] || map.all;
+  };
+
+  // Baris kedua kartu: deskripsi kupon, fallback ke kondisi (min. belanja / kategori)
+  const couponSubtitle = (c: DbCoupon) => {
+    if (c.description) return c.description;
+    if (c.minOrderAmount > 0) return isEN ? `Min. order Rp${c.minOrderAmount.toLocaleString('id-ID')}` : `Min. belanja Rp${c.minOrderAmount.toLocaleString('id-ID')}`;
+    return isEN ? `Valid for ${couponCategoryLabel(c)} bookings` : `Berlaku untuk pemesanan ${couponCategoryLabel(c)}`;
   };
 
   // ─── Popup izin lokasi ───
@@ -825,81 +783,50 @@ export default function LandingPage() {
     }
   };
 
-  const tomorrowLabel = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toLocaleDateString(isEN ? 'en-US' : 'id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-  })();
-
   const loadingText = isEN ? 'Loading...' : 'Memuat form...';
-
-  // ─── Carousel & back-to-top ───
-  const promoRowRef = useRef<HTMLDivElement>(null);
-  const scrollPromo = (dir: 1 | -1) => {
-    promoRowRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
-  };
 
 
   return (
     <main className="bg-brand-bgLight min-h-screen">
-      <UnifiedNavbar user={session?.user || null} />
+      <UnifiedNavbar user={session?.user || null} transparent />
 
       {/* ══════════════════════════════════════════════════════
           1. HERO SECTION
       ══════════════════════════════════════════════════════ */}
-      <section className="relative z-10 pt-[120px] md:pt-[132px] pb-16 md:pb-20 overflow-visible">
-        {/* Hero card */}
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8">
-          <div className="relative rounded-3xl md:rounded-[36px] overflow-hidden min-h-[400px] md:min-h-[520px] flex flex-col justify-between p-6 sm:p-10 lg:p-14 shadow-floating bg-slate-900">
-            {/* Background cover image & overlay */}
-            <div className="absolute inset-0 z-0">
-              <Image
-                src={fallbackBg}
-                alt="Hero background"
-                fill
-                priority
-                quality={75}
-                className="object-cover object-center animate-kenburns"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-white via-white/85 to-transparent lg:max-w-3xl" />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 via-transparent to-transparent" />
-            </div>
-
-            {/* Headline */}
-            <div className="relative z-10 max-w-2xl pt-4">
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="text-3xl sm:text-4xl lg:text-[48px] font-extrabold text-brand-ink leading-[1.12] tracking-tight"
-              >
-                {isEN ? (
-                  <>Explore the World, Make Your <span className="text-brand-orange">Dream Trip</span> Come True</>
-                ) : (
-                  <>Jelajahi Dunia, Wujudkan <span className="text-brand-orange">Impian Perjalananmu</span></>
-                )}
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-                className="mt-4 text-base sm:text-lg text-brand-neutral max-w-xl font-medium leading-relaxed"
-              >
-                {isEN
-                  ? 'Flights, hotels, trains & insurance — transparent best prices, instant booking & friendly 24/7 support.'
-                  : 'Pesawat, hotel, kereta & asuransi — harga transparan terbaik, reservasi instan & dukungan ramah 24/7.'}
-              </motion.p>
-            </div>
-            <div className="hidden lg:block h-20"></div>
-          </div>
+      <section className="relative z-10 pt-[120px] md:pt-[132px] pb-12 md:pb-16">
+        {/* Full-bleed background image (membelakangi navbar) + overlay gelap */}
+        <div className="absolute inset-0 overflow-hidden z-0">
+          <Image
+            src={fallbackBg}
+            alt="Hero background"
+            fill
+            priority
+            quality={75}
+            className="object-cover object-center animate-kenburns"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/30 to-black/45" />
         </div>
 
-        {/* Floating search widget */}
+        {/* Headline — rata tengah, putih, di atas kartu search */}
+        <div className="relative z-10 max-w-[1280px] mx-auto px-4 md:px-8">
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="mx-auto text-center text-2xl sm:text-3xl lg:text-[30px] font-extrabold text-white leading-[1.12] tracking-tight lg:whitespace-nowrap"
+          >
+            {isEN
+              ? 'Explore the World, Make Your Dream Trip Come True'
+              : 'Jelajahi Dunia, Wujudkan Impian Perjalananmu'}
+          </motion.h1>
+        </div>
+
+        {/* Search widget — di tengah, di atas foto */}
         <motion.div
           initial={{ opacity: 0, y: 32 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.35 }}
-          className="max-w-[1280px] mx-auto px-4 md:px-8 -mt-10 md:-mt-20 relative z-20"
+          className="relative z-10 max-w-[1280px] mx-auto px-4 md:px-8 mt-8 md:mt-11"
         >
           <div className="bg-white rounded-2xl md:rounded-3xl shadow-floating border border-slate-100/80 p-4 sm:p-6 transition-all">
             {/* Category tabs */}
@@ -959,267 +886,193 @@ export default function LandingPage() {
 
 
       {/* ══════════════════════════════════════════════════════
-          2. KUPON EKSTRA
+          2. KUPON PENGGUNA BARU
       ══════════════════════════════════════════════════════ */}
-      <section className="relative z-0 bg-brand-bgLight pt-0 pb-6">
-        {/* Coupon strip */}
-        {dbCoupons.length > 0 && (
+      {dbCoupons.length > 0 && (
+      <section className="relative z-0 bg-brand-bgLight pt-6 md:pt-8 pb-6">
         <Reveal delay={0.08} className="max-w-[1280px] mx-auto px-4 md:px-8">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <i className="fa-solid fa-ticket text-brand-orange text-sm" />
-              <h3 className="text-sm font-black text-brand-ink">
-                {isEN ? 'Active Discount Coupons' : 'Kupon Diskon Aktif'}
-              </h3>
-            </div>
-            {dbCoupons.length > 3 && (
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => scrollCoupon(-1)} className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-all">
-                  <i className="fa-solid fa-chevron-left text-xs" />
-                </button>
-                <button onClick={() => scrollCoupon(1)} className="w-9 h-9 rounded-full bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-all">
-                  <i className="fa-solid fa-chevron-right text-xs" />
-                </button>
-              </div>
-            )}
-          </div>
-          <div ref={couponRowRef} className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory">
-            {dbCoupons.map((c) => (
-              <div key={c.id} onClick={() => copyCoupon(c.code)} className="flex-none w-[calc((100%-1rem)/3)] min-w-[180px] snap-start bg-white border border-dashed border-orange-300 rounded-xl p-4 relative overflow-hidden cursor-pointer hover:border-orange-500 hover:shadow-md transition-all group">
-                <div className="absolute top-0 right-0 w-12 h-12 bg-orange-50 rounded-bl-full group-hover:scale-125 transition-transform" />
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-bold text-orange-600 uppercase bg-orange-50 px-2 py-0.5 rounded-full">{couponCategoryLabel(c)}</span>
-                  <span className="text-[11px] font-black text-orange-700">{couponLabel(c)}</span>
-                </div>
-                <p className="text-xs font-semibold text-slate-700 mt-2 mb-3 leading-snug">{c.name}</p>
-                <div className="flex items-center justify-between">
-                  <code className="text-[11px] font-black text-slate-500 bg-slate-100 px-2 py-1 rounded">{c.code}</code>
-                  <span className="text-orange-500 text-[11px] font-black uppercase">
-                    {copiedCoupon === c.code ? (isEN ? 'Copied!' : 'Tersalin!') : (isEN ? 'Copy' : 'Salin')}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Reveal>
-        )}
-
-      </section>
-
-      {/* ══════════════════════════════════════════════════════
-          4. PROMO TERBAIK (carousel + arrow)
-      ══════════════════════════════════════════════════════ */}
-      <section id="promo" className="max-w-[1280px] mx-auto px-4 md:px-8 py-6">
-        <Reveal className="mb-4">
-          <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
-            {isEN ? 'Best Promos for This Holiday!' : 'Promo Terbaik buat Liburan Ini!'}
-          </h2>
-        </Reveal>
-
-        <div className="flex gap-2 mb-4 overflow-x-auto scrollbar-hide">
-          {PROMO_TABS.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActivePromoTab(tab)}
-              className={`px-4 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
-                activePromoTab === tab
-                  ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-200'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative">
-          <div ref={promoRowRef} className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 scroll-smooth snap-x snap-mandatory">
-            {((PROMO_BANNERS as any)[activePromoTab] || []).map((p: any, i: number) => (
-              <div
-                key={i}
-                onClick={() => handlePromoClick(p, activePromoTab)}
-                className="flex-none w-[200px] sm:w-[230px] bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group snap-start"
-              >
-                <div className="relative overflow-hidden h-[120px]">
-                  <img src={p.img} alt={p.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                  <span className="absolute top-2 left-2 bg-orange-500 text-white text-[11px] font-black px-2 py-1 rounded-full">{p.badge}</span>
-                </div>
-                <div className="p-3">
-                  <p className="font-black text-slate-800 text-sm leading-snug">
-                    {isFlightTab(activePromoTab) || isHotelTab(activePromoTab)
-                      ? p.title
-                      : trainLabelFor(p.origin, p.destination, p.title)}
-                </p>
-                <p className="text-orange-600 font-bold text-xs mt-1">{p.subtitle}</p>
-              </div>
-            </div>
-          ))}
-          </div>
-          {/* Thin arrows — mobile only */}
-          <button
-            onClick={() => promoRowRef.current?.scrollBy({ left: -220, behavior: 'smooth' })}
-            className="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-orange-500 sm:hidden transition-colors"
-          >
-            <i className="fa-solid fa-chevron-left text-lg" />
-          </button>
-          <button
-            onClick={() => promoRowRef.current?.scrollBy({ left: 220, behavior: 'smooth' })}
-            className="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-orange-500 sm:hidden transition-colors"
-          >
-            <i className="fa-solid fa-chevron-right text-lg" />
-          </button>
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════
-          5. DESTINASI INTERNASIONAL
-      ══════════════════════════════════════════════════════ */}
-      <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-8">
-        <Reveal className="flex items-center justify-between mb-6">
-          <div>
-            <span className="text-xs font-bold text-brand-blue uppercase tracking-widest block mb-1">
-              {isEN ? 'Explore Destinations' : 'Eksplor Destinasi'}
-            </span>
-            <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
-              {isEN ? 'Discover What You Love Across Asia and Beyond' : 'Temukan yang kamu suka di Asia hingga dunia'}
+          {/* Header */}
+          <div className="mb-4">
+            <h2 className="text-xl sm:text-2xl font-black text-brand-ink">
+              {isEN ? 'New User Coupons' : 'Kupon Pengguna Baru'}
             </h2>
-            <p className="text-brand-neutral text-xs sm:text-sm mt-1">
-              {isEN ? `Click a destination to search flights from ${originLabel}` : `Klik destinasi untuk langsung cari tiket dari ${originLabel}`}
+            <p className="text-sm text-slate-500 mt-1">
+              {isEN ? 'Available for your first booking' : 'Tersedia untuk pemesanan pertama Anda'}
             </p>
           </div>
+
+          {/* Coupon strip */}
+          <div className="relative">
+            <div ref={couponRowRef} onScroll={handleCouponScroll} className="flex gap-3 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory">
+              {dbCoupons.map((c) => (
+                <div key={c.id} onClick={() => copyCoupon(c.code)}
+                  className="flex-none w-[calc((100%-1rem)/3)] min-w-[220px] snap-start bg-white rounded-2xl border border-slate-100 shadow-[0_2px_12px_rgba(15,23,42,0.05)] cursor-pointer relative overflow-hidden">
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-white ${couponCategoryStyle(c).bg}`}>
+                        <i className={`fa-solid ${couponCategoryStyle(c).icon} text-xs`} />
+                      </span>
+                      <p className="flex-1 min-w-0 text-[13px] font-bold text-slate-800 truncate" title={`${couponLabel(c)} — ${c.name}`}>
+                        {isEN ? `Discount ${couponLabel(c)} — ${c.name}` : `Diskon ${couponLabel(c)} — ${c.name}`}
+                      </p>
+                      <i className="fa-solid fa-circle-info text-slate-300 text-sm shrink-0 mt-0.5" />
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1.5 pl-11 truncate">{couponSubtitle(c)}</p>
+                  </div>
+
+                  {/* Pemisah tiket (putus-putus) + lubang notch di kedua tepi */}
+                  <div className="relative">
+                    <div className="border-t border-dashed border-slate-200" />
+                    <span className="absolute -left-1.5 -top-1.5 w-3 h-3 rounded-full bg-brand-bgLight" />
+                    <span className="absolute -right-1.5 -top-1.5 w-3 h-3 rounded-full bg-brand-bgLight" />
+                  </div>
+
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                      <i className="fa-regular fa-copy" />
+                      <code className="tracking-wider">{c.code}</code>
+                    </span>
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-600">{couponCategoryLabel(c)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Tombol carousel mengambang di tepi baris */}
+            {dbCoupons.length > 3 && (
+              <>
+                {!couponAtStart && (
+                  <button onClick={() => scrollCoupon(-1)} aria-label={isEN ? 'Previous coupons' : 'Kupon sebelumnya'}
+                    className="hidden sm:flex absolute left-[-10px] top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white border border-slate-200 shadow-md items-center justify-center text-slate-500 hover:text-brand-blue hover:border-brand-blue transition-all">
+                    <i className="fa-solid fa-chevron-left text-xs" />
+                  </button>
+                )}
+                <button onClick={() => scrollCoupon(1)} aria-label={isEN ? 'Next coupons' : 'Kupon berikutnya'}
+                  className="hidden sm:flex absolute right-[-10px] top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white border border-slate-200 shadow-md items-center justify-center text-slate-500 hover:text-brand-blue hover:border-brand-blue transition-all">
+                  <i className="fa-solid fa-chevron-right text-xs" />
+                </button>
+              </>
+            )}
+          </div>
+        </Reveal>
+      </section>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          4. PROMO TIKET PESAWAT (baris kartu + panah)
+      ══════════════════════════════════════════════════════ */}
+      <section id="promo" className="max-w-[1280px] mx-auto px-4 md:px-8 py-6">
+        <Reveal className="flex items-center justify-between mb-4">
+          <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
+            {isEN ? 'Flight Promos' : 'Promo Tiket Pesawat'}
+          </h2>
+          <button type="button" onClick={() => router.push('/flight/search')} aria-label={isEN ? 'Search flights' : 'Cari tiket pesawat'}
+            className="text-slate-400 hover:text-brand-blue transition-colors">
+            <i className="fa-solid fa-chevron-right text-sm" />
+          </button>
         </Reveal>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          {ASIA_DESTINATIONS.map((d, i) => (
-            <Reveal key={d.code} delay={i * 0.06}>
-              <div
-                onClick={() => quickFlight(d.code, flightOrigin)}
-                className="group bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-card hover:shadow-xl transition-all duration-300 hover:-translate-y-1 w-full text-left cursor-pointer flex flex-col"
-                aria-label={isEN ? d.nameEN : d.name}
-              >
-                <div className="relative h-52 sm:h-56 overflow-hidden">
-                  <img src={d.img} alt={isEN ? d.nameEN : d.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                  <span className={`absolute top-3.5 left-3.5 ${ASIA_DESTINATIONS_BADGE_CLASS[i]} text-xs font-bold px-3 py-1 rounded-full shadow-sm`}>
-                    {isEN ? ASIA_DESTINATIONS_BADGES_EN[i] : ASIA_DESTINATIONS_BADGES_ID[i]}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={isEN ? 'Save to favorites' : 'Simpan ke favorit'}
-                    onClick={(e) => { e.stopPropagation(); toggleFav(d.code); }}
-                    className="absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-white/85 hover:bg-white text-slate-700 flex items-center justify-center transition-colors shadow-sm"
-                  >
-                    <i className={`fa-solid fa-heart text-sm ${favIds.includes(d.code) ? 'text-rose-500' : 'text-slate-400'}`}></i>
-                  </button>
-                </div>
-                <div className="p-5 flex-1 flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-extrabold text-base text-brand-ink group-hover:text-brand-blue transition-colors leading-tight">
-                      {isEN ? d.nameEN : d.name}
-                    </h3>
-                  </div>
-                  <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold">{isEN ? 'From' : 'Mulai'}</span>
-                    <span className="font-extrabold text-base text-brand-orange">{isEN ? d.priceEN : d.price}</span>
-                  </div>
-                </div>
+        <PromoScrollRow prevLabel={isEN ? 'Previous promos' : 'Promo sebelumnya'} nextLabel={isEN ? 'Next promos' : 'Promo berikutnya'}>
+          {PROMO_BANNERS.Pesawat.map((p, i) => (
+            <div
+              key={i}
+              onClick={() => handlePromoClick(p, 'Pesawat')}
+              className="flex-none w-[240px] sm:w-[280px] bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden cursor-pointer snap-start"
+            >
+              <div className="relative overflow-hidden h-[150px]">
+                <img src={p.img} alt={p.title} className="w-full h-full object-cover" />
+                <span className="absolute top-2 left-2 bg-slate-900/85 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg">{p.badge}</span>
               </div>
-            </Reveal>
+              <div className="px-3 pt-2.5 pb-3">
+                <p className="text-sm font-bold text-slate-900 leading-snug truncate" title={p.title}>{p.title}</p>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <img src={p.airlineImg} alt={p.airline} title={p.airline} className="w-4 h-4 object-contain shrink-0" />
+                  <span className="text-xs text-slate-400 truncate">{p.date}</span>
+                </div>
+                <p className="text-brand-orange font-extrabold text-sm mt-1.5">{p.subtitle}</p>
+              </div>
+            </div>
           ))}
-        </div>
+        </PromoScrollRow>
       </section>
 
       {/* ══════════════════════════════════════════════════════
-          6. PROMO TIKET DOMESTIK
+          5. PROMO HOTEL
       ══════════════════════════════════════════════════════ */}
       <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-6">
-        <Reveal className="flex items-center gap-2 mb-4">
-          <i className="fa-solid fa-plane text-brand-orange" />
+        <Reveal className="flex items-center justify-between mb-4">
           <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
-            {isEN ? 'Cheap Domestic Flight Promos' : 'Promo Tiket Pesawat Domestik Murah'}
+            {isEN ? 'Hotel Promos' : 'Promo Hotel'}
           </h2>
-          <span className="text-slate-400">✈️</span>
+          <button type="button" onClick={() => router.push('/hotel/search')} aria-label={isEN ? 'Search hotels' : 'Cari hotel'}
+            className="text-slate-400 hover:text-brand-blue transition-colors">
+            <i className="fa-solid fa-chevron-right text-sm" />
+          </button>
         </Reveal>
 
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-4 pb-1">
-          {DOMESTIC_CITIES.map(city => (
-            <button
-              key={city}
-              onClick={() => setActiveDomesticCity(city)}
-              className={`px-4 py-2.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${
-                activeDomesticCity === city
-                  ? 'bg-orange-600 text-white border-orange-600 shadow-md shadow-orange-200'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'
-              }`}
+        <PromoScrollRow prevLabel={isEN ? 'Previous promos' : 'Promo sebelumnya'} nextLabel={isEN ? 'Next promos' : 'Promo berikutnya'}>
+          {PROMO_BANNERS.Hotel.map((p, i) => (
+            <div
+              key={i}
+              onClick={() => handlePromoClick(p, 'Hotel')}
+              className="flex-none w-[240px] sm:w-[280px] bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden cursor-pointer snap-start"
             >
-              {city}
-            </button>
+              <div className="relative overflow-hidden h-[150px]">
+                <img src={p.img} alt={p.title} className="w-full h-full object-cover" />
+                <span className="absolute top-2 left-2 flex items-center gap-1 bg-blue-600 text-white text-[11px] font-bold px-2.5 py-1 rounded-full">
+                  <i className="fa-solid fa-location-dot text-[10px]" />
+                  {p.city}
+                </span>
+              </div>
+              <div className="px-3 pt-2.5 pb-3">
+                <p className="text-sm font-bold text-slate-900 leading-snug line-clamp-2" title={p.title}>{p.title}</p>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <i className="fa-solid fa-calendar-check text-[11px] text-slate-400" />
+                  <span className="text-xs text-slate-400 truncate">{p.date}</span>
+                </div>
+                <p className="text-brand-orange font-extrabold text-sm mt-1.5">{p.subtitle}</p>
+              </div>
+            </div>
           ))}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-          {(DOMESTIC_FLIGHTS[activeDomesticCity] || []).map((f, i) => {
-            const personalize = !(f.origin && f.origin !== 'CGK') && flightFrom(f.dest) !== 'CGK';
-            const cardOrigin  = personalize ? flightFrom(f.dest) : (f.origin || 'CGK');
-            const routeID     = personalize ? f.route.replace(/^Jakarta/, originLabel) : f.route;
-            const routeEN     = personalize ? f.routeEN.replace(/^Jakarta/, originLabel) : f.routeEN;
-            return (
-              <Reveal key={i} delay={i * 0.05}>
-                <button
-                  onClick={() => quickFlight(f.dest, cardOrigin)}
-                  className="group bg-white rounded-3xl overflow-hidden border border-slate-100 shadow-card hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-left w-full flex flex-col"
-                >
-                  <div className="relative overflow-hidden h-40">
-                    <img src={f.img} alt={f.route} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
-                    <span className={`absolute top-3 left-3 ${DOMESTIC_BADGE[activeDomesticCity]?.color || 'bg-brand-orange'} text-white text-[11px] font-black px-3 py-1 rounded-full uppercase shadow-sm`}>
-                      {DOMESTIC_BADGE[activeDomesticCity] ? (isEN ? DOMESTIC_BADGE[activeDomesticCity].en : DOMESTIC_BADGE[activeDomesticCity].id) : (isEN ? 'PROMO' : 'PROMO')}
-                    </span>
-                  </div>
-                  <div className="p-4">
-                    <p className="text-[13px] text-brand-neutral font-medium leading-snug mb-1">{isEN ? routeEN : routeID}</p>
-                    <p className="text-[11px] text-slate-400 mb-0">{tomorrowLabel}</p>
-                  </div>
-                  <div className="mt-auto px-4 pt-4 pb-4 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold">{isEN ? 'From' : 'Mulai'}</span>
-                    <p className="text-brand-orange font-extrabold text-sm">{f.price}</p>
-                  </div>
-                </button>
-              </Reveal>
-            );
-          })}
-        </div>
+        </PromoScrollRow>
       </section>
 
       {/* ══════════════════════════════════════════════════════
-          KENAPA MAFIA TRAVEL?
+          6. PROMO TIKET KERETA
       ══════════════════════════════════════════════════════ */}
-      <section id="tentang" className="max-w-[1280px] mx-auto px-4 md:px-8 py-10">
-        <Reveal className="text-center mb-8">
+      <section className="max-w-[1280px] mx-auto px-4 md:px-8 py-6">
+        <Reveal className="flex items-center justify-between mb-4">
           <h2 className="text-lg sm:text-2xl font-black text-brand-ink">
-            {t.features.title}
+            {isEN ? 'Train Promos' : 'Promo Tiket Kereta'}
           </h2>
-          <p className="text-brand-neutral text-xs sm:text-sm mt-2 max-w-xl mx-auto">
-            {t.features.subtitle}
-          </p>
+          <button type="button" onClick={() => router.push('/train/search')} aria-label={isEN ? 'Search trains' : 'Cari tiket kereta'}
+            className="text-slate-400 hover:text-brand-blue transition-colors">
+            <i className="fa-solid fa-chevron-right text-sm" />
+          </button>
         </Reveal>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
-          {[
-            { title: t.features.fast, desc: t.features.fastDesc },
-            { title: t.features.price, desc: t.features.priceDesc },
-            { title: t.features.secure, desc: t.features.secureDesc },
-            { title: t.features.support, desc: t.features.supportDesc },
-          ].map((f, i) => (
-            <Reveal key={i} delay={i * 0.08}>
-              <div className="group h-full bg-white rounded-2xl border border-slate-100 p-5 md:p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                <div className={`w-11 h-11 rounded-xl ${FEATURES[i].color} flex items-center justify-center mb-4 transition-colors duration-300`}>
-                  <i className={`fa-solid ${FEATURES[i].icon} text-sm`} />
-                </div>
-                <h3 className="font-black text-brand-ink text-sm mb-1.5">{f.title}</h3>
-                <p className="text-xs text-brand-neutral leading-relaxed">{f.desc}</p>
+
+        <PromoScrollRow prevLabel={isEN ? 'Previous promos' : 'Promo sebelumnya'} nextLabel={isEN ? 'Next promos' : 'Promo berikutnya'}>
+          {PROMO_BANNERS.Kereta.map((p, i) => (
+            <div
+              key={i}
+              onClick={() => handlePromoClick(p, 'Kereta')}
+              className="flex-none w-[240px] sm:w-[280px] bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden cursor-pointer snap-start"
+            >
+              <div className="relative overflow-hidden h-[150px]">
+                <img src={p.img} alt={p.title} onError={(e) => { e.currentTarget.src = '/images/train.jpg'; }} className="w-full h-full object-cover" />
+                <span className="absolute top-2 left-2 bg-slate-900/85 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg">{p.badge}</span>
               </div>
-            </Reveal>
+              <div className="px-3 pt-2.5 pb-3">
+                <p className="text-sm font-bold text-slate-900 leading-snug truncate" title={trainLabelFor(p.origin, p.destination, p.title)}>{trainLabelFor(p.origin, p.destination, p.title)}</p>
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <i className="fa-solid fa-train text-[11px] text-slate-400" />
+                  <span className="text-xs text-slate-400 truncate">{p.date}</span>
+                </div>
+                <p className="text-brand-orange font-extrabold text-sm mt-1.5">{p.subtitle}</p>
+              </div>
+            </div>
           ))}
-        </div>
+        </PromoScrollRow>
       </section>
 
       {/* ══════════════════════════════════════════════════════
@@ -1396,163 +1249,6 @@ export default function LandingPage() {
         )}
       </AnimatePresence>
 
-      {/* ══════════════════════════════════════════════════════
-          LOGIN POPUP (untuk favorit)
-      ══════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {showLoginPopup && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1000] bg-black/50 flex items-center justify-center px-4"
-            onClick={() => { setShowLoginPopup(false); setLoginError(''); setLoginEmail(''); setLoginPassword(''); }}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              transition={{ duration: 0.25 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6"
-            >
-              {/* Close button */}
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-lg font-bold text-slate-800">
-                  {isEN ? 'Sign In' : 'Masuk'}
-                </h3>
-                <button
-                  onClick={() => { setShowLoginPopup(false); setLoginError(''); setLoginEmail(''); setLoginPassword(''); }}
-                  className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center transition-colors"
-                >
-                  <i className="fa-solid fa-xmark text-slate-400 text-sm" />
-                </button>
-              </div>
-
-              {/* Error Alert */}
-              {loginError && (
-                <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5 mb-4">
-                  <i className="fa-solid fa-circle-exclamation text-red-500 text-xs" />
-                  <p className="text-red-600 text-xs font-medium">{loginError}</p>
-                </div>
-              )}
-
-              {/* Google Login */}
-              <button
-                type="button"
-                onClick={() => {
-                  sessionStorage.setItem('mt_welcome_pending', '1');
-                  signIn('google', { callbackUrl: '/' });
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 border border-slate-200 rounded-lg font-bold text-sm text-slate-700 hover:bg-slate-50 transition-all active:scale-95 mb-4"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                {isEN ? 'Continue with Google' : 'Lanjutkan dengan Google'}
-              </button>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex-grow border-t border-slate-200" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {isEN ? 'or sign in with email' : 'atau masuk dengan email'}
-                </span>
-                <div className="flex-grow border-t border-slate-200" />
-              </div>
-
-              {/* Email/Password Form */}
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                setLoginLoading(true);
-                setLoginError('');
-                try {
-                  const res = await Promise.race([
-                    signIn('credentials', { email: loginEmail, password: loginPassword, redirect: false }),
-                    new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000)),
-                  ]);
-                  if (res?.error) {
-                    setLoginError(isEN ? 'Incorrect email or password.' : 'Email atau password salah.');
-                    setLoginLoading(false);
-                  } else {
-                    sessionStorage.setItem('mt_welcome_pending', '1');
-                    window.location.reload();
-                  }
-                } catch (err) {
-                  setLoginError(err instanceof Error && err.message === 'timeout'
-                    ? (isEN ? 'Connection timed out.' : 'Koneksi timeout.')
-                    : (isEN ? 'Server error.' : 'Kesalahan server.'));
-                  setLoginLoading(false);
-                }
-              }} className="space-y-3">
-                {/* Email */}
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={loginEmail}
-                    onChange={e => setLoginEmail(e.target.value)}
-                    required
-                    disabled={loginLoading}
-                    className="peer w-full h-11 px-3 pt-3 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-brand-ink bg-transparent disabled:bg-slate-50"
-                    placeholder=" "
-                  />
-                  <label className="absolute left-3 top-3 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2 peer-not-placeholder-shown:scale-75 origin-left">
-                    {isEN ? 'Email Address' : 'Alamat Email'}
-                  </label>
-                </div>
-
-                {/* Password */}
-                <div className="relative">
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={e => setLoginPassword(e.target.value)}
-                    required
-                    disabled={loginLoading}
-                    className="peer w-full h-11 px-3 pt-3 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-brand-ink bg-transparent disabled:bg-slate-50"
-                    placeholder=" "
-                  />
-                  <label className="absolute left-3 top-3 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2 peer-not-placeholder-shown:scale-75 origin-left">
-                    {isEN ? 'Password' : 'Password'}
-                  </label>
-                </div>
-
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={loginLoading}
-                  className="w-full h-11 bg-slate-900 text-white font-bold rounded-lg shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed text-sm"
-                >
-                  {loginLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      {isEN ? 'Checking...' : 'Memeriksa...'}
-                    </>
-                  ) : (
-                    <>
-                      {isEN ? 'Sign In Now' : 'Masuk Sekarang'}
-                      <i className="fa-solid fa-arrow-right text-xs" />
-                    </>
-                  )}
-                </button>
-              </form>
-
-              {/* Register Link */}
-              <p className="mt-4 text-center text-xs text-slate-500 font-medium">
-                {isEN ? "Don't have an account?" : 'Belum punya akun?'}{' '}
-                <a href="/register" className="text-orange-600 font-bold hover:underline underline-offset-4">
-                  {isEN ? 'Register here' : 'Daftar di sini'}
-                </a>
-              </p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <SupportWidget />
     </main>
   );
 }

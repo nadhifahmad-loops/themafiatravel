@@ -28,7 +28,7 @@ export default function ErrorBoundary({
         </h1>
         <p className="text-sm text-gray mb-6">
           Maaf, ada yang tidak berjalan sesuai rencana di halaman ini. Tim kami
-          sudah dicatat mengenai error ini. Silakan coba lagi.
+          sudah mencatat mengenai error ini. Silakan coba lagi.
         </p>
         <div className="flex items-center justify-center gap-3">
           <button

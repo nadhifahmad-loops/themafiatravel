@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Toast } from '../edit/components';
@@ -69,6 +70,7 @@ export default function LanguagePage() {
               return (
                 <button key={l.code} onClick={() => handleSelect(l.code)}
                   style={{ display: 'flex', alignItems: 'center', gap: '14px', width: '100%', padding: '18px 20px', borderRadius: '16px', border: `2px solid ${active ? '#ea580c' : '#e2e8f0'}`, background: active ? '#fff7ed' : '#f8fafc', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
+                  <Image src={l.code === 'ID' ? '/images/flags/ID.png' : '/images/flags/GB.png'} alt="" width={38} height={28} style={{ minWidth: '38px', height: '28px', objectFit: 'cover', borderRadius: '7px', boxShadow: '0 0 0 1px rgba(0,0,0,0.08)' }} />
                   <span style={{ minWidth: '38px', height: '28px', padding: '0 10px', borderRadius: '9px', background: active ? '#ea580c' : '#e2e8f0', color: active ? 'white' : '#64748b', fontWeight: 900, fontSize: '12px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{l.code}</span>
                   <span style={{ flex: 1, fontWeight: 700, fontSize: '15px', color: active ? '#ea580c' : '#0f172a' }}>{l.label}</span>
                   {active && <i className="fa-solid fa-circle-check" style={{ color: '#ea580c', fontSize: '18px' }}></i>}
