@@ -38,7 +38,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-brand-bgLight">
       <UnifiedNavbar user={session?.user || null} showLanguageToggle={isSearchPage} />
-      <main className="pt-[36px]">{children}</main>
+      {/* UnifiedNavbar sengaja tidak dirender di /checkout (lihat UnifiedNavbar),
+          tapi halaman checkout punya header sticky milik sendiri (CheckoutNavbar)
+          yang ikut alur dokumen. Padding 36px yang selama ini tetap ditanam
+          menyisakan ruang kosong nyangkut di atas — jadi dibatalkan di sana. */}
+      <main className={pathname?.includes('/checkout') ? '' : 'pt-[36px]'}>{children}</main>
     </div>
   );
 }

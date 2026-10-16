@@ -1,9 +1,15 @@
 'use client';
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
+import CheckoutStepBar from '@/components/checkout/CheckoutStepBar';
+import PayButton from '@/components/checkout/PayButton';
+import MobileCheckoutBar from '@/components/checkout/MobileCheckoutBar';
+import SectionHeader from '@/components/checkout/SectionHeader';
+import TermsModal from '@/components/checkout/TermsModal';
+import TermsAgreementText from '@/components/checkout/TermsAgreementText';
 import DatePickerField from '@/components/checkout/DatePickerField';
 import { COUNTRY_CODES } from '@/app/(dashboard)/account/edit/components';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
@@ -397,28 +403,19 @@ function FlightCheckoutContent() {
   const [phonePickerOpen, setPhonePickerOpen] = useState(false);
   const [phoneSearch, setPhoneSearch] = useState('');
   const phonePickerRef = useRef<HTMLDivElement>(null);
-  const steps = ['Data Pemesan', 'Data Penumpang', 'Pelengkap'];
-  const [activeStep, setActiveStep] = useState(0);
+  // Ref section tiap langkah → dipakai CheckoutStepBar untuk scroll-spy
+  // (chip langkah aktif) dan untuk melompati section saat chip diklik).
   const section0 = useRef<HTMLDivElement>(null);
   const section1 = useRef<HTMLDivElement>(null);
   const section2 = useRef<HTMLDivElement>(null);
-  const sectionRefs = [section0, section1, section2];
+  // Array-nya di-memo agar identitasnya stabil — kalau dibuat inline, efek
+  // IntersectionObserver di CheckoutStepBar akan dibuang & dipasang ulang
+  // setiap kali form di-render (tiap ketikan).
+  const sectionRefs = useMemo(() => [section0, section1, section2], []);
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const idx = sectionRefs.findIndex(r => r.current === entry.target);
-            if (idx !== -1) setActiveStep(idx);
-          }
-        });
-      },
-      { rootMargin: '-100px 0px -60% 0px', threshold: 0 }
-    );
-    sectionRefs.forEach(r => { if (r.current) observer.observe(r.current); });
-    return () => observer.disconnect();
-  }, []);
+  // Dialog Syarat & Ketentuan dibuka di tempat (tanpa navigasi) agar data form
+  // tetap utuh dan LeaveGuard tidak memunculkan dialog "Yakin keluar?".
+  const [termsOpen, setTermsOpen] = useState(false);
 
   useEffect(() => {
     if (!phonePickerOpen) return;
@@ -640,6 +637,18 @@ function FlightCheckoutContent() {
     return errs;
   };
 
+  // ── Status langkah untuk stepper ─────────────────────────────
+  // Chip ✓ di CheckoutStepBar ditentukan oleh field wajib yang SUDAH TERISI,
+  // bukan posisi scroll — memakai `validate()` yang sama sehingga chip hanya
+  // hijau bila submit juga tidak akan ditolak. Langkah 3 "Pelengkap"
+  // (bagasi/kursi/makan) semuanya opsional → ditandai `optional`, ✓-nya
+  // menyusul saat section-nya sudah dikunjungi.
+  const stepErrs = validate();
+  const stepCompleted = [
+    !stepErrs.booker_name && !stepErrs.booker_email && !stepErrs.booker_phone,
+    !Object.keys(stepErrs).some(k => k.startsWith('pax_')),
+  ];
+
   const handleSubmit = async () => {
     if (!flightData || isSubmittingRef.current || checkoutDone) return;
     if (bookingError) return;
@@ -785,8 +794,12 @@ function FlightCheckoutContent() {
     { label:'Makanan', value: mealFee },
   ];
 
+  // Label langkah stepper + teks CTA mobile (konsisten antar modul checkout).
+  const cs = i18n.checkoutSteps[language];
+
   return (
-    <div className="min-h-screen bg-slate-50 pt-[56px]">
+    <div className="min-h-screen bg-slate-50">
+      {/* Bar brand (logo + wordmark) — sticky, markup identik header utama */}
       <CheckoutNavbar />
       <LeaveGuard
         active={!checkoutDone}
@@ -796,47 +809,18 @@ function FlightCheckoutContent() {
         zIndex={submitting ? 'z-[13000]' : 'z-[1400]'}
       />
 
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 sticky top-[56px] z-10">
-        <div className="max-w-[1280px] mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <button onClick={()=>router.back()} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
-              ← {tc.back}
-            </button>
-            <div className="flex items-center gap-2">
-              {steps.map((step, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  {i > 0 && <div className={`w-4 h-px ${i <= activeStep ? 'bg-orange-400' : 'bg-slate-200'}`}/>}
-                  <button
-                    onClick={() => sectionRefs[i].current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${
-                      i === activeStep
-                        ? 'bg-orange-50 text-orange-600'
-                        : i < activeStep
-                        ? 'bg-emerald-50 text-emerald-600'
-                        : 'text-slate-400'
-                    }`}
-                  >
-                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] ${
-                      i === activeStep
-                        ? 'bg-orange-500 text-white'
-                        : i < activeStep
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-slate-200 text-slate-400'
-                    }`}>
-                      {i < activeStep ? '✓' : i + 1}
-                    </span>
-                    <span className="hidden sm:inline">{step}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="w-16"/>
-          </div>
-        </div>
-      </div>
+      {/* Bar kedua: "← Kembali" + judul langkah. Sticky di SEMUA ukuran layar
+          (top-0 di HP, top-60px di desktop) supaya row langkah selalu terlihat
+          saat scroll; bar brand justru ikut ter-scroll ke atas di HP. */}
+      <CheckoutStepBar
+        labels={[cs.booker, cs.passengers, cs.addons]}
+        sections={sectionRefs}
+        completed={stepCompleted}
+        optional={[false, false, true]}
+        onBack={() => router.back()}
+      />
 
-      <div className="max-w-[1280px] mx-auto px-4 py-6">
+      <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-8 py-6 pb-28 lg:pb-10">
         {/* Guest banner */}
         {isGuest && (
           <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex items-center justify-between">
@@ -946,20 +930,20 @@ function FlightCheckoutContent() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
           {/* LEFT */}
           <div className="space-y-5">
             {/* Data Pemesan */}
-            <div ref={sectionRefs[0]} className="bg-white rounded-xl border border-slate-200 p-5">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-6 h-6 rounded-full bg-slate-800 text-white text-[11px] font-bold flex items-center justify-center"><i className="fa-solid fa-user text-[9px]"></i></div>
-                <h2 className="text-sm font-bold text-slate-800">Data Pemesan</h2>
-              </div>
-              {isGuest ? (
-                <p className="text-xs text-slate-400 mt-1 mb-4">E-tiket akan dikirim ke email dan nomor HP di bawah ini.</p>
-              ) : (
-                <p className="text-xs text-slate-400 mt-1 mb-4">Data diisi otomatis dari akun Anda. Silakan lengkapi jika diperlukan.</p>
-              )}
+            <div ref={section0} className="scroll-mt-[60px] lg:scroll-mt-[124px] bg-white rounded-xl border border-slate-200 p-5">
+              <SectionHeader
+                icon="fa-user"
+                title="Data Pemesan"
+                description={
+                  isGuest
+                    ? 'E-tiket akan dikirim ke email dan nomor HP di bawah ini.'
+                    : 'Data diisi otomatis dari akun Anda. Silakan lengkapi jika diperlukan.'
+                }
+              />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <label className={labelCls}>Nama Lengkap</label>
@@ -1020,15 +1004,15 @@ function FlightCheckoutContent() {
             </div>
 
             {/* Penumpang */}
-            <div ref={sectionRefs[1]}>
+            <div ref={section1} className="scroll-mt-[60px] lg:scroll-mt-[124px]">
               {passengers.map((pax,i) => (
                 <PassengerForm key={i} pax={pax} index={i} fieldCls={fieldCls} labelCls={labelCls} selectCls={selectCls} errors={formErrors} onChange={updatePassenger}/>
               ))}
             </div>
 
             {/* Pelengkap Penerbangan */}
-            <div ref={sectionRefs[2]}>
-              <h2 className="text-sm font-bold text-slate-800 mb-3">Pelengkap Penerbangan</h2>
+            <div ref={section2} className="scroll-mt-[60px] lg:scroll-mt-[124px]">
+              <SectionHeader icon="fa-plus" title="Pelengkap Penerbangan" />
               <div className="space-y-3">
 
                 {/* Bagasi */}
@@ -1199,7 +1183,7 @@ function FlightCheckoutContent() {
           </div>
 
           {/* RIGHT: Sidebar */}
-          <div className="space-y-4 sticky top-28">
+          <div className="space-y-4 lg:sticky lg:top-[104px]">
             {/* Flight info */}
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100">
@@ -1320,23 +1304,50 @@ function FlightCheckoutContent() {
                   <span>Masih ada {Object.keys(formErrors).length} data yang belum lengkap. Periksa kembali kolom bertanda merah.</span>
                 </div>
               )}
-              <button
-                onClick={handleSubmit}
-                disabled={submitting || !!bookingError}
-                className="mt-4 w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all text-sm active:scale-[0.98]"
-              >
-                {submitting
-                  ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>{t.processing}</span>
-                  : `Bayar ${fmtIDR(grandTotal)}`
-                }
-              </button>
-              <p className="text-[10px] text-slate-400 text-center mt-2">
-                Dengan menekan tombol, Anda menyetujui Syarat & Ketentuan kami.
-              </p>
+              {/* CTA desktop. Di mobile digantikan MobileCheckoutBar yang
+                  menempel di bawah layar. */}
+              <div className="hidden lg:block">
+                <PayButton
+                  onClick={handleSubmit}
+                  disabled={submitting || !!bookingError}
+                  loading={submitting}
+                  loadingLabel={t.processing}
+                  className="mt-4"
+                >
+                  {`Bayar ${fmtIDR(grandTotal)}`}
+                </PayButton>
+                <TermsAgreementText
+                  prefix={cs.agreePrefix}
+                  termsLabel={cs.termsLabel}
+                  suffix={cs.agreeSuffix}
+                  onOpen={() => setTermsOpen(true)}
+                  className="block text-center mt-2"
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* CTA mobile: total + tombol bayar selalu terjangkau di layar kecil */}
+      <MobileCheckoutBar
+        totalLabel={cs.total}
+        total={fmtIDR(grandTotal)}
+        ctaLabel={cs.pay}
+        loading={submitting}
+        loadingLabel={t.processing}
+        disabled={!!bookingError}
+        note={<TermsAgreementText
+          prefix={cs.agreePrefix}
+          termsLabel={cs.termsLabel}
+          suffix={cs.agreeSuffix}
+          onOpen={() => setTermsOpen(true)}
+        />}
+        onClick={handleSubmit}
+      />
+
+      {/* Dialog S&K — menutupi konten tanpa navigasi, jadi LeaveGuard tak terpicu */}
+      <TermsModal open={termsOpen} onClose={() => setTermsOpen(false)} />
 
       {/* Menimpa seluruh halaman selama booking diproses: semua klik, scroll,
           dan navigasi keyboard tertahan sehingga user tidak bisa mengklik

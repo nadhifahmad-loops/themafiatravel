@@ -1,10 +1,17 @@
 'use client';
-import { Suspense, useState, useEffect, useRef } from 'react';
+import { Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
+import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
+import CheckoutStepBar from '@/components/checkout/CheckoutStepBar';
+import PayButton from '@/components/checkout/PayButton';
+import MobileCheckoutBar from '@/components/checkout/MobileCheckoutBar';
+import SectionHeader from '@/components/checkout/SectionHeader';
+import TermsModal from '@/components/checkout/TermsModal';
+import TermsAgreementText from '@/components/checkout/TermsAgreementText';
 import CouponInput from '@/components/checkout/CouponInput';
 import DatePickerField from '@/components/checkout/DatePickerField';
 import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
@@ -25,7 +32,8 @@ const sel = "w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg te
 function InsuranceCheckoutContent() {
   const { language } = useLanguage();
   const t = i18n.insuranceCheckout[language];
-  const tc = i18n.common[language];
+  // Label stepper langkah + teks CTA mobile (konsisten antar modul checkout).
+  const cs = i18n.checkoutSteps[language];
   const sp             = useSearchParams();
   const router         = useRouter();
   const pathname       = usePathname();
@@ -70,6 +78,16 @@ const [checkoutDone, setCheckoutDone] = useState(false);
 const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
 const [discountAmount, setDiscountAmount] = useState(0);
 
+  // Ref section tiap langkah → target scroll-spy CheckoutStepBar (di-memo agar
+  // identitasnya stabil dan observer tidak dipasang ulang tiap render).
+  const sectionParticipants = useRef<HTMLDivElement>(null);
+  const sectionContact = useRef<HTMLDivElement>(null);
+  const sectionRefs = useMemo(() => [sectionParticipants, sectionContact], []);
+
+  // Dialog Syarat & Ketentuan dibuka di tempat (tanpa navigasi) agar data form
+  // tetap utuh dan LeaveGuard tidak memunculkan dialog "Yakin keluar?".
+  const [termsOpen, setTermsOpen] = useState(false);
+
   useEffect(() => {
     fetch('/api/markup').then(r=>r.json()).then(d=>{ if(d?.insurance!==undefined) setMarkup(d); }).catch(()=>{});
   }, []);
@@ -111,20 +129,43 @@ const [discountAmount, setDiscountAmount] = useState(0);
     }));
   };
 
+  /**
+   * Pemeriksaan form MURNI (tanpa side effect) — satu-satunya sumber aturan
+   * "sudah terisi belum" untuk dua tempat:
+   *  - `handleSubmit` memakai error PERTAMA → banner tampil dengan pesan dan
+   *    urutan yang sama persis seperti sebelum refactor ini;
+   *  - stepper checkout memakai SEMUA error → chip tidak mungkin hijau bila
+   *    tombol bayar masih akan ditolak.
+   */
+  const validate = (): { key: string; message: string }[] => {
+    const errs: { key: string; message: string }[] = [];
+    if (!contact.first_name) errs.push({ key: 'contact_name', message: 'Nama kontak wajib diisi.' });
+    if (!contact.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact.email)) errs.push({ key: 'contact_email', message: 'Format email tidak valid.' });
+    if (!contact.mobile || !/^\d{8,15}$/.test(contact.mobile)) errs.push({ key: 'contact_mobile', message: 'Nomor HP minimal 8 digit angka.' });
+    if (!passengers.length) errs.push({ key: 'pax_empty', message: 'Minimal 1 penumpang wajib diisi.' });
+    passengers.forEach((p, i) => {
+      if (!p.first_name) errs.push({ key: `pax_first_${i}`, message: `Nama depan penumpang ${i + 1} wajib diisi.` });
+      if (!p.birth_date) errs.push({ key: `pax_birth_${i}`, message: `Tanggal lahir penumpang ${i + 1} wajib diisi.` });
+    });
+    return errs;
+  };
+
+  // ── Status langkah untuk stepper ─────────────────────────────
+  // Langkah 1 = Data Peserta (wajib ada peserta + nama & tgl lahir tiap peserta),
+  // langkah 2 = Data Kontak. Tidak ada langkah opsional di halaman ini.
+  const stepErrs = validate();
+  const stepCompleted = [
+    !stepErrs.some(x => x.key.startsWith('pax')),
+    !stepErrs.some(x => x.key.startsWith('contact')),
+  ];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // Klik ganda: guard dicek SEBELUM validasi, supaya klik kedua tidak pernah
     // sampai ke blok pengiriman request.
     if (checkoutDone || isSubmittingRef.current) return;
-    if (!contact.first_name) { setError('Nama kontak wajib diisi.'); return; }
-    if (!contact.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact.email)) { setError('Format email tidak valid.'); return; }
-    if (!contact.mobile || !/^\d{8,15}$/.test(contact.mobile)) { setError('Nomor HP minimal 8 digit angka.'); return; }
-    if (!passengers.length) { setError('Minimal 1 penumpang wajib diisi.'); return; }
-    for (let i = 0; i < passengers.length; i++) {
-      const p = passengers[i];
-      if (!p.first_name) { setError(`Nama depan penumpang ${i + 1} wajib diisi.`); return; }
-      if (!p.birth_date) { setError(`Tanggal lahir penumpang ${i + 1} wajib diisi.`); return; }
-    }
+    const errs = validate();
+    if (errs.length) { setError(errs[0].message); return; }
     isSubmittingRef.current = true;
     setLoading(true); setError('');
     try {
@@ -200,21 +241,20 @@ const [discountAmount, setDiscountAmount] = useState(0);
           // berada di atasnya supaya tetap terlihat saat user menekan Back.
           zIndex={loading ? 'z-[13000]' : 'z-[1400]'}
         />
-        {/* Header */}
-        <div className="bg-white border-b border-slate-200 py-4 px-6">
-          <div className="max-w-[1280px] mx-auto flex items-center justify-between">
-            <button onClick={() => router.back()} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
-              ← {tc.back}
-            </button>
-            <div className="text-center">
-              <p className="text-sm font-bold text-slate-800">Data Peserta Asuransi</p>
-              <p className="text-xs text-slate-400">{productName}</p>
-            </div>
-            <div className="w-16"/>
-          </div>
-        </div>
+        {/* Bar brand (logo + wordmark) — identik header halaman utama */}
+        <CheckoutNavbar />
+        {/* Bar kedua: "← Kembali" + judul + stepper langkah. Sticky di SEMUA
+            ukuran layar (top-0 di HP, top-60px di desktop). */}
+        <CheckoutStepBar
+          labels={[cs.participants, cs.contact]}
+          sections={sectionRefs}
+          completed={stepCompleted}
+          title="Data Peserta Asuransi"
+          subtitle={productName}
+          onBack={() => router.back()}
+        />
 
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-6">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-8 py-6 pb-28 lg:pb-10">
           {/* Guest banner */}
           {isGuest && (
             <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex items-center justify-between">
@@ -235,15 +275,18 @@ const [discountAmount, setDiscountAmount] = useState(0);
           )}
 
           <form onSubmit={handleSubmit}>
-            <div className="flex flex-col lg:flex-row gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
               {/* LEFT: Form */}
-              <div className="flex-1 min-w-0 space-y-4">
+              <div className="space-y-4">
+                {/* Section "Data Peserta" — target scroll-spy chip langkah */}
+                <div ref={sectionParticipants} className="scroll-mt-[60px] lg:scroll-mt-[124px] space-y-4">
                 {passengers.map((pax, i) => (
                   <div key={i} className="bg-white rounded-xl border border-slate-200 p-5">
-                    <h2 className="text-sm font-bold text-slate-800 mb-4">
-                      Peserta {i + 1}{i === 0 && <span className="text-slate-400 font-normal ml-1">(Utama)</span>}
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <SectionHeader
+                      icon="fa-user-shield"
+                      title={<>Peserta {i + 1}{i === 0 && <span className="text-slate-400 font-normal ml-1">(Utama)</span>}</>}
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
                         <label className={labelCls}>Sapaan *</label>
                         <select value={pax.title} onChange={e => updatePax(i, 'title', e.target.value)} className={sel}>
@@ -259,7 +302,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
                         <input value={pax.last_name} onChange={e => updatePax(i, 'last_name', e.target.value.toUpperCase())} placeholder="DOE" className={inp} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                       <div>
                         <label className={labelCls}>{t.birthDate} *</label>
                         <DatePickerField
@@ -285,7 +328,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                       <div>
                         <label className={labelCls}>{t.email}</label>
                         <input type="email" value={pax.email} onChange={e => updatePax(i, 'email', e.target.value)} placeholder="peserta@email.com" className={inp} />
@@ -300,7 +343,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
                       <summary className="cursor-pointer text-xs font-semibold text-slate-500 hover:text-slate-700 select-none list-none">
                         Data Tambahan (Alamat & Kota Kelahiran) ▾
                       </summary>
-                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className={labelCls}>Kota Tinggal</label>
                           <input value={pax.data_insurance.city} onChange={e => updatePax(i, 'data_insurance.city', e.target.value)} placeholder="Jakarta" className={inp} />
@@ -309,7 +352,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
                           <label className={labelCls}>Tempat Lahir</label>
                           <input value={pax.data_insurance.place_of_birth} onChange={e => updatePax(i, 'data_insurance.place_of_birth', e.target.value)} placeholder="Jakarta" className={inp} />
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="sm:col-span-2">
                           <label className={labelCls}>Alamat Lengkap</label>
                           <input value={pax.data_insurance.address} onChange={e => updatePax(i, 'data_insurance.address', e.target.value)} placeholder="Jl. Sudirman No. 1" className={inp} />
                         </div>
@@ -322,14 +365,15 @@ const [discountAmount, setDiscountAmount] = useState(0);
                           <input value={pax.data_insurance.province} onChange={e => updatePax(i, 'data_insurance.province', e.target.value)} placeholder="DKI Jakarta" className={inp} />
                         </div>
                       </div>
-                    </details>
+                </details>
                   </div>
                 ))}
+                </div>
 
                 {/* Data Kontak */}
-                <div className="bg-white rounded-xl border border-slate-200 p-5">
-                  <h2 className="text-sm font-bold text-slate-800 mb-4">{t.contactDetails}</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div ref={sectionContact} className="scroll-mt-[60px] lg:scroll-mt-[124px] bg-white rounded-xl border border-slate-200 p-5">
+                  <SectionHeader icon="fa-address-card" title={t.contactDetails} />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className={labelCls}>Sapaan *</label>
                       <select value={contact.title} onChange={e => setContact(c => ({ ...c, title: e.target.value }))} className={sel}>
@@ -345,7 +389,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
                       <input value={contact.last_name} onChange={e => setContact(c => ({ ...c, last_name: e.target.value.toUpperCase() }))} placeholder="DOE" className={inp} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                     <div>
                       <label className={labelCls}>Kode Negara *</label>
                       <input value={contact.calling_code} onChange={e => setContact(c => ({ ...c, calling_code: e.target.value }))} placeholder="62" className={inp} />
@@ -361,18 +405,42 @@ const [discountAmount, setDiscountAmount] = useState(0);
                   </div>
                 </div>
 
-                <button type="submit" disabled={loading}
-                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-sm rounded-lg transition-all flex items-center justify-center gap-2 active:scale-[0.98]">
-                  {loading ? (
-                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>{t.processing}</>
-                  ) : (
-                    <>{t.proceedPayment} →</>
-                  )}
-                </button>
+                {/* CTA desktop; di mobile digantikan MobileCheckoutBar */}
+                <div className="hidden lg:block">
+                  <PayButton type="submit" disabled={loading} loading={loading} loadingLabel={t.processing}>
+                    {`${t.proceedPayment} →`}
+                  </PayButton>
+                  <TermsAgreementText
+                    prefix={cs.agreePrefix}
+                    termsLabel={cs.termsLabel}
+                    suffix={cs.agreeSuffix}
+                    onOpen={() => setTermsOpen(true)}
+                    className="block text-center mt-2"
+                  />
+                </div>
+
+                {/* CTA mobile menempel di bawah layar. Sengaja diletakkan DI
+                    DALAM <form> agar tetap menjadi submit button — display:none
+                    di desktop tidak menghapusnya dari DOM, jadi Enter/Go di
+                    keyboard tetap mengirim form. */}
+                <MobileCheckoutBar
+                  type="submit"
+                  totalLabel={cs.total}
+                  total={fmtIDR(grandTotal)}
+                  ctaLabel={cs.pay}
+                  loading={loading}
+                  loadingLabel={t.processing}
+                  note={<TermsAgreementText
+                    prefix={cs.agreePrefix}
+                    termsLabel={cs.termsLabel}
+                    suffix={cs.agreeSuffix}
+                    onOpen={() => setTermsOpen(true)}
+                  />}
+                />
               </div>
 
               {/* RIGHT: Summary */}
-              <div className="w-full lg:w-[320px] shrink-0 sticky top-24 space-y-4">
+              <div className="space-y-4 lg:sticky lg:top-[104px]">
                 {/* Ringkasan Produk */}
                 <div className="bg-white rounded-xl border border-slate-200 p-5">
                   <h3 className="text-sm font-bold text-slate-800 mb-4">Ringkasan Polis</h3>
@@ -441,6 +509,9 @@ const [discountAmount, setDiscountAmount] = useState(0);
           </form>
         </div>
       </div>
+
+      {/* Dialog S&K — menutupi konten tanpa navigasi, jadi LeaveGuard tak terpicu */}
+      <TermsModal open={termsOpen} onClose={() => setTermsOpen(false)} />
 
       {/* Menimpa seluruh halaman selama booking diproses: semua klik, scroll,
           dan navigasi keyboard tertahan sehingga user tidak bisa mengklik

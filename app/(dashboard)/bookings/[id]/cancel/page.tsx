@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useLanguage } from '@/contexts/LanguageContext';
 import Image from 'next/image';
 import { i18n } from '@/lib/i18n';
+import TermsModal from '@/components/checkout/TermsModal';
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 
 // ─────────────────────────────────────────────────────────────
@@ -139,6 +140,8 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
 
   // Step 3
   const [agreed, setAgreed]             = useState(false);
+  // Dialog Syarat & Ketentuan — dibuka di tempat tanpa navigasi.
+  const [termsOpen, setTermsOpen]       = useState(false);
   const [processing, setProcessing]     = useState(false);
   const [processMsg, setProcessMsg]     = useState('Menghubungi vendor...');
   const [cancelError, setCancelError]   = useState('');
@@ -848,7 +851,17 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                 />
                 <span style={{ fontSize: '13px', color: '#475569', lineHeight: 1.7 }}>
                   Saya memahami kebijakan pembatalan dan biaya yang berlaku. Saya menyetujui bahwa keputusan ini bersifat final dan tidak dapat diurungkan. Dengan ini saya menyetujui{' '}
-                  <span style={{ color: '#ea580c', fontWeight: 700, cursor: 'pointer' }}>Syarat & Ketentuan</span> pembatalan Orbisway.
+                  {/* Teks ini berada di dalam <label> yang membungkus checkbox,
+                      jadi preventDefault() wajib — tanpa itu klik S&K ikut
+                      men-toggle checkbox persetujuan. */}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTermsOpen(true); }}
+                    style={{ color: '#ea580c', fontWeight: 700, cursor: 'pointer', background: 'transparent', border: 0, padding: 0, font: 'inherit', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                  >
+                    Syarat & Ketentuan
+                  </button>{' '}
+                  pembatalan Orbisway.
                 </span>
               </label>
             </div>
@@ -1075,6 +1088,9 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
           </div>
         </div>
       )}
+
+      {/* Dialog Syarat & Ketentuan — kontennya sama dengan halaman /terms */}
+      <TermsModal open={termsOpen} onClose={() => setTermsOpen(false)} />
 
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes popIn { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }

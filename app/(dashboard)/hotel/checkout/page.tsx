@@ -5,6 +5,13 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
+import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
+import CheckoutStepBar from '@/components/checkout/CheckoutStepBar';
+import PayButton from '@/components/checkout/PayButton';
+import MobileCheckoutBar from '@/components/checkout/MobileCheckoutBar';
+import SectionHeader from '@/components/checkout/SectionHeader';
+import TermsModal from '@/components/checkout/TermsModal';
+import TermsAgreementText from '@/components/checkout/TermsAgreementText';
 import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import CouponInput from '@/components/checkout/CouponInput';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -70,6 +77,8 @@ function CheckoutContent() {
   const { language } = useLanguage();
   const t = i18n.hotelCheckout[language];
   const tc = i18n.common[language];
+  // Label stepper langkah + teks CTA mobile (konsisten antar modul checkout).
+  const cs = i18n.checkoutSteps[language];
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -120,6 +129,18 @@ const [checkoutDone, setCheckoutDone] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
 
+  // Ref section tiap langkah → target scroll-spy CheckoutStepBar.
+  // Di-memo agar identitasnya stabil (kalau inline, observer dipasang ulang
+  // setiap kali form di-render).
+  const sectionGuests = useRef<HTMLDivElement>(null);
+  const sectionContact = useRef<HTMLDivElement>(null);
+  const sectionRequest = useRef<HTMLDivElement>(null);
+  const sectionRefs = useMemo(() => [sectionGuests, sectionContact, sectionRequest], []);
+
+  // Dialog Syarat & Ketentuan dibuka di tempat (tanpa navigasi) agar data form
+  // tetap utuh dan LeaveGuard tidak memunculkan dialog "Yakin keluar?".
+  const [termsOpen, setTermsOpen] = useState(false);
+
   useEffect(() => {
     fetch('/api/markup').then(r=>r.json()).then(d=>{ if(d?.hotel!==undefined) setMarkup(d); }).catch(()=>{});
   }, []);
@@ -137,6 +158,46 @@ const [checkoutDone, setCheckoutDone] = useState(false);
   const adminFee = Math.round(totalAmount * (markup.hotel / 100));
   const grandTotal = Math.max(0, totalAmount + adminFee - discountAmount);
 
+  /**
+   * Pemeriksaan form MURNI (tanpa side effect) — satu-satunya sumber aturan
+   * "sudah terisi belum" untuk dua tempat:
+   *  - `handleSubmit` memakai error PERTAMA → banner tampil dengan pesan dan
+   *    urutan yang sama persis seperti sebelum refactor ini;
+   *  - stepper checkout memakai SEMUA error → chip tidak mungkin hijau bila
+   *    tombol bayar masih akan ditolak.
+   *
+   * Urutan pemeriksaan di bawah sengaja dipertahankan: nama tamu → nama
+   * kontak → email → nomor HP.
+   */
+  const validate = (): { key: string; message: string }[] => {
+    const errs: { key: string; message: string }[] = [];
+    passengers.forEach((p, i) => {
+      if (!p.first_name.trim() || !p.last_name.trim()) {
+        errs.push({ key: `guest_name_${i}`, message: 'Mohon lengkapi nama depan dan nama belakang semua tamu.' });
+      }
+    });
+    if (!contact.first_name.trim() || !contact.last_name.trim()) {
+      errs.push({ key: 'contact_name', message: 'Mohon lengkapi nama kontak utama.' });
+    }
+    if (!isValidEmail(contact.email.trim())) {
+      errs.push({ key: 'contact_email', message: 'Format email tidak valid.' });
+    }
+    if (!/^\d{8,15}$/.test(contact.mobile.trim())) {
+      errs.push({ key: 'contact_mobile', message: 'Nomor HP minimal 8 digit angka.' });
+    }
+    return errs;
+  };
+
+  // ── Status langkah untuk stepper ─────────────────────────────
+  // Langkah 1 = Data Tamu, langkah 2 = Data Kontak (keduanya field wajib).
+  // Langkah 3 "Permintaan" opsional → ditandai `optional`, ✓-nya menyusul
+  // saat section-nya sudah dikunjungi.
+  const stepErrs = validate();
+  const stepCompleted = [
+    !stepErrs.some(x => x.key.startsWith('guest_name')),
+    !stepErrs.some(x => x.key.startsWith('contact_')),
+  ];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (checkoutDone || submittingRef.current) return;
@@ -150,11 +211,8 @@ const [checkoutDone, setCheckoutDone] = useState(false);
     const cleanCallingCode = String(contact.calling_code || '').replace(/^\+/, '');
     const normalizedContact = { ...contact, calling_code: cleanCallingCode, first_name: contact.first_name.trim(), last_name: contact.last_name.trim(), email: contact.email.trim(), mobile: contact.mobile.trim() };
 
-    const invalid = normalizedPassengers.some(p => !p.first_name || !p.last_name);
-    if (invalid) { setError('Mohon lengkapi nama depan dan nama belakang semua tamu.'); setLoading(false); submittingRef.current = false; return; }
-    if (!normalizedContact.first_name || !normalizedContact.last_name) { setError('Mohon lengkapi nama kontak utama.'); setLoading(false); submittingRef.current = false; return; }
-    if (!isValidEmail(normalizedContact.email)) { setError('Format email tidak valid.'); setLoading(false); submittingRef.current = false; return; }
-    if (!/^\d{8,15}$/.test(normalizedContact.mobile)) { setError('Nomor HP minimal 8 digit angka.'); setLoading(false); submittingRef.current = false; return; }
+    const errs = validate();
+    if (errs.length) { setError(errs[0].message); setLoading(false); submittingRef.current = false; return; }
     if (!hotelId || !priceCode) { setError('Data kamar tidak lengkap. Silakan pilih kamar lagi.'); setLoading(false); submittingRef.current = false; return; }
 
     try {
@@ -214,13 +272,17 @@ const [checkoutDone, setCheckoutDone] = useState(false);
 
   if (!hotelId || !priceCode) {
     return (
-      <div className="min-h-screen bg-slate-50 px-6 py-16 flex items-center justify-center">
-        <div className="max-w-md w-full rounded-xl border border-slate-200 bg-white p-8 text-center">
-          <h1 className="text-lg font-bold text-slate-900 mb-2">Data pemesanan tidak lengkap</h1>
-          <p className="text-sm text-slate-500 mb-6">Silakan kembali ke halaman detail hotel dan pilih kamar.</p>
-          <button onClick={() => router.push('/hotel/search')} className="w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 transition-colors">
-            Cari Hotel Lagi
-          </button>
+      <div className="min-h-screen bg-slate-50">
+        {/* Header brand tetap tampil agar halaman error pun konsisten */}
+        <CheckoutNavbar />
+        <div className="px-4 md:px-6 lg:px-8 py-16 flex items-center justify-center">
+          <div className="max-w-md w-full rounded-xl border border-slate-200 bg-white p-8 text-center">
+            <h1 className="text-lg font-bold text-slate-900 mb-2">Data pemesanan tidak lengkap</h1>
+            <p className="text-sm text-slate-500 mb-6">Silakan kembali ke halaman detail hotel dan pilih kamar.</p>
+            <button onClick={() => router.push('/hotel/search')} className="w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 transition-colors">
+              Cari Hotel Lagi
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -236,21 +298,21 @@ const [checkoutDone, setCheckoutDone] = useState(false);
           // berada di atasnya supaya tetap terlihat saat user menekan Back.
           zIndex={loading ? 'z-[13000]' : 'z-[1400]'}
         />
-        {/* Header */}
-        <div className="bg-white border-b border-slate-200 py-4 px-6">
-          <div className="max-w-[1020px] mx-auto flex items-center justify-between">
-            <button onClick={() => router.back()} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
-              ← {tc.back}
-            </button>
-            <div>
-              <p className="text-sm font-bold text-slate-800">{t.title}</p>
-              <p className="text-xs text-slate-400">{hotelName}</p>
-            </div>
-            <div className="w-16"/>
-          </div>
-        </div>
+        {/* Bar brand (logo + wordmark) — identik header halaman utama */}
+        <CheckoutNavbar />
+        {/* Bar kedua: "← Kembali" + judul + stepper langkah. Sticky di SEMUA
+            ukuran layar (top-0 di HP, top-60px di desktop). */}
+        <CheckoutStepBar
+          labels={[cs.guests, cs.contact, cs.request]}
+          sections={sectionRefs}
+          completed={stepCompleted}
+          optional={[false, false, true]}
+          title={t.title}
+          subtitle={hotelName}
+          onBack={() => router.back()}
+        />
 
-        <div className="max-w-[1020px] mx-auto px-6 py-6">
+        <div className="max-w-[1280px] mx-auto px-4 md:px-6 lg:px-8 py-6 pb-28 lg:pb-10">
           {/* Guest banner */}
           {isGuest && (
             <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex items-center justify-between">
@@ -270,15 +332,18 @@ const [checkoutDone, setCheckoutDone] = useState(false);
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
             {/* LEFT: Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Section "Data Tamu" — target scroll-spy chip langkah */}
+              <div ref={sectionGuests} className="scroll-mt-[60px] lg:scroll-mt-[124px] space-y-5">
               {passengers.map((pax, i) => (
                 <div key={i} className="bg-white rounded-xl border border-slate-200 p-5">
-                  <h2 className="text-sm font-bold text-slate-800 mb-4">
-                    Tamu {i + 1}{i === 0 && <span className="text-slate-400 font-normal ml-1">(Tamu Utama)</span>}
-                  </h2>
-                  <div className="grid grid-cols-3 gap-4">
+                  <SectionHeader
+                    icon="fa-user"
+                    title={<>Tamu {i + 1}{i === 0 && <span className="text-slate-400 font-normal ml-1">(Tamu Utama)</span>}</>}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className={labelCls}>Sapaan</label>
                       <select value={pax.title} onChange={e => updatePax(i, 'title', e.target.value)} className={selectCls}>
@@ -293,7 +358,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                       <label className={labelCls}>{t.lastName} *</label>
                       <input value={pax.last_name} onChange={e => updatePax(i, 'last_name', e.target.value.toUpperCase())} required placeholder="DOE" className={inputCls} />
                     </div>
-                    <div className="col-span-3">
+                    <div className="sm:col-span-3">
                       <label className={labelCls}>{t.nationality}</label>
                       <select value={pax.nationality_code} onChange={e => updatePax(i, 'nationality_code', e.target.value)} className={selectCls}>
                         {NATIONALITIES.map(n => <option key={n.code} value={n.code}>{n.name}</option>)}
@@ -302,11 +367,12 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                   </div>
                 </div>
               ))}
+              </div>
 
               {/* Contact Person */}
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="text-sm font-bold text-slate-800 mb-4">{t.contactDetails}</h2>
-                <div className="grid grid-cols-2 gap-4">
+              <div ref={sectionContact} className="scroll-mt-[60px] lg:scroll-mt-[124px] bg-white rounded-xl border border-slate-200 p-5">
+                <SectionHeader icon="fa-address-card" title={t.contactDetails} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className={labelCls}>Sapaan</label>
                     <select value={contact.title} onChange={e => setContact(c => ({ ...c, title: e.target.value }))} className={selectCls}>
@@ -327,7 +393,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                       {NATIONALITIES.map(n => <option key={n.code} value={n.code}>{n.name}</option>)}
                     </select>
                   </div>
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <label className={labelCls}>{t.email} *</label>
                     <input type="email" value={contact.email} onChange={e => setContact(c => ({ ...c, email: e.target.value }))} required placeholder="email@example.com" className={inputCls} />
                   </div>
@@ -343,21 +409,36 @@ const [checkoutDone, setCheckoutDone] = useState(false);
               </div>
 
               {/* Special Request */}
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <h2 className="text-sm font-bold text-slate-800 mb-3">{t.specialRequest} <span className="text-slate-400 font-normal">(opsional)</span></h2>
+              <div ref={sectionRequest} className="scroll-mt-[60px] lg:scroll-mt-[124px] bg-white rounded-xl border border-slate-200 p-5">
+                <SectionHeader icon="fa-message" title={<>{t.specialRequest} <span className="text-slate-400 font-normal">(opsional)</span></>} />
                 <textarea value={specialRequest} onChange={e => setSpecialRequest(e.target.value)} rows={3}
                   placeholder={t.specialRequestPlaceholder} className={`${inputCls} resize-y`} />
                 <p className="text-[10px] text-slate-400 mt-1">* Tidak dijamin terpenuhi, tergantung ketersediaan hotel.</p>
               </div>
 
-              <button type="submit" disabled={loading}
-                className="w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-sm rounded-lg transition-all active:scale-[0.98]">
-                {loading ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>{t.processing}</span> : `Bayar ${fmtIDR(grandTotal)}`}
-              </button>
+              {/* CTA mobile menempel di bawah layar. Sengaja diletakkan DI DALAM
+                  <form> agar tetap menjadi submit button — display:none di
+                  desktop tidak menghapusnya dari DOM, jadi Enter/Go di keyboard
+                  tetap mengirim form. Klik mouse di desktop memakai tombol pada
+                  kartu ringkasan, sehingga CTA tidak pernah tampil dua kali. */}
+              <MobileCheckoutBar
+                type="submit"
+                totalLabel={cs.total}
+                total={fmtIDR(grandTotal)}
+                ctaLabel={cs.pay}
+                loading={loading}
+                loadingLabel={t.processing}
+                note={<TermsAgreementText
+                  prefix={cs.agreePrefix}
+                  termsLabel={cs.termsLabel}
+                  suffix={cs.agreeSuffix}
+                  onOpen={() => setTermsOpen(true)}
+                />}
+              />
             </form>
 
             {/* RIGHT: Order Summary */}
-            <div className="bg-white rounded-xl border border-slate-200 p-5 sticky top-24">
+            <div className="bg-white rounded-xl border border-slate-200 p-5 lg:sticky lg:top-[104px]">
               <h3 className="text-sm font-bold text-slate-800 mb-4">Ringkasan Pesanan</h3>
 
               <div className="bg-slate-50 rounded-lg p-4 mb-4">
@@ -406,15 +487,32 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                 <span className="font-bold text-slate-900 text-lg">{fmtIDR(grandTotal)}</span>
               </div>
 
-              <button type="submit" onClick={handleSubmit} disabled={loading}
-                className="mt-4 w-full py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-sm rounded-lg transition-all active:scale-[0.98]">
-                {loading ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>{t.processing}</span> : `Bayar ${fmtIDR(grandTotal)}`}
-              </button>
-              <p className="text-[10px] text-slate-400 text-center mt-2">Pembayaran aman via Midtrans</p>
+              {/* CTA desktop — satu-satunya tombol bayar yang tampil di layar lebar */}
+              <div className="hidden lg:block">
+                <PayButton
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  loading={loading}
+                  loadingLabel={t.processing}
+                  className="mt-4"
+                >
+                  {`Bayar ${fmtIDR(grandTotal)}`}
+                </PayButton>
+                <TermsAgreementText
+                  prefix={cs.agreePrefix}
+                  termsLabel={cs.termsLabel}
+                  suffix={cs.agreeSuffix}
+                  onOpen={() => setTermsOpen(true)}
+                  className="block text-center mt-2"
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Dialog S&K — menutupi konten tanpa navigasi, jadi LeaveGuard tak terpicu */}
+      <TermsModal open={termsOpen} onClose={() => setTermsOpen(false)} />
 
       {/* Menimpa seluruh halaman selama booking diproses: semua klik, scroll,
           dan navigasi keyboard tertahan sehingga user tidak bisa mengklik

@@ -2162,6 +2162,48 @@ export const i18n = {
     },
   },
 
+  // ─── CHECKOUT STEPS & CTA (Bar langkah + bar bayar mobile) ─────────────────
+  // Label stepper "1 → 2 → 3" pada CheckoutStepBar dan teks ringkas pada
+  // MobileCheckoutBar. Dipakai bersama oleh keempat halaman checkout supaya
+  // istilahnya konsisten antar modul.
+  //
+  // agreePrefix/agreeSuffix sengaja dipecah dua (dengan label S&K di tengah)
+  // agar kalimatnya tetap natural di kedua bahasa:
+  //   ID: "Dengan menekan tombol, Anda menyetujui [Syarat & Ketentuan] kami."
+  //   EN: "By pressing the button, you agree to our [Terms & Conditions]."
+  checkoutSteps: {
+    ID: {
+      booker: 'Data Pemesan',
+      passengers: 'Data Penumpang',
+      guests: 'Data Tamu',
+      participants: 'Data Peserta',
+      contact: 'Data Kontak',
+      addons: 'Pelengkap',
+      request: 'Permintaan',
+      pay: 'Bayar',
+      total: 'Total Pembayaran',
+      termsLabel: 'Syarat & Ketentuan',
+      agreePrefix: 'Dengan menekan tombol, Anda menyetujui',
+      agreeSuffix: 'kami.',
+      close: 'Tutup',
+    },
+    EN: {
+      booker: 'Booker Details',
+      passengers: 'Passenger Details',
+      guests: 'Guest Details',
+      participants: 'Participant Details',
+      contact: 'Contact Details',
+      addons: 'Add-ons',
+      request: 'Requests',
+      pay: 'Pay',
+      total: 'Total Payment',
+      termsLabel: 'Terms & Conditions',
+      agreePrefix: 'By pressing the button, you agree to our',
+      agreeSuffix: '.',
+      close: 'Close',
+    },
+  },
+
   helpPage: {
     ID: {
       title: 'Pusat Bantuan',
