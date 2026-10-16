@@ -8,6 +8,7 @@ import { hotelBookSchema, validateBody, apiError } from '@/lib/validate';
 import { getMarkup, applyPercentMarkup } from '@/lib/markup';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { generateBookingId } from '@/lib/security';
+import { withIdempotency, hashPayload, readBodyIdempotencyKey, recordIdempotencyOrderId } from '@/lib/idempotency';
 // verifyHotelPrice DIHAPUS dari book route — provision hanya boleh dipanggil SEKALI
 // (oleh frontend checkout page). Re-provision di sini menyebabkan 4014 "Already call".
 import type { Prisma } from '@prisma/client';
@@ -25,8 +26,40 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Body dibaca DI SINI — stream NextRequest hanya bisa dibaca sekali, jadi
+  // hasilnya dipakai dua kali: sebagai fingerprint idempotency dan input handler.
+  let body: any;
   try {
-    const body = await req.json();
+    body = await req.json();
+  } catch {
+    return apiError('Request body tidak valid.', 400);
+  }
+
+  try {
+    // Gerbang idempotency: ditempatkan SEBELUM vendor `booked` + pembuatan
+    // transaksi Midtrans sehingga dari dua request identik (klik ganda / retry
+    // duplikat) hanya SATU yang dieksekusi. Request kedua menerima response
+    // tersimpan (duplicate) atau 409 IN_PROGRESS bila yang pertama masih jalan.
+    return await withIdempotency({
+      rawKey: req.headers.get('idempotency-key') ?? readBodyIdempotencyKey(body),
+      bookingType: 'hotel',
+      userId: (session?.user as { id?: string } | null)?.id ?? null,
+      payloadHash: hashPayload(body),
+      run: (idempotencyKey) => handleBook({ body, session, idempotencyKey }),
+    });
+  } catch (error) {
+    console.error('Hotel booking route error:', error);
+    return apiError('Gagal membuat pemesanan hotel.', 500);
+  }
+}
+
+async function handleBook(args: {
+  body: any;
+  session: any;
+  idempotencyKey: string | null;
+}): Promise<NextResponse> {
+  const { body, session, idempotencyKey } = args;
+  try {
     const validation = validateBody(hotelBookSchema, body);
     if (!validation.success) return validation.response;
 
@@ -204,6 +237,10 @@ export async function POST(req: NextRequest) {
 
     // FIX (Bug #2): ID acak (tidak lagi predictable dari Date.now() saja).
     const orderId = generateBookingId('HTL');
+    // Dicatat SEBELUM bookingStore.create: bila proses crash di antara dua
+    // langkah ini, klaim idempotency berikutnya menemukan Booking yang sudah
+    // tersimpan dan mengembalikannya sebagai duplicate, bukan order kedua.
+    await recordIdempotencyOrderId(idempotencyKey, orderId);
     const effectiveOrderNumber = bookingData?.order_number || orderId;
     const snapAmount = Math.round(finalAmount);
 
@@ -260,7 +297,33 @@ export async function POST(req: NextRequest) {
       ...(validCouponCode && { couponCode: validCouponCode, couponId: validCouponId ?? undefined, discountAmount: validDiscountAmount }),
     };
 
-    await bookingStore.create(booking);
+    try {
+      await bookingStore.create(booking);
+    } catch (dbErr: any) {
+      // orderNumber sudah tercatat oleh percobaan sebelumnya (unique violation)
+      // → kembalikan booking yang SUDAH ADA, jangan membuat pesanan kedua.
+      if (dbErr?.code === 'P2002') {
+        const found = await bookingStore.findByOrderNumber(effectiveOrderNumber).catch(() => null);
+        const sameOwner = (found?.userId ?? null) === ((session?.user as { id?: string } | null)?.id ?? null);
+        if (found && sameOwner) {
+          console.warn('[Hotel Book] orderNumber duplikat → kembalikan booking lama:', found.id);
+          return NextResponse.json({
+            success: true,
+            duplicate: true,
+            orderId: found.id,
+            snapToken: found.snapToken || snap.token,
+            redirectUrl: found.snapRedirectUrl || snap.redirect_url,
+            orderNumber: found.orderNumber,
+          });
+        }
+        console.error('[Hotel Book] P2002 dengan owner berbeda / tidak ditemukan:', dbErr.message);
+        return apiError('Nomor pesanan bentrok. Silakan coba lagi.', 409);
+      }
+      // KEGAGALAN DB TIDAK BOLEH DISELENGOK — transaksi Midtrans sudah dibuat,
+      // tetapi tanpa baris Booking pembayaran user tidak akan pernah tercatat.
+      console.error('[Hotel Book] Save booking error:', dbErr.message);
+      return apiError('Gagal menyimpan pesanan. Silakan coba lagi.', 500);
+    }
 
     return NextResponse.json({
       success: true,

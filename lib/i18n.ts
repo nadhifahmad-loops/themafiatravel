@@ -2147,6 +2147,21 @@ export const i18n = {
     },
   },
 
+  // ─── CHECKOUT OVERLAY (Loader yang menimpa halaman checkout) ───────────────
+  // Menutupi seluruh viewport selama request booking berjalan agar user tidak
+  // bisa mengklik konten lain (bagasi, kursi, kupon, navigasi) — sekaligus
+  // mencegah klik ganda yang berujung double order.
+  checkoutOverlay: {
+    ID: {
+      title: 'Memproses Pesanan Anda',
+      message: 'Mohon tunggu sebentar. Jangan tutup halaman ini.',
+    },
+    EN: {
+      title: 'Processing Your Order',
+      message: 'Please wait a moment. Do not close this page.',
+    },
+  },
+
   helpPage: {
     ID: {
       title: 'Pusat Bantuan',

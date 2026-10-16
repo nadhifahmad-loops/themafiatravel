@@ -7,6 +7,8 @@ import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
 import DatePickerField from '@/components/checkout/DatePickerField';
 import { COUNTRY_CODES } from '@/app/(dashboard)/account/edit/components';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
+import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
+import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
@@ -351,6 +353,10 @@ function FlightCheckoutContent() {
   const { data: session, status } = useSession();
   const isGuest = status !== 'authenticated';
   const isSubmittingRef = useRef(false);
+  // SATU Idempotency-Key per attempt checkout. Dibuat sekali di mount sehingga
+  // klik ganda memakai key yang SAMA dan server bisa mengenali keduanya sebagai
+  // satu permintaan — walau lolos guard, eksekusi tetap hanya satu.
+  const idempotencyKey = useIdempotencyKey();
   // Callback agar guest kembali ke halaman checkout ini setelah login/register.
   const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
 
@@ -365,6 +371,15 @@ function FlightCheckoutContent() {
   const [seatsLoading, setSeatsLoading] = useState(false);
   const [seatsError, setSeatsError] = useState('');
   const [isLocked, setIsLocked] = useState(false);
+  // Sidik jari payload update_contacts / update_passengers yang benar-benar
+  // tersimpan di sesi prepare. Dikirim balik saat booking agar server tahu
+  // bagian mana yang masih perlu dikirim ulang — tanpa membuang sesi peta
+  // kursi yang sudah dipilih user (lihat lib/orbis-flight-payload.ts).
+  const [preparedHashes, setPreparedHashes] = useState<{ contacts: string | null; passengers: string | null }>({ contacts: null, passengers: null });
+  // true bila update_contacts + update_passengers benar-benar tersinkron di sesi.
+  // Bila false (data belum dilengkapi), buka peta kursi berikutnya menyiapkan
+  // ulang sesi dengan data terbaru.
+  const [seatsSynced, setSeatsSynced] = useState(false);
   const [showSeatMap, setShowSeatMap] = useState(false);
   const [skipSeats, setSkipSeats] = useState(false);
   const [baggageSsrs, setBaggageSsrs] = useState<BaggageSsr[]>([]);
@@ -453,6 +468,18 @@ function FlightCheckoutContent() {
     } catch { router.push('/flight/search'); }
   }, [session]);
 
+  // Data kontak pesanan (§3.12.1.2). Dipakai bersama oleh prepare peta kursi
+  // dan payload booking supaya isinya identik di kedua tahap.
+  const contactPayload = {
+    title: booker.title || 'MR',
+    first_name: booker.first_name,
+    last_name: booker.last_name || '',
+    email: booker.email,
+    calling_code: booker.calling_code || '62',
+    mobile: booker.mobile || '',
+    nationality_code: booker.nationality_code || 'ID',
+  };
+
   const fetchSsr = useCallback(async () => {
     if (ssrLoading || baggageSsrs.length > 0) return;
     setSsrLoading(true);
@@ -473,24 +500,65 @@ function FlightCheckoutContent() {
   const fetchSeats = useCallback(async () => {
     if (seatsLoading) return;
     setSeatsLoading(true); setSeatsError('');
+    // Alasan sesi belum lengkap (mis. identitas wajib) — dipakai hanya bila
+    // get_seat_availability menolak dengan 4011 "Missing Requirements".
+    let prepareHint = '';
     try {
-      if (flightData && !isLocked) {
+      // Siapkan sesi dulu (§2.4.1 step 5 → 6 → 8) kecuali sesi sudah terkunci
+      // DAN data pemesan/penumpang sudah tersinkron penuh.
+      if (flightData && !(isLocked && seatsSynced)) {
         const lockRes = await fetch('/api/flight/lock', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify(flightData.priceBody),
+          body: JSON.stringify({
+            ...flightData.priceBody,
+            booker,
+            contacts: [contactPayload],
+            passengers,
+          }),
         });
+        const lockData = await lockRes.json().catch(() => ({}));
         if (!lockRes.ok) {
-          const lockData = await lockRes.json().catch(() => ({}));
           if (lockData.error === 'FARE_UNAVAILABLE') { sessionStorage.removeItem('flight_priced_data'); setBookingError('__FARE_UNAVAILABLE__'); return; }
-          setSeatsError('Gagal mengunci sesi. Coba lagi.'); return;
+          if (lockData.error === 'SESSION_EXPIRED') { setSeatsError('Sesi habis. Silakan kembali dan cari ulang.'); return; }
+          setSeatsError(lockData.message || lockData.error || 'Gagal menyiapkan sesi. Coba lagi.'); return;
         }
+
+        // sell_journeys (step 5) sudah berjalan → sesi terkunci.
         setIsLocked(true);
+        // `contactsHash` / `passengersHash` hanya terisi bila data BENAR-BENAR
+        // tersinkron di sesi ini (bukan sekadar kena 4014). Kalau kosong tetapi
+        // `*HashCurrent` sama dengan hash sinkron sebelumnya, datanya tidak
+        // berubah sejak sinkron terakhir → hash lama dipertahankan agar sesi
+        // peta kursi tidak dibuang saat booking.
+        const pickHash = (verified: any, current: any, previous: string | null): string | null => {
+          if (typeof verified === 'string') return verified;
+          if (typeof current === 'string' && current === previous) return previous;
+          return null;
+        };
+        setPreparedHashes(prev => ({
+          contacts: pickHash(lockData.contactsHash, lockData.contactsHashCurrent, prev.contacts),
+          passengers: pickHash(lockData.passengersHash, lockData.passengersHashCurrent, prev.passengers),
+        }));
+
+        // update_contacts (step 6) + update_passengers (step 8) adalah
+        // prasyarat get_seat_availability (step 11). Bila belum tersinkron
+        // karena data belum dilengkapi, sesi TETAP dipakai untuk memuat peta
+        // kursi — sebagian maskapai tetap menyanggupinya. Kalau Orbis menolak
+        // dengan 4011, prepareHint di bawah yang ditampilkan ke user.
+        const synced = !!(lockData.contactsReady && lockData.passengersReady);
+        setSeatsSynced(synced);
+        if (!synced) {
+          prepareHint =
+            lockData.passengersError ||
+            'Lengkapi data pemesan & penumpang (nama, tanggal lahir, identitas) lalu muat ulang peta kursi.';
+        }
         fetchSsr();
       }
       const res = await fetch('/api/flight/seats', { method:'POST' });
       const data = await res.json();
-      if (data.unavailable) { setSeatsError('Peta kursi tidak tersedia untuk penerbangan ini.'); return; }
+      if (data.unavailable) { setSeatsError(data.message || 'Peta kursi tidak tersedia untuk penerbangan ini.'); return; }
       if (!res.ok || !data.success) {
+        if (data.error === 'MISSING_REQUIREMENTS') { setSeatsError(prepareHint || data.message || 'Data pemesan/penumpang belum lengkap. Lengkapi lalu coba lagi.'); return; }
         if (data.error === 'SESSION_EXPIRED') { setSeatsError('Sesi habis. Silakan kembali dan cari ulang.'); return; }
         setSeatsError(data.error || 'Gagal memuat peta kursi.'); return;
       }
@@ -516,7 +584,7 @@ function FlightCheckoutContent() {
       });
       setSegmentSeats(allSegments);
     } catch (e: any) { setSeatsError(e.message||'Gagal memuat kursi.'); } finally { setSeatsLoading(false); }
-  }, [flightData, isLocked, seatsLoading, fetchSsr]);
+  }, [flightData, isLocked, seatsSynced, seatsLoading, fetchSsr, booker, passengers]);
 
   const updatePassenger = (idx: number, field: string, value: any) =>
     setPassengers(prev => prev.map((p,i) => i===idx ? {...p,[field]:value} : p));
@@ -593,7 +661,9 @@ function FlightCheckoutContent() {
           const pIdx = parseInt(pIdxStr);
           const segData = segmentSeats.find(s=>s.segment_code===segCode);
           if (!seatRequestBySegment[segCode]) seatRequestBySegment[segCode]={segment_code:segCode,provider:segData?.provider||'',passengers:[]};
-          seatRequestBySegment[segCode].passengers.push({passenger_number:pIdx+1,seat_code:sel.seat_code});
+          // passenger_number 0-based sesuai seluruh contoh dokumentasi
+          // (§3.17.3.1 assign_seats memakai 0, 1, 2, ...).
+          seatRequestBySegment[segCode].passengers.push({passenger_number:pIdx,seat_code:sel.seat_code});
         });
       }
       const display = flightData.display || {};
@@ -603,15 +673,6 @@ function FlightCheckoutContent() {
       const mealPayload = selectedMeal
         ? { ssr_code: selectedMeal.ssr_code, journey_code: selectedMeal.journey_code || '', name: selectedMeal.name || '' }
         : undefined;
-      const contactPayload = {
-        title: booker.title || 'MR',
-        first_name: booker.first_name,
-        last_name: booker.last_name || '',
-        email: booker.email,
-        calling_code: booker.calling_code || '62',
-        mobile: booker.mobile || '',
-        nationality_code: booker.nationality_code || 'ID',
-      };
       const bookerPayload = {
         ...contactPayload,
         is_also_booker: true,
@@ -645,14 +706,35 @@ function FlightCheckoutContent() {
         ...(baggagePayload && { selectedBaggage: baggagePayload }),
         ...(mealPayload && { selectedMeal: mealPayload }),
         is_locked_before: isLocked,
+        preparedContactsHash: preparedHashes.contacts,
+        preparedPassengersHash: preparedHashes.passengers,
         ...(appliedCoupon && { coupon_code: appliedCoupon.code, discount_amount: discountAmount }),
       };
       const res = await fetch('/api/flight/book', {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          // Penanda "kedua request ini sama" — server hanya mengeksekusi satu.
+          'Idempotency-Key': idempotencyKey.getKey(),
+        },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
+        // Semua kegagalan yang DIJAWAB server sudah melepas klaim idempotency
+        // di sana → siapkan key segar agar percobaan berikutnya mulai bersih.
+        // (Kegagalan jaringan tidak melewati blok ini dan sengaja TIDAK
+        // me-regenerate key: bisa jadi request pertama justru sukses, lalu
+        // retry akan membalas duplicate + orderId yang benar.)
+        idempotencyKey.regenerate();
+        if (data.error==='IN_PROGRESS') {
+          setBookingError('Pesanan Anda sedang diproses. Silakan klik tombol bayar sekali lagi untuk melanjutkan.');
+          return;
+        }
+        if (data.error==='IDEMPOTENCY_CONFLICT') {
+          setBookingError('Permintaan duplikat terdeteksi. Silakan muat ulang halaman lalu coba lagi.');
+          return;
+        }
         if (data.error==='SESSION_EXPIRED') { sessionStorage.removeItem('flight_priced_data'); setBookingError('Sesi penerbangan telah berakhir. Silakan cari ulang.'); setTimeout(()=>router.push('/flight/search'),2500); return; }
         if (data.error==='FARE_UNAVAILABLE') { setBookingError('__FARE_UNAVAILABLE__'); return; }
         if (data.error==='PRICE_UNVERIFIABLE') { setBookingError('__PRICE_UNVERIFIABLE__'); return; }
@@ -706,7 +788,13 @@ function FlightCheckoutContent() {
   return (
     <div className="min-h-screen bg-slate-50 pt-[56px]">
       <CheckoutNavbar />
-      <LeaveGuard active={!checkoutDone} fallbackHref="/flight/search" />
+      <LeaveGuard
+        active={!checkoutDone}
+        fallbackHref="/flight/search"
+        // Overlay loading memakai z-[12000] → dialog "Yakin keluar?" harus
+        // berada di atasnya supaya tetap terlihat saat user menekan Back.
+        zIndex={submitting ? 'z-[13000]' : 'z-[1400]'}
+      />
 
       {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-[56px] z-10">
@@ -846,6 +934,15 @@ function FlightCheckoutContent() {
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-5 text-sm text-red-700">
             <p className="font-semibold mb-1">Pemesanan Gagal</p>
             <p>{bookingError}</p>
+            {/* Tombol bayar dinonaktifkan selama `bookingError` terisi, jadi
+                kasih jalur agar user bisa mencoba lagi (klaim idempotency sudah
+                dilepas di server, sehingga percobaan ulang aman — tidak dobel). */}
+            <button
+              onClick={() => setBookingError('')}
+              className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition-colors"
+            >
+              Coba Lagi
+            </button>
           </div>
         ) : null}
 
@@ -1240,6 +1337,12 @@ function FlightCheckoutContent() {
           </div>
         </div>
       </div>
+
+      {/* Menimpa seluruh halaman selama booking diproses: semua klik, scroll,
+          dan navigasi keyboard tertahan sehingga user tidak bisa mengklik
+          konten lain (bagasi, kursi, kupon, navigasi) maupun mengirim order
+          kedua. */}
+      <CheckoutLoadingOverlay open={submitting} />
     </div>
   );
 }

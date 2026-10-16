@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { bookingStore } from '@/lib/store';
 import { releaseVendorHold } from '@/lib/payment-cleanup';
+import { cleanupIdempotencyKeys } from '@/lib/idempotency';
 
 const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -48,6 +49,11 @@ export async function expireUnpaidBookings(now = new Date()) {
       console.warn(`[Booking Expiry] Failed for booking ${booking.id}:`, error instanceof Error ? error.message : String(error));
     }
   }
+
+  // Baris IdempotencyKey juga dibuang agar tidak menumpuk (key sudah lewat
+  // masa replay-nya). `processing` yang masih dalam masa reclaim TIDAK ikut
+  // dihapus — lihat catatan di lib/idempotency.ts.
+  await cleanupIdempotencyKeys(now);
 
   return expiredBookings.map((booking) => ({ id: booking.id, orderNumber: booking.orderNumber }));
 }

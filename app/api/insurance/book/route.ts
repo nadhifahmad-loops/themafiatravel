@@ -10,6 +10,7 @@ import { getMarkup, applyPercentMarkup } from '@/lib/markup';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { generateBookingId } from '@/lib/security';
 import { checkSubmittedPrice } from '@/lib/price-check';
+import { withIdempotency, hashPayload, readBodyIdempotencyKey, recordIdempotencyOrderId } from '@/lib/idempotency';
 import type { Prisma } from '@prisma/client';
 
 export const maxDuration = 90;
@@ -25,8 +26,40 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Body dibaca DI SINI — stream NextRequest hanya bisa dibaca sekali, jadi
+  // hasilnya dipakai dua kali: sebagai fingerprint idempotency dan input handler.
+  let body: any;
   try {
-    const body = await req.json();
+    body = await req.json();
+  } catch {
+    return apiError('Request body tidak valid.', 400);
+  }
+
+  try {
+    // Gerbang idempotency: ditempatkan SEBELUM sell_insurance / commit_booking
+    // sehingga dari dua request identik (klik ganda / retry duplikat) hanya satu
+    // yang dieksekusi. Request kedua menerima response tersimpan (duplicate)
+    // atau 409 IN_PROGRESS bila yang pertama masih berjalan.
+    return await withIdempotency({
+      rawKey: req.headers.get('idempotency-key') ?? readBodyIdempotencyKey(body),
+      bookingType: 'insurance',
+      userId: session?.user?.id ?? null,
+      payloadHash: hashPayload(body),
+      run: (idempotencyKey) => handleBook({ body, session, idempotencyKey }),
+    });
+  } catch (e: any) {
+    console.error('[INSURANCE BOOK] Fatal:', e.message);
+    return apiError(e.message || 'Gagal membuat pemesanan asuransi', 500);
+  }
+}
+
+async function handleBook(args: {
+  body: any;
+  session: any;
+  idempotencyKey: string | null;
+}): Promise<NextResponse> {
+  const { body, session, idempotencyKey } = args;
+  try {
     const validation = validateBody(insuranceBookSchema, body);
     if (!validation.success) return validation.response;
 
@@ -193,6 +226,10 @@ export async function POST(req: NextRequest) {
     // 2. Buat Transaksi Midtrans
     // FIX (Bug #2): ID acak (tidak lagi predictable dari Date.now() saja).
     const orderId = generateBookingId('INS');
+    // Dicatat SEBELUM bookingStore.create: bila proses crash di antara dua
+    // langkah ini, klaim idempotency berikutnya menemukan Booking yang sudah
+    // tersimpan dan mengembalikannya sebagai duplicate, bukan order kedua.
+    await recordIdempotencyOrderId(idempotencyKey, orderId);
     let snap = { token: '', redirect_url: '' };
     try {
       snap = await createSnapTransaction({
@@ -214,11 +251,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Simpan ke database (baik login maupun guest)
+    const orderNumber = bookingData?.order_number || orderId;
+    let existingBooking: any = null;
     try {
       await bookingStore.create({
         id: orderId,
         userId: session?.user.id ?? undefined,
-        orderNumber: bookingData?.order_number || orderId,
+        orderNumber,
         bookingType: 'insurance',
         status: 'pending_payment',
         totalAmount: finalAmount,
@@ -237,7 +276,38 @@ export async function POST(req: NextRequest) {
         ...(validCouponCode && { couponCode: validCouponCode, discountAmount: validDiscountAmount }),
       });
     } catch (dbErr: any) {
-      console.error('[DB] Save booking error:', dbErr.message);
+      // orderNumber sudah tercatat oleh percobaan sebelumnya (unique violation)
+      // → kembalikan booking yang SUDAH ADA, jangan membuat pesanan kedua.
+      if (dbErr?.code === 'P2002') {
+        const found = await bookingStore.findByOrderNumber(orderNumber).catch(() => null);
+        const sameOwner = (found?.userId ?? null) === (session?.user?.id ?? null);
+        if (found && sameOwner) {
+          console.warn('[Insurance Book] orderNumber duplikat → kembalikan booking lama:', found.id);
+          existingBooking = found;
+        } else {
+          console.error('[Insurance Book] P2002 dengan owner berbeda / tidak ditemukan:', dbErr.message);
+          return apiError('Nomor pesanan bentrok. Silakan coba lagi.', 409);
+        }
+      } else {
+        // KEGAGALAN DB TIDAK BOLEH DISELENGOK — polis sudah terbit di Orbis
+        // tetapi tanpa baris Booking, pembayaran user tidak akan pernah
+        // tercatat. Kembalikan error supaya klaim idempotency dilepas dan user
+        // boleh mengulang dengan aman.
+        console.error('[DB] Save booking error:', dbErr.message);
+        return apiError('Gagal menyimpan pesanan. Silakan coba lagi.', 500);
+      }
+    }
+
+    if (existingBooking) {
+      return NextResponse.json({
+        success: true,
+        duplicate: true,
+        orderId: existingBooking.id,
+        snapToken: existingBooking.snapToken || snap.token,
+        redirectUrl: existingBooking.snapRedirectUrl || snap.redirect_url,
+        orderNumber: existingBooking.orderNumber,
+        bookingData,
+      });
     }
 
     return NextResponse.json({
@@ -245,7 +315,7 @@ export async function POST(req: NextRequest) {
       orderId,
       snapToken: snap.token,
       redirectUrl: snap.redirect_url,
-      orderNumber: bookingData?.order_number || orderId,
+      orderNumber,
       bookingData,
     });
 

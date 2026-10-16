@@ -4,13 +4,19 @@ import { flightAPI } from '@/lib/orbis';
 /**
  * GET Seat Availability — peta kursi pesawat
  *
- * Dipanggil SEBELUM commit_booking (setelah sell_journeys).
+ * Dipanggil sesudah sell_journeys (§3.10), update_contacts (§3.12) dan
+ * update_passengers (§3.13) — urutan wajib §2.4.1 step 5 → 6 → 8 → 11.
  * REQ body: {} (kosong) — Orbis pakai sesi internal.
  *
  * Error codes yang BUKAN error fatal:
  *   4008 — kursi tidak tersedia / maskapai tidak expose seat map
  *   4007 — fitur tidak tersedia
  * Keduanya dikembalikan success:true + data:null agar UI tampilkan pesan ramah.
+ *
+ * Error codes yang berarti sesi/state belum siap:
+ *   4011 — "Missing Requirements" (bukan sesi expired): sesi belum
+ *          update_contacts + update_passengers.
+ *   4003 / 4012 / 4024 — sesi habis / sesi ganda → minta cari ulang.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -20,8 +26,23 @@ export async function POST(req: NextRequest) {
     const code = (error as any).orbisCode;
     const msg  = error.message || '';
 
-    // Sesi habis
-    if (code === 4011 || msg.includes('kedaluwarsa')) {
+    // 4011 = Missing Requirements (§4.1 Codeset): sesi belum diisi
+    // update_contacts + update_passengers sehingga peta kursi ditolak.
+    if (code === 4011) {
+      console.warn(`[Seats] 4011 Missing Requirements — sesi belum update_contacts/update_passengers: ${msg}`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'MISSING_REQUIREMENTS',
+          message:
+            'Data pesanan belum siap. Lengkapi data pemesan & penumpang, lalu muat ulang peta kursi.',
+        },
+        { status: 428 }
+      );
+    }
+
+    // 4003 (session expired), 4012 (duplicate session), 4024 (vendor expired)
+    if (code === 4003 || code === 4012 || code === 4024 || msg.includes('kedaluwarsa')) {
       return NextResponse.json(
         { success: false, error: 'SESSION_EXPIRED' },
         { status: 410 }

@@ -4,6 +4,8 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
+import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
+import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
@@ -124,6 +126,10 @@ function TrainCheckoutContent() {
   const { data: session, status } = useSession();
   const isGuest = status !== 'authenticated';
   const isSubmittingRef = useRef(false);
+  // SATU Idempotency-Key per attempt checkout. Dibuat sekali di mount sehingga
+  // klik ganda memakai key yang SAMA dan server bisa mengenali keduanya sebagai
+  // satu permintaan — walau lolos guard, eksekusi tetap hanya satu.
+  const idempotencyKey = useIdempotencyKey();
   // Callback agar guest kembali ke halaman checkout ini setelah login/register.
   const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
 
@@ -232,7 +238,12 @@ function TrainCheckoutContent() {
     setLoading(true); setError('');
     try {
       const res = await fetch('/api/train/book', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Penanda "kedua request ini sama" — server hanya mengeksekusi satu.
+          'Idempotency-Key': idempotencyKey.getKey(),
+        },
         body: JSON.stringify({
           contacts: [contact], passengers, booker: { ...contact },
           schedules: [{ journeys: [{ journey_code: journeyCode, fare_code: fareCode }], provider: 'kai' }],
@@ -243,12 +254,28 @@ function TrainCheckoutContent() {
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Gagal membuat pesanan kereta.');
+      if (!res.ok || !data.success) {
+        // Kegagalan yang DIJAWAB server → klaim idempotency sudah dilepas di
+        // sana, jadi siapkan key segar untuk percobaan berikutnya.
+        idempotencyKey.regenerate();
+        if (data?.error === 'IN_PROGRESS') {
+          throw new Error('Pesanan Anda sedang diproses. Silakan klik tombol bayar sekali lagi untuk melanjutkan.');
+        }
+        if (data?.error === 'IDEMPOTENCY_CONFLICT') {
+          throw new Error('Permintaan duplikat terdeteksi. Silakan muat ulang halaman lalu coba lagi.');
+        }
+        throw new Error(data.message || data.error || 'Gagal membuat pesanan kereta.');
+      }
       setCheckoutDone(true);
       const bookingId = data.orderId || '';
       if (bookingId) router.push(`/payment/${bookingId}`);
       else router.push('/bookings');
-    } catch (e: any) { setError(e.message); } finally { setLoading(false); isSubmittingRef.current = false; }
+    } catch (e: any) {
+      // Gagal di level JARINGAN sengaja TIDAK me-regenerate key: bisa jadi
+      // request pertama justru sukses di server, dan retry dengan key yang
+      // sama akan membalas duplicate + orderId yang benar.
+      if (e?.message) setError(e.message);
+    } finally { setLoading(false); isSubmittingRef.current = false; }
   };
 
   const baseInputCls = 'w-full px-4 py-2.5 bg-white border rounded-lg text-slate-800 text-sm outline-none transition-colors';
@@ -258,7 +285,13 @@ function TrainCheckoutContent() {
   const selectCls = inputCls + ' cursor-pointer appearance-none';
 
   return (    <div className="min-h-screen bg-slate-50">
-      <LeaveGuard active={!checkoutDone} fallbackHref="/train/search" />
+      <LeaveGuard
+        active={!checkoutDone}
+        fallbackHref="/train/search"
+        // Overlay loading memakai z-[12000] → dialog "Yakin keluar?" harus
+        // berada di atasnya supaya tetap terlihat saat user menekan Back.
+        zIndex={loading ? 'z-[13000]' : 'z-[1400]'}
+      />
       <div className="bg-white border-b border-slate-200 sticky top-16 z-10">
         <div className="max-w-[1280px] mx-auto flex items-center justify-between px-4 py-3">
           <button onClick={() => router.back()} className="text-sm text-slate-500 hover:text-slate-800 transition-colors">
@@ -469,6 +502,11 @@ function TrainCheckoutContent() {
           </div>
         </div>
       </div>
+
+      {/* Menimpa seluruh halaman selama booking diproses: semua klik, scroll,
+          dan navigasi keyboard tertahan sehingga user tidak bisa mengklik
+          konten lain maupun mengirim order kedua. */}
+      <CheckoutLoadingOverlay open={loading} />
     </div>
   );
 }

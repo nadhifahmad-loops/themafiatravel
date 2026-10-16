@@ -440,3 +440,38 @@ model BlogPost {
   @@index([slug])
   @@index([category])
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IDEMPOTENCY KEY — Anti double-order (klik checkout 2× / retry duplikat)
+//
+// Satu baris = SATU attempt checkout. `key` dibangun sebagai
+//   `${bookingType}:${userId ?? 'anon'}:${uuidClient}`
+// sehingga unik per (tipe, user, attempt) — PK tunggal dipakai agar
+// `userId = NULL` (guest) tetap menjamin keunikan (Postgres menganggap
+// NULL ≠ NULL, jadi unique constraint biasa bisa bocor untuk guest).
+//
+// Mekanisme race: INSERT dengan PK unik dijamin hanya menang SATU request
+// dari beberapa request paralel. Yang kalah membaca status baris:
+//   - completed → kembalikan response yang sudah tersimpan (duplicate: true)
+//   - processing → 409 IN_PROGRESS (request pertama masih berjalan)
+//
+// Kolom `orderId` diisi segera setelah generateBookingId, SEBELUM
+// bookingStore.create — dipakai untuk memulihkan diri bila proses crash
+// di tengah (baris masih "processing" padahal Booking sudah tersimpan).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model IdempotencyKey {
+  key         String   @id
+  bookingType String                            // flight | hotel | train | insurance
+  userId      String?
+  payloadHash String                            // sha256(canonicalJSON body request)
+  orderId     String?                           // Diisi sebelum Booking dibuat (penanda pemulihan)
+  status      String   @default("processing")   // processing | completed
+  response    Json?                             // Payload sukses yang sudah pernah dikirim
+  expiresAt   DateTime                          // processing: +10 mnt | completed: +24 jam
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([expiresAt])
+  @@index([bookingType, userId])
+}

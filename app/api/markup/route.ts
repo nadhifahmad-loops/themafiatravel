@@ -6,12 +6,18 @@ import { prisma } from '@/lib/prisma';
 const DEFAULTS = { flight: 50000, hotel: 10, train: 15000, insurance: 5 };
 const VALID_TYPES = ['flat', 'percent'];
 
+/**
+ * GET markup — nilai/biaya layanan yang ditampilkan di halaman checkout.
+ *
+ * Dibuka tanpa login karena checkout pesawat/kereta/hotel/asuransi tetap
+ * dilayani untuk tamu (guest). Nilai ini ikut menentukan total yang
+ * ditampilkan ke pengguna, jadi saat 401 tamu memakai nilai default hardcoded
+ * padahal server memakai markup asli → total yang tampil tidak sama dengan
+ * yang ditagihkan.
+ *
+ * CATATAN: PUT tetap khusus admin.
+ */
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
   try {
     let setting = await prisma.markupSetting.findUnique({ where: { key: 'default' } });
     if (!setting) {

@@ -200,6 +200,12 @@ export const flightBookSchema = z.object({
     name: z.string().optional(),
   }).optional(),
   is_locked_before: z.boolean().optional().default(false),
+  // Sidik jari payload update_contacts / update_passengers yang benar-benar
+  // tersimpan di sesi prepare peta kursi (lihat lib/orbis-flight-payload.ts).
+  // Dipakai server untuk memutuskan langkah mana yang masih perlu dikirim ulang
+  // tanpa harus membuang sesi peta kursi yang sudah dipilih user.
+  preparedContactsHash: z.string().nullish(),
+  preparedPassengersHash: z.string().nullish(),
   coupon_code: z.string().optional(),
   discount_amount: z.number().optional().default(0),
 });

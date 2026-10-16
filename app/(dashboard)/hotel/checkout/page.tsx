@@ -4,6 +4,8 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
+import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
+import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import CouponInput from '@/components/checkout/CouponInput';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
@@ -98,6 +100,10 @@ function CheckoutContent() {
 
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
+  // SATU Idempotency-Key per attempt checkout. Dibuat sekali di mount sehingga
+  // klik ganda memakai key yang SAMA dan server bisa mengenali keduanya sebagai
+  // satu permintaan — walau lolos guard, eksekusi tetap hanya satu.
+  const idempotencyKey = useIdempotencyKey();
   const [error, setError] = useState('');
   const [specialRequest, setSpecialRequest] = useState('');
   const [passengers, setPassengers] = useState<Passenger[]>(
@@ -159,7 +165,12 @@ const [checkoutDone, setCheckoutDone] = useState(false);
       // Langsung pakai price_code dari URL (sudah terverifikasi oleh detail page).
 
       const res = await fetch('/api/hotel/book', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Penanda "kedua request ini sama" — server hanya mengeksekusi satu.
+          'Idempotency-Key': idempotencyKey.getKey(),
+        },
         body: JSON.stringify({
           hotel_code: hotelId, price_code: priceCode, provider,
           passenger: normalizedPassengers, contact: [normalizedContact], booker: normalizedContact,
@@ -175,12 +186,23 @@ const [checkoutDone, setCheckoutDone] = useState(false);
       // manusia. Pesan yang enak dibaca ada di `data.message`. User
       // sebelumnya bisa melihat teks error mentah seperti
       // "SCHEDULE_ALREADY_USED" tanpa penjelasan.
-      if (!res.ok || !data.success) throw new Error(data.message || data.error || 'Gagal membuat pesanan');
+      if (!res.ok || !data.success) {
+        // Kegagalan yang DIJAWAB server → klaim idempotency sudah dilepas di
+        // sana, jadi siapkan key segar untuk percobaan berikutnya.
+        idempotencyKey.regenerate();
+        if (data?.error === 'IN_PROGRESS') throw new Error('Pesanan Anda sedang diproses. Silakan klik tombol bayar sekali lagi untuk melanjutkan.');
+        if (data?.error === 'IDEMPOTENCY_CONFLICT') throw new Error('Permintaan duplikat terdeteksi. Silakan muat ulang halaman lalu coba lagi.');
+        throw new Error(data.message || data.error || 'Gagal membuat pesanan');
+      }
       setCheckoutDone(true);
 
       router.push(data.orderId ? `/payment/${data.orderId}` : '/bookings');
     } catch (error) {
-      setError(error instanceof Error ? error.message : tc.error + '.');
+      // Gagal di level JARINGAN (timeout / Failed to fetch) sengaja TIDAK
+      // me-regenerate key: bisa jadi request pertama justru sukses di server,
+      // dan retry dengan key yang sama akan membalas duplicate + orderId yang
+      // benar, alih-alih membuat order kedua.
+      setError(error instanceof Error && error.message ? error.message : tc.error + '.');
       setLoading(false);
       submittingRef.current = false;
     }
@@ -207,7 +229,13 @@ const [checkoutDone, setCheckoutDone] = useState(false);
   return (
     <>
       <div className="min-h-screen bg-slate-50">
-        <LeaveGuard active={!checkoutDone} fallbackHref="/hotel/search" />
+        <LeaveGuard
+          active={!checkoutDone}
+          fallbackHref="/hotel/search"
+          // Overlay loading memakai z-[12000] → dialog "Yakin keluar?" harus
+          // berada di atasnya supaya tetap terlihat saat user menekan Back.
+          zIndex={loading ? 'z-[13000]' : 'z-[1400]'}
+        />
         {/* Header */}
         <div className="bg-white border-b border-slate-200 py-4 px-6">
           <div className="max-w-[1020px] mx-auto flex items-center justify-between">
@@ -387,6 +415,11 @@ const [checkoutDone, setCheckoutDone] = useState(false);
           </div>
         </div>
       </div>
+
+      {/* Menimpa seluruh halaman selama booking diproses: semua klik, scroll,
+          dan navigasi keyboard tertahan sehingga user tidak bisa mengklik
+          konten lain maupun mengirim order kedua. */}
+      <CheckoutLoadingOverlay open={loading} />
     </>
   );
 }

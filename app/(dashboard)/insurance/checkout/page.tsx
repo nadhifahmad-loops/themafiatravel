@@ -1,11 +1,13 @@
 'use client';
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
+import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
 import CouponInput from '@/components/checkout/CouponInput';
 import DatePickerField from '@/components/checkout/DatePickerField';
+import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
@@ -54,6 +56,15 @@ function InsuranceCheckoutContent() {
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
+  // Guard SINKRON terhadap klik ganda: React state `loading` di-set secara
+  // async, sehingga klik cepat 2× (atau pencet Enter 2× di form ini) bisa
+  // menembus sebelum re-render dan mengirim DUA request booking. Ref dibaca
+  // & ditulis langsung di closure yang sama, jadi klik kedua langsung ditolak
+  // sebelum sempat membangun request.
+  const isSubmittingRef = useRef(false);
+  // SATU Idempotency-Key per attempt checkout — dikirim ke server supaya walau
+  // ada request duplikat yang lolos, server tetap mengeksekusi hanya satu.
+  const idempotencyKey = useIdempotencyKey();
   const [markup, setMarkup] = useState<MarkupSettings>({ flight: 50000, hotel: 10, train: 15000, insurance: 5 });
 const [checkoutDone, setCheckoutDone] = useState(false);
 const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
@@ -101,7 +112,10 @@ const [discountAmount, setDiscountAmount] = useState(0);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); if (checkoutDone) return;
+    e.preventDefault();
+    // Klik ganda: guard dicek SEBELUM validasi, supaya klik kedua tidak pernah
+    // sampai ke blok pengiriman request.
+    if (checkoutDone || isSubmittingRef.current) return;
     if (!contact.first_name) { setError('Nama kontak wajib diisi.'); return; }
     if (!contact.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact.email)) { setError('Format email tidak valid.'); return; }
     if (!contact.mobile || !/^\d{8,15}$/.test(contact.mobile)) { setError('Nomor HP minimal 8 digit angka.'); return; }
@@ -111,6 +125,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
       if (!p.first_name) { setError(`Nama depan penumpang ${i + 1} wajib diisi.`); return; }
       if (!p.birth_date) { setError(`Tanggal lahir penumpang ${i + 1} wajib diisi.`); return; }
     }
+    isSubmittingRef.current = true;
     setLoading(true); setError('');
     try {
       const formattedPax = passengers.map((pax, idx) => ({
@@ -124,7 +139,12 @@ const [discountAmount, setDiscountAmount] = useState(0);
       const formattedBooker = { ...contact, booker_seq_id: (session?.user as any)?.id ? `CU.${(session?.user as any).id}` : 'GUEST.1' };
 
       const res = await fetch('/api/insurance/book', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Penanda "kedua request ini sama" — server hanya mengeksekusi satu.
+          'Idempotency-Key': idempotencyKey.getKey(),
+        },
         body: JSON.stringify({
           contacts: [formattedContact], passengers: formattedPax, booker: formattedBooker,
           provider, carrier_code: carrierCode, total_amount: pricingAmount, product_name: productName, product_code: productCode,
@@ -136,11 +156,36 @@ const [discountAmount, setDiscountAmount] = useState(0);
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Gagal membuat pesanan');
+      if (!res.ok || !data.success) {
+        // Kegagalan yang DIJAWAB server → klaim idempotency sudah dilepas di
+        // sana, jadi siapkan key segar untuk percobaan berikutnya.
+        idempotencyKey.regenerate();
+        if (data?.error === 'IN_PROGRESS') {
+          // Klaim lama masih tertinggal padahal request ini sudah kembali.
+          // Biarkan user mengulang dengan key baru.
+          setLoading(false);
+          isSubmittingRef.current = false;
+          setError('Pesanan Anda sedang diproses. Silakan klik tombol sekali lagi untuk melanjutkan.');
+          return;
+        }
+        throw new Error(
+          data?.error === 'IDEMPOTENCY_CONFLICT'
+            ? 'Permintaan duplikat terdeteksi. Silakan muat ulang halaman lalu coba lagi.'
+            : (data.message || data.error || 'Gagal membuat pesanan'),
+        );
+      }
       setCheckoutDone(true);
 
       router.push(data.orderId ? `/payment/${data.orderId}` : '/bookings');
-    } catch (e: any) { setError(e.message); setLoading(false); }
+    } catch (e: any) {
+      // Gagal di level JARINGAN (timeout / Failed to fetch) sengaja TIDAK
+      // me-regenerate key: bisa jadi request pertama justru sukses di server,
+      // dan retry dengan key yang sama akan membalas duplicate + orderId yang
+      // benar, alih-alih membuat order kedua.
+      if (e?.message) setError(e.message);
+      setLoading(false);
+      isSubmittingRef.current = false;
+    }
   };
 
   const labelCls = 'block text-[11px] font-semibold text-slate-500 mb-1.5';
@@ -148,7 +193,13 @@ const [discountAmount, setDiscountAmount] = useState(0);
   return (
     <>
       <div className="bg-slate-50 min-h-screen">
-        <LeaveGuard active={!checkoutDone} fallbackHref="/insurance/search" />
+        <LeaveGuard
+          active={!checkoutDone}
+          fallbackHref="/insurance/search"
+          // Overlay loading memakai z-[12000] → dialog "Yakin keluar?" harus
+          // berada di atasnya supaya tetap terlihat saat user menekan Back.
+          zIndex={loading ? 'z-[13000]' : 'z-[1400]'}
+        />
         {/* Header */}
         <div className="bg-white border-b border-slate-200 py-4 px-6">
           <div className="max-w-[1280px] mx-auto flex items-center justify-between">
@@ -390,6 +441,11 @@ const [discountAmount, setDiscountAmount] = useState(0);
           </form>
         </div>
       </div>
+
+      {/* Menimpa seluruh halaman selama booking diproses: semua klik, scroll,
+          dan navigasi keyboard tertahan sehingga user tidak bisa mengklik
+          konten lain maupun mengirim order kedua. */}
+      <CheckoutLoadingOverlay open={loading} />
     </>
   );
 }

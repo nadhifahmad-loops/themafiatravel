@@ -10,6 +10,7 @@ import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { generateBookingId } from '@/lib/security';
 import { checkSubmittedPrice } from '@/lib/price-check';
 import { prisma } from '@/lib/prisma';
+import { withIdempotency, hashPayload, readBodyIdempotencyKey, recordIdempotencyOrderId } from '@/lib/idempotency';
 import type { Prisma } from '@prisma/client';
 
 export const maxDuration = 90;
@@ -33,8 +34,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Body dibaca DI SINI — stream NextRequest hanya bisa dibaca sekali, jadi
+  // hasilnya dipakai dua kali: sebagai fingerprint idempotency dan input handler.
+  let body: any;
   try {
-    const body = await req.json();
+    body = await req.json();
+  } catch {
+    return apiError('Request body tidak valid.', 400);
+  }
+
+  try {
+    // Gerbang idempotency: ditempatkan SEBELUM price revalidation +
+    // sell_journeys + pembuatan transaksi Midtrans sehingga dari dua request
+    // identik (klik ganda / retry duplikat) hanya SATU yang dieksekusi.
+    // Request kedua menerima response tersimpan (duplicate) atau 409
+    // IN_PROGRESS bila yang pertama masih berjalan.
+    return await withIdempotency({
+      rawKey: req.headers.get('idempotency-key') ?? readBodyIdempotencyKey(body),
+      bookingType: 'train',
+      userId,
+      payloadHash: hashPayload(body),
+      run: (idempotencyKey) => handleTrainBook({ body, session, idempotencyKey }),
+    });
+  } catch (e: any) {
+    console.error('[Train Book] Internal error:', e.message);
+    return apiError('Terjadi kesalahan sistem internal.', 500);
+  }
+}
+
+async function handleTrainBook(args: {
+  body: any;
+  session: any;
+  idempotencyKey: string | null;
+}): Promise<NextResponse> {
+  const { body, session, idempotencyKey } = args;
+  const userId: string | null = session?.user?.id ?? null;
+  try {
     const validation = validateBody(trainBookSchema, body);
     if (!validation.success) return validation.response;
 
@@ -273,6 +308,10 @@ export async function POST(req: NextRequest) {
     // 2. Buat transaksi Midtrans
     // FIX (Bug #2): ID acak (tidak lagi predictable dari Date.now() saja).
     const orderId = generateBookingId('TRN');
+    // Dicatat SEBELUM bookingStore.create: bila proses crash di antara dua
+    // langkah ini, klaim idempotency berikutnya menemukan Booking yang sudah
+    // tersimpan dan mengembalikannya sebagai duplicate, bukan order kedua.
+    await recordIdempotencyOrderId(idempotencyKey, orderId);
     const routeLabel = `${origin || ''} → ${destination || ''}`;
     const trainLabel = train_name ? `${train_name}${train_number ? ' (' + train_number + ')' : ''}` : 'Kereta KAI';
 

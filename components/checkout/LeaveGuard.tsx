@@ -13,6 +13,12 @@ interface Props {
   leaveLabel?: string;
   /** Tujuan cadangan bila tombol back ditekan tanpa halaman sebelumnya. */
   fallbackHref?: string;
+  /**
+   * z-index dialog konfirmasi. Naikkan (mis. `z-[13000]`) saat overlay loading
+   * checkout aktif — overlay memakai `z-[12000]`, sehingga tanpa penyesuaian
+   * ini dialog "Yakin keluar?" akan muncul di BELAKANG overlay dan tak terlihat.
+   */
+  zIndex?: string;
 }
 
 // Menjaga pengguna tetap di halaman checkout sampai pemesanan selesai diproses.
@@ -25,6 +31,7 @@ export default function LeaveGuard({
   stayLabel,
   leaveLabel,
   fallbackHref = '/',
+  zIndex = 'z-[1400]',
 }: Props) {
   const router = useRouter();
   const { language } = useLanguage();
@@ -171,7 +178,7 @@ export default function LeaveGuard({
       {showDialog && (
         <div
           role="presentation"
-          className="fixed inset-0 z-[1400] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
+          className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in`}
           onClick={stay}
         >
           <div
