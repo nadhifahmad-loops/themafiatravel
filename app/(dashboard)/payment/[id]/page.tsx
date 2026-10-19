@@ -238,6 +238,10 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
             </div>
             <h1 className="text-lg font-bold text-slate-900">{t.alreadyPaid}</h1>
             <p className="text-sm text-slate-500 mt-2">{t.alreadyPaidSub}</p>
+            <div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-left">
+              <i className="fa-solid fa-envelope text-emerald-500 mt-0.5 text-xs"></i>
+              <p className="text-xs text-emerald-700 leading-relaxed">{t.paidEmailNotice}</p>
+            </div>
             <Link
               href={session?.user ? `/bookings/${id}` : `/find-booking?orderId=${booking.orderNumber || id}`}
               className="mt-6 inline-block px-6 py-3 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800"
@@ -289,6 +293,13 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
         </div>
 
         <p className="text-sm text-slate-500 mb-6 max-w-2xl">{t.subtitle}</p>
+
+        {/* Pemberitahuan email checkout — user tahu bahwa konfirmasi + kode pesanan
+            sudah dikirim ke email pemesan sebelum/sementara menunggu pembayaran. */}
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+          <i className="fa-solid fa-envelope text-emerald-500 mt-0.5"></i>
+          <p className="text-xs text-emerald-700 leading-relaxed">{t.checkoutEmailNotice}</p>
+        </div>
 
         <div className="grid lg:grid-cols-[320px_1fr] gap-6 items-start">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 lg:sticky lg:top-24">

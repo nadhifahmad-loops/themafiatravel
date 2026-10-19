@@ -33,7 +33,59 @@ model User {
     adminNotificationReads AdminNotificationRead[]
     customerNotificationReads CustomerNotificationRead[]
     couponUsages   CouponUsage[]
+    favorites      Favorite[]
+    collections    Collection[]
   }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COLLECTIONS (pengelompok favorit milik user — menghapus koleksi TIDAK
+// menghapus favoritnya: collectionId hanya menjadi NULL / "Tanpa koleksi")
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Collection {
+  id         String  @id @default(cuid())
+  userId     String
+  name       String
+  coverImage String? // cover kustom pilihan user (null = gradasi default)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  favorites Favorite[]
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAVORITES (destinasi/hasilm pencarian yang disimpan user login)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Favorite {
+  id           String   @id @default(cuid())
+  userId       String
+  // 'flight' | 'hotel' | 'train'
+  entityType   String
+  // Kunci unik per user+type untuk cegah duplikat, mis.:
+  // flight:GA421:2026-12-01:CGK-DPS · hotel:ID8731:2026-12-01 · train:BS9520:2026-12-01:GMR-BD
+  dedupeKey    String
+  title        String
+  subtitle     String?
+  // Snapshot harga saat disimpan (bisa berubah — tampil sebagai info, bukan jaminan)
+  price        Int?
+  image        String?
+  // Konteks pencarian tersimpan (rute, tanggal, pax, kelas…) untuk "Buka Pencarian"
+  searchParams Json
+  // Opsional — pengelompok koleksi. Dihapus koleksinya → jadi NULL (tetap tersimpan).
+  collectionId String?
+  createdAt    DateTime @default(now())
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, entityType, dedupeKey])
+  @@index([userId])
+  @@index([collectionId])
+}
 
 model Account {
   id                String  @id @default(cuid())

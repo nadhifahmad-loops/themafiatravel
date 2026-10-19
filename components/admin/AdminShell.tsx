@@ -2,15 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
-import Topbar, { type AdminNotification } from './Topbar';
+import Topbar from './Topbar';
 
 interface AdminShellProps {
   children: React.ReactNode;
   userName?: string | null;
   userEmail?: string | null;
   userImage?: string | null;
-  initialNotifications?: AdminNotification[];
-  initialUnreadCount?: number;
 }
 
 function getInitialCollapsed(): boolean {
@@ -22,7 +20,7 @@ function getInitialCollapsed(): boolean {
   }
 }
 
-export default function AdminShell({ children, userName, userEmail, userImage, initialNotifications, initialUnreadCount }: AdminShellProps) {
+export default function AdminShell({ children, userName, userEmail, userImage }: AdminShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(getInitialCollapsed);
   const [mounted, setMounted] = useState(false);
@@ -55,8 +53,6 @@ export default function AdminShell({ children, userName, userEmail, userImage, i
           userName={userName}
           userEmail={userEmail}
           userImage={userImage}
-          initialNotifications={initialNotifications}
-          initialUnreadCount={initialUnreadCount}
         />
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           {children}

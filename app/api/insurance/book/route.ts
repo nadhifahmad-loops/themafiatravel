@@ -12,6 +12,7 @@ import { generateBookingId } from '@/lib/security';
 import { checkSubmittedPrice } from '@/lib/price-check';
 import { withIdempotency, hashPayload, readBodyIdempotencyKey, recordIdempotencyOrderId } from '@/lib/idempotency';
 import type { Prisma } from '@prisma/client';
+import { sendBookingCheckoutEmail } from '@/lib/email';
 
 export const maxDuration = 90;
 
@@ -308,6 +309,27 @@ async function handleBook(args: {
         orderNumber: existingBooking.orderNumber,
         bookingData,
       });
+    }
+
+    // Email "Pesanan Diterima" (non-fatal) — beri tahu pemesan bahwa pesanan
+    // sudah tercatat + kode pesanan, sebelum/menunggu pembayaran.
+    if (booker.email) {
+      try {
+        await sendBookingCheckoutEmail({
+          to: booker.email,
+          userName: `${booker.first_name || ''} ${booker.last_name || ''}`.trim(),
+          booking: {
+            id: orderId,
+            orderNumber,
+            bookingType: 'insurance',
+            hotelName: product_name || 'Asuransi Perjalanan',
+            totalAmount: finalAmount,
+          },
+        });
+        console.log('[Insurance Book] Checkout email sent to:', booker.email);
+      } catch (e: any) {
+        console.error('[Insurance Book] Checkout email error (non-fatal):', e.message);
+      }
     }
 
     return NextResponse.json({

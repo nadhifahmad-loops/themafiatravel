@@ -3,6 +3,8 @@ import { memo, useMemo, useState, useCallback } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { CARRIER_CODE_TO_AIRLINE } from '@/lib/providers';
+import { airportCity } from '@/lib/geo';
+import FavoriteButton from '@/components/favorite/FavoriteButton';
 
 function formatDuration(elapsed: string) {
   if (!elapsed) return '-';
@@ -26,7 +28,7 @@ function getAirlineLogoUrl(code: string) {
   return `https://assets.wego.com/image/upload/h_72,c_fit,f_auto,fl_lossy,q_auto/v20250101/flights/airlines_square/${code}.png`;
 }
 
-function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) {
+function FlightCard({ journey, onSelect, adultCount, isCheapest = false, searchParams }: any) {
   const { language } = useLanguage();
   const t = i18n.flightSearch[language];
   const tf = i18n.searchForm[language].flight;
@@ -41,6 +43,8 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
   const airlineName = CARRIER_CODE_TO_AIRLINE[airlineCode] || seg?.carrier_name || airlineCode;
   const flightNum = seg?.carrier_number || '';
   const stopsCount = (journey.segments?.length || 1) - 1;
+  const originCode = seg?.origin || journey.origin || '';
+  const destCode = seg?.destination || journey.destination || '';
 
   const departureTime = useMemo(() => formatTime(seg?.departure_date), [seg]);
   const arrivalTime = useMemo(() => formatTime(lastSeg?.arrival_date), [lastSeg]);
@@ -92,8 +96,32 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false }: any) 
         </div>
       )}
 
-      <div className={`bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
+      <div className={`relative bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
         <div className="h-1.5 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600" />
+
+        {/* Simpan penerbangan ini sebagai favorit */}
+        <FavoriteButton
+          entityType="flight"
+          dedupeKey={`flight:${airlineCode}${flightNum}:${(seg?.departure_date || '').slice(0, 10)}:${originCode}-${destCode}`}
+          title={
+            originCode && destCode
+              ? `${airportCity(originCode)} → ${airportCity(destCode)}`
+              : `${airlineName}${airlineCode || flightNum ? ` ${airlineCode}${flightNum}` : ''}`
+          }
+          subtitle={`${airlineName}${flightNum ? ` ${airlineCode}${flightNum}` : ''}`}
+          price={lowestPrice}
+          image={getAirlineLogoUrl(airlineCode)}
+          searchParams={{
+            ...(searchParams || {}),
+            _airline: airlineName,
+            _flight_no: `${airlineCode}${flightNum}`,
+            _dep_time: departureTime,
+            _arr_time: arrivalTime,
+            _elapsed: seg?.elapsed || '',
+            _stops: stopsCount,
+          }}
+          className="absolute top-4 right-4 z-10"
+        />
 
         {/* Promo & termurah badge */}
         {(isCheapest || fares[0]?.fare_name) && (

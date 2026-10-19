@@ -63,6 +63,35 @@ export async function GET(req: NextRequest) {
     const booker = bd.booker || contacts[0] || {};
     const passengers = Array.isArray(booking.passengerData) ? booking.passengerData : [];
 
+    // Subset aman dari segmen penerbangan provider (tanpa data harga/tarif).
+    const rawSegments =
+      Array.isArray(bd.provider_bookings) && bd.provider_bookings[0] && Array.isArray(bd.provider_bookings[0].segments)
+        ? bd.provider_bookings[0].segments
+        : [];
+    const flightSegments = rawSegments.map((s: any) => ({
+      origin: s.origin || null,
+      destination: s.destination || null,
+      origin_name: s.origin_name || null,
+      destination_name: s.destination_name || null,
+      departure_date: s.departure_date || null,
+      arrival_date: s.arrival_date || null,
+      origin_terminal: s.origin_terminal || s.terminal || null,
+      destination_terminal: s.destination_terminal || null,
+      carrier_code: s.carrier_code || null,
+      carrier_name: s.carrier_name || null,
+      baggage_allowance: s.baggage_allowance || null,
+    }));
+
+    // Refundable flag (konsisten dengan halaman pesanan login).
+    const refundable =
+      typeof bd.refundable === 'boolean'
+        ? bd.refundable
+        : typeof bd.is_refundable === 'boolean'
+          ? bd.is_refundable
+          : typeof bd.fare_refundable === 'boolean'
+            ? bd.fare_refundable
+            : false;
+
     return NextResponse.json({
       success: true,
       booking: {
@@ -82,15 +111,28 @@ export async function GET(req: NextRequest) {
         pnr: booking.pnr,
         provider: booking.provider,
         routeLabel: booking.routeLabel,
-        cabinClass: bd.cabin_class || bd.subclass || '',
+        cabinClass: bd.cabin_class || bd.subclass || bd.roomType || '',
         selectedBaggage: bd.selectedBaggage || null,
         couponCode: booking.couponCode || null,
         discountAmount: booking.discountAmount || 0,
+        // Field tambahan untuk kebutuhan dokumen PDF (voucher/e-ticket).
+        hotelName: bd.hotel_name || bd.hotelName || null,
+        checkinDate: bd.checkin_date || bd.checkinDate || null,
+        checkoutDate: bd.checkout_date || bd.checkoutDate || null,
+        coverage: bd.coverage || null,
+        refundable,
+        flightSegments,
         passengers: passengers.map((p: any) => ({
           name: `${p.title || ''} ${p.first_name || ''} ${p.last_name || ''}`.trim(),
           type: p.pax_type || 'ADT',
           seat: p.seat || null,
           nationality: p.nationality_code || null,
+          // Field mentah untuk rendering nama di template PDF.
+          title: p.title || null,
+          first_name: p.first_name || null,
+          last_name: p.last_name || null,
+          pax_type: p.pax_type || 'ADT',
+          ticket_number: p.ticket_number || null,
         })),
         bookerName: `${booker.first_name || ''} ${booker.last_name || ''}`.trim(),
         bookerEmail: booker.email || null,

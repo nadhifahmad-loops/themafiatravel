@@ -1647,6 +1647,7 @@ function FlightSearchContent() {
                 onSelect={handleSelectFlight}
                 adultCount={parseInt(searchMeta?.adult || '1')}
                 isCheapest={cheapestIdx === i}
+                searchParams={searchMeta}
               />
             ))}
 

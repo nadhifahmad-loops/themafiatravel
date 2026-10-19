@@ -22,7 +22,7 @@ function FinishContent() {
     const isFailed = statusCode === '202' || transactionStatus === 'deny' || transactionStatus === 'cancel' || transactionStatus === 'expire';
 
     if (isSuccess) {
-      setMessage('Pembayaran berhasil! Mengarahkan ke rincian pesanan...');
+      setMessage('Pembayaran berhasil! Konfirmasi & kode pesanan sudah dikirim ke email Anda. Mengarahkan ke rincian pesanan...');
     } else if (isPending) {
       setMessage('Pembayaran sedang diproses. Mengarahkan ke rincian pesanan...');
     } else if (isFailed) {

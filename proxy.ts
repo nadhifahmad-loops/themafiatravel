@@ -7,7 +7,7 @@ import { buildCsp, generateNonce } from '@/lib/csp';
 type JWTWithRole = JWT & { role?: string };
 
 // Halaman khusus member (wajib login). Halaman search & checkout tetap publik.
-const MEMBER_PATHS = ['/account', '/bookings', '/refunds', '/insurance/bookings'];
+const MEMBER_PATHS = ['/account', '/bookings', '/refunds', '/insurance/bookings', '/favorites'];
 
 export async function proxy(req: NextRequest) {
   const token = (await getToken({

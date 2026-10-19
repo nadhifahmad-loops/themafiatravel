@@ -663,7 +663,7 @@ function TrainSearchContent() {
             {!loading && filteredJourneys.length > 0 && (
               <div className="space-y-4 animate-fade-in">
                 {filteredJourneys.map((j: any, i: number) => (
-                  <TrainCard key={i} journey={j} onSelect={handleSelect} adultCount={parseInt(searchMeta?.adult || '1')} isCheapest={cheapestIdx === i} />
+                  <TrainCard key={i} journey={j} onSelect={handleSelect} adultCount={parseInt(searchMeta?.adult || '1')} isCheapest={cheapestIdx === i} searchParams={searchMeta} />
                 ))}
               </div>
             )}

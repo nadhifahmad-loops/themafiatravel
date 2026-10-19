@@ -508,10 +508,10 @@ export default function AccountPage() {
         <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)', marginBottom: '24px' }}>
           <div style={{ background: 'linear-gradient(135deg, #F27717, #D9650E)', padding: '32px', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', right: -40, top: -40, width: 200, height: 200, borderRadius: '50%', background: 'rgba(234,88,12,0.15)', filter: 'blur(30px)' }} />
-            <div className="profile-hero" style={{ display: 'flex', alignItems: 'center', gap: '20px', position: 'relative' }}>
-              <div className="avatar" style={{ width: '72px', height: '72px', borderRadius: '20px', background: 'linear-gradient(135deg, #F27717, #D9650E)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', fontWeight: 900, color: 'white', flexShrink: 0, boxShadow: '0 4px 20px rgba(242,119,23,0.35)', overflow: 'hidden' }}>
+            <div className="profile-hero" style={{ display: 'flex', alignItems: 'center', gap: '16px', position: 'relative' }}>
+              <div className="avatar" style={{ width: '60px', height: '60px', borderRadius: '18px', background: 'linear-gradient(135deg, #F27717, #D9650E)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', fontWeight: 900, color: 'white', flexShrink: 0, boxShadow: '0 4px 20px rgba(242,119,23,0.35)', overflow: 'hidden' }}>
                 {session?.user?.image ? (
-                  <Image src={session.user.image} alt="Profile" width={72} height={72} className="w-full h-full object-cover" />
+                  <Image src={session.user.image} alt="Profile" width={60} height={60} className="w-full h-full object-cover" />
                 ) : (
                   getInitials(form.name)
                 )}
@@ -531,7 +531,7 @@ export default function AccountPage() {
           </div>
         </div>
 
-        {/* ══ NAVIGATION CARD (Informasi Akun + Bahasa) ══ */}
+        {/* ══ NAVIGATION CARD ══ */}
         <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)', marginBottom: '24px' }}>
           <Link href="/account/detail" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
             onMouseEnter={e => e.currentTarget.style.background = '#F5FAFC'}
@@ -541,23 +541,6 @@ export default function AccountPage() {
                 <i className="fa-solid fa-user" style={{ color: '#338CB2', fontSize: '16px' }}></i>
               </div>
               <span style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px' }}>Informasi Akun</span>
-            </div>
-            <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
-          </Link>
-
-          <div style={{ height: '1px', background: '#f1f5f9', margin: '0 32px' }} />
-
-          <Link href="/account/language" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#F5FAFC'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#fff7ed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <i className="fa-solid fa-globe" style={{ color: '#F27717', fontSize: '16px' }}></i>
-              </div>
-              <div>
-                <span style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px' }}>{ta.language.title}</span>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#94a3b8', fontWeight: 500 }}>{language === 'ID' ? 'Bahasa Indonesia' : 'English'}</p>
-              </div>
             </div>
             <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
           </Link>

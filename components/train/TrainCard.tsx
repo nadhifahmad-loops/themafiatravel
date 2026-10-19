@@ -28,7 +28,7 @@ function fmtIDR(n: number) {
   return 'Rp ' + Math.round(n).toLocaleString('id-ID');
 }
 
-function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { journey: any; onSelect: (journey: any, fare: any) => void; adultCount: number; isCheapest?: boolean; }) {
+function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { journey: any; onSelect: (journey: any, fare: any) => void; adultCount: number; isCheapest?: boolean; searchParams?: any; }) {
   const { language } = useLanguage();
   const t = i18n.trainSearch[language];
   const [showFares, setShowFares] = useState(false);
@@ -84,8 +84,9 @@ function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { jour
         </div>
       )}
 
-      <div className={`bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
+      <div className={`relative bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
         <div className="h-1.5 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600" />
+
         {isCheapest && (
           <div className="px-5 pt-3 pb-0">
             <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white px-2.5 py-1 rounded-full shadow-sm">

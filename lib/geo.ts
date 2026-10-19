@@ -51,6 +51,23 @@ const AIRPORT_CITY: Record<string, string> = {
   MDC: 'Manado', LBJ: 'Labuan Bajo', KOE: 'Kupang', SWQ: 'Sumbawa', MQQ: 'Maumere', TXT: 'Tanjung Pandan',
 };
 
+/** Tambahan nama kota bandara internasional (kode → label ID). */
+const AIRPORT_CITY_INTL: Record<string, string> = {
+  SIN: 'Singapura', KUL: 'Kuala Lumpur', BKK: 'Bangkok', HKG: 'Hong Kong', TPE: 'Taipei',
+  NRT: 'Tokyo', HND: 'Tokyo', KIX: 'Osaka', ICN: 'Seoul', PVG: 'Shanghai', PEK: 'Beijing',
+  CAN: 'Guangzhou', SGN: 'Ho Chi Minh', HAN: 'Hanoi', MNL: 'Manila', DEL: 'New Delhi',
+  BOM: 'Mumbai', DXB: 'Dubai', DOH: 'Doha', JED: 'Jeddah', SYD: 'Sydney', MEL: 'Melbourne',
+  AKL: 'Auckland', LGW: 'London', LHR: 'London', CDG: 'Paris', AMS: 'Amsterdam', FRA: 'Frankfurt',
+  IST: 'Istanbul',
+};
+
+/** Nama kota untuk kode IATA (fallback: kode itu sendiri). Dipakai label rute favorit. */
+export function airportCity(code?: string | null): string {
+  const c = (code || '').trim().toUpperCase();
+  if (!c) return '';
+  return AIRPORT_CITY[c] || AIRPORT_CITY_INTL[c] || c;
+}
+
 type RawGeoAirport = {
   iata?: string;
   name?: string | null;

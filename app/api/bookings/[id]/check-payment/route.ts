@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { bookingStore } from '@/lib/store';
 import { sendBookingConfirmationEmail } from '@/lib/email';
+import { buildBookingTicketAttachment } from '@/lib/email-ticket-pdf';
 import { getBookingContact } from '@/lib/notify';
 import { getSession } from '@/lib/auth';
 
@@ -77,48 +78,59 @@ export async function GET(
 
     let updated = false;
     if (newStatus && newStatus !== booking.status) {
-      await bookingStore.updateStatus(booking.id, newStatus, {
-        paymentId: data.transaction_id,
-        paymentStatus: txn,
-        paymentType: data.payment_type,
-        ...(newStatus === 'paid' && { paidAt: new Date() }),
-      });
-
-      try {
-        await bookingStore.updatePayment(booking.id, {
-          status: txn,
-          paymentType: data.payment_type,
-          midtransResponse: data,
+      // FIX (race webhook vs polling): transisi status atomik dengan guard
+      // status lama — hanya pemenang race yang menjalankan side-effect di bawah
+      // (update Payment + kirim email), sehingga email konfirmasi tidak pernah
+      // terkirim dua kali saat webhook Midtrans dan polling ini balapan.
+      const claim = await prisma.booking.updateMany({
+        where: { id: booking.id, status: booking.status },
+        data: {
+          status: newStatus,
+          ...(data.transaction_id && { paymentId: data.transaction_id }),
+          paymentStatus: txn,
+          ...(data.payment_type && { paymentType: data.payment_type }),
           ...(newStatus === 'paid' && { paidAt: new Date() }),
-        });
-      } catch { /* non-fatal */ }
+        },
+      });
+      updated = claim.count === 1;
 
-      // Send email confirmation if payment successful
-      if (newStatus === 'paid') {
+      if (updated) {
         try {
-          const contact = getBookingContact(booking);
-          if (contact.email) {
-            await sendBookingConfirmationEmail({
-              to: contact.email,
-              userName: contact.name,
-              booking: {
-                id: booking.id,
-                orderNumber: booking.orderNumber,
-                bookingType: booking.bookingType,
-                routeLabel: booking.routeLabel,
-                totalAmount: booking.totalAmount,
-                pnr: booking.pnr,
-                provider: booking.provider,
-              },
-            });
-            console.log('[Check Payment] Email sent to:', contact.email);
+          await bookingStore.updatePayment(booking.id, {
+            status: txn,
+            paymentType: data.payment_type,
+            midtransResponse: data,
+            ...(newStatus === 'paid' && { paidAt: new Date() }),
+          });
+        } catch { /* non-fatal */ }
+
+        // Send email confirmation if payment successful
+        if (newStatus === 'paid') {
+          try {
+            const contact = getBookingContact(booking);
+            if (contact.email) {
+              const ticketAttachments = await buildBookingTicketAttachment(booking);
+              await sendBookingConfirmationEmail({
+                to: contact.email,
+                userName: contact.name,
+                booking: {
+                  id: booking.id,
+                  orderNumber: booking.orderNumber,
+                  bookingType: booking.bookingType,
+                  routeLabel: booking.routeLabel,
+                  totalAmount: booking.totalAmount,
+                  pnr: booking.pnr,
+                  provider: booking.provider,
+                },
+                ...(ticketAttachments ? { attachments: ticketAttachments } : {}),
+              });
+              console.log('[Check Payment] Email sent to:', contact.email);
+            }
+          } catch (emailErr: any) {
+            console.error('[Check Payment] Email failed:', emailErr.message);
           }
-        } catch (emailErr: any) {
-          console.error('[Check Payment] Email failed:', emailErr.message);
         }
       }
-
-      updated = true;
     }
 
     return NextResponse.json({ success: true, data: { status: newStatus || booking.status, updated } });

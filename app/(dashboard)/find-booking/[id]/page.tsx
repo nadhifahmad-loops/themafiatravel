@@ -8,6 +8,7 @@ import { i18n } from '@/lib/i18n';
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 import Footer from '@/components/layout/Footer';
 import TrainSeatPicker from '@/components/train/TrainSeatPicker';
+import { PdfTemplate } from '@/components/ticket/PdfTemplate';
 
 const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -47,6 +48,7 @@ function GuestBookingDetailContent() {
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [countdown, setCountdown] = useState({ expired: true, hours: 0, minutes: 0, seconds: 0 });
   const [paying, setPaying] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
     await Promise.resolve();
@@ -182,6 +184,80 @@ function GuestBookingDetailContent() {
 
   const isTrainPaid = booking?.bookingType === 'train' && (booking?.status === 'paid' || booking?.status === 'issued');
 
+  // ── Props untuk template PDF (disamakan dengan halaman pesanan login) ──
+  const bType = booking?.bookingType || 'flight';
+  const isFlight = bType === 'flight';
+  const isTrain = bType === 'train';
+  const isHotel = bType === 'hotel';
+  const isInsurance = bType === 'insurance';
+  const isTransport = isFlight || isTrain;
+  const canDownload = booking?.status === 'paid' || booking?.status === 'issued';
+
+  // Booking "mentah" untuk template: field yang dipakai PdfTemplate.
+  const pdfBooking = booking ? {
+    id: booking.id,
+    orderNumber: booking.orderNumber,
+    bookingType: booking.bookingType,
+    status: booking.status,
+    pnr: booking.pnr,
+    provider: booking.provider,
+    airlineName: booking.airlineName,
+    hotelName: booking.hotelName || null,
+    totalAmount: booking.totalAmount,
+    origin: booking.origin,
+    destination: booking.destination,
+    departureDate: booking.departureDate,
+    arrivalDate: booking.arrivalDate || null,
+    checkinDate: booking.checkinDate || null,
+    checkoutDate: booking.checkoutDate || null,
+  } : null;
+
+  const flightSegments = Array.isArray(booking?.flightSegments) ? booking.flightSegments : [];
+  const firstSeg = flightSegments[0] || {};
+  const lastSeg = flightSegments[flightSegments.length - 1] || {};
+
+  // bookingDataRaw tiruan untuk kebutuhan template (bagasi, cabin, coverage).
+  const bookingDataRaw = booking ? {
+    provider_bookings: flightSegments.length > 0 ? [{ segments: flightSegments }] : [],
+    selectedBaggage: booking.selectedBaggage || null,
+    cabin_class: booking.cabinClass || '',
+    coverage: booking.coverage || null,
+  } : null;
+
+  const pdfStartDate = booking?.departureDate || booking?.checkinDate || null;
+  const pdfEndDate = booking?.arrivalDate || booking?.checkoutDate || pdfStartDate;
+  const originDisplayName = firstSeg.origin_name || '';
+  const destDisplayName = lastSeg.destination_name || '';
+  const pdfOriginName = originDisplayName || booking?.origin || '';
+  const pdfDestName = destDisplayName || booking?.destination || '';
+  const baggageAllowance = firstSeg.baggage_allowance || '';
+  const segmentCount = flightSegments.length || 1;
+  const pdfItemName = isTrain
+    ? (airlineName || (isEN ? 'Train' : 'Kereta Api'))
+    : isHotel
+      ? (booking?.hotelName || (isEN ? 'Hotel' : 'Hotel'))
+      : isInsurance
+        ? (booking?.hotelName || (isEN ? 'Insurance' : 'Asuransi'))
+        : (airlineName || (isEN ? 'Airline' : 'Maskapai'));
+  const pdfSubclass = booking?.cabinClass || '';
+  const pdfRefundable = booking?.refundable === true;
+
+  const handleDownloadPDF = async () => {
+    const el = document.getElementById('ticket-print');
+    if (!el) return;
+    setDownloading(true);
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      await html2pdf().set({
+        margin: [0, 0, 0, 0],
+        filename: `TMT_${booking.orderNumber || booking.id}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 4, useCORS: true, backgroundColor: '#ffffff', letterRendering: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }).from(el).save();
+    } finally { setDownloading(false); }
+  };
+
   return (
     <div className="min-h-screen bg-[#f4f6fb] flex flex-col">
       <div className="bg-gradient-to-br from-orange-600 via-orange-500 to-amber-500 pt-28 pb-12 px-4">
@@ -235,6 +311,22 @@ function GuestBookingDetailContent() {
                 )}
               </div>
             </div>
+
+            {/* Email notice — pembayaran sukses */}
+            {(booking.status === 'paid' || booking.status === 'issued') && (
+              <div className="bg-white rounded-2xl shadow-lg border border-emerald-200 overflow-hidden mb-3">
+                <div className="p-4 flex items-start gap-3">
+                  <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center shrink-0">
+                    <i className="fa-solid fa-envelope text-emerald-500 text-sm"></i>
+                  </div>
+                  <p className="text-xs text-emerald-700 leading-relaxed">
+                    {isEN
+                      ? `We have sent your payment confirmation and order code to ${booking.bookerEmail || 'your email'}. Please check your inbox (or spam folder).`
+                      : `Konfirmasi pembayaran dan kode pesanan sudah kami kirim ke ${booking.bookerEmail || 'email Anda'}. Silakan cek inbox (atau folder spam).`}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Payment Pending Banner */}
             {isPending && (
@@ -503,6 +595,19 @@ function GuestBookingDetailContent() {
 
             {/* Actions */}
             <div className="flex gap-3">
+              {canDownload && (
+                <button
+                  onClick={handleDownloadPDF}
+                  disabled={downloading}
+                  className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                >
+                  {downloading ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{isEN ? 'Preparing...' : 'Menyiapkan...'}</>
+                  ) : (
+                    <><i className="fa-solid fa-file-pdf text-xs"></i>{isEN ? 'Download Ticket (PDF)' : 'Unduh Tiket (PDF)'}</>
+                  )}
+                </button>
+              )}
               {isTrainPaid && booking.id && providerBookings.length > 0 && (
                 <TrainSeatPicker
                   orderId={booking.id}
@@ -529,6 +634,35 @@ function GuestBookingDetailContent() {
               </Link>
             </div>
           </>
+        )}
+
+        {/* PDF template (hidden) — dirender off-screen lalu di-capture html2pdf.js */}
+        {booking && pdfBooking && (
+          <PdfTemplate
+            booking={pdfBooking}
+            bType={bType}
+            passengers={displayPassengers}
+            enrichedPassengers={displayPassengers}
+            savedBaggage={booking.selectedBaggage || null}
+            isTransport={isTransport}
+            isFlight={isFlight}
+            isTrain={isTrain}
+            isHotel={isHotel}
+            isInsurance={isInsurance}
+            startDate={pdfStartDate}
+            endDate={pdfEndDate}
+            originCode={booking.origin || ''}
+            destCode={booking.destination || ''}
+            originName={pdfOriginName}
+            destName={pdfDestName}
+            itemName={pdfItemName}
+            itemCode={booking.flightNumber || ''}
+            subclass={pdfSubclass}
+            baggageAllowance={baggageAllowance}
+            segmentCount={segmentCount}
+            bookingDataRaw={bookingDataRaw}
+            refundable={pdfRefundable}
+          />
         )}
       </div>
       <Footer />

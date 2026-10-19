@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { bookingStore } from '@/lib/store';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { sendBookingConfirmationEmail } from '@/lib/email';
+import { buildBookingTicketAttachment } from '@/lib/email-ticket-pdf';
+import { getBookingContact } from '@/lib/notify';
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === 'true';
@@ -90,13 +92,53 @@ export async function GET(req: NextRequest) {
 
     let updated = false;
     if (newStatus && newStatus !== booking.status) {
-      await bookingStore.updateStatus(booking.id, newStatus, {
-        paymentId: data.transaction_id,
-        paymentStatus: txn,
-        paymentType: data.payment_type,
-        ...(newStatus === 'paid' && { paidAt: new Date() }),
+      // Transisi atomik (updateMany + guard status lama) — hanya pemenang race
+      // (polling ini ATAU webhook Midtrans) yang menjalankan side-effect kirim
+      // email, sehingga tidak pernah terjadi email ganda.
+      const claim = await prisma.booking.updateMany({
+        where: { id: booking.id, status: booking.status },
+        data: {
+          status: newStatus,
+          ...(data.transaction_id && { paymentId: data.transaction_id }),
+          paymentStatus: txn,
+          ...(data.payment_type && { paymentType: data.payment_type }),
+          ...(newStatus === 'paid' && { paidAt: new Date() }),
+        },
       });
-      updated = true;
+      updated = claim.count === 1;
+
+      // Email konfirmasi untuk guest booking — sebelumnya hanya webhook yang
+      // mengirim; jika webhook terlambat/gagal, guest tidak pernah menerima
+      // kode pesanan via email. Fallback ini menutup celah tersebut.
+      if (updated && newStatus === 'paid') {
+        try {
+          const bookingUser = booking.userId
+            ? await prisma.user.findUnique({ where: { id: booking.userId }, select: { name: true, email: true, phone: true } })
+            : null;
+          const contact = getBookingContact({ ...booking, user: bookingUser });
+          if (contact.email) {
+            const ticketAttachments = await buildBookingTicketAttachment(booking);
+            await sendBookingConfirmationEmail({
+              to: contact.email,
+              userName: contact.name || 'pelanggan',
+              booking: {
+                id: booking.id,
+                orderNumber: booking.orderNumber,
+                bookingType: booking.bookingType,
+                routeLabel: booking.routeLabel,
+                hotelName: booking.hotelName,
+                totalAmount: booking.totalAmount,
+                pnr: booking.pnr,
+                provider: booking.provider,
+              },
+              ...(ticketAttachments ? { attachments: ticketAttachments } : {}),
+            });
+            console.log('[Guest Check Payment] Email sent to:', contact.email);
+          }
+        } catch (emailErr: any) {
+          console.error('[Guest Check Payment] Email failed (non-fatal):', emailErr.message);
+        }
+      }
     }
 
     return NextResponse.json({

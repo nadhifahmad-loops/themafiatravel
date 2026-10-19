@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import FavoriteButton from '@/components/favorite/FavoriteButton';
 
 function getLowestPrice(prices: any): { price: number; provider: string; mealType: string } {
   if (!prices) return { price: 0, provider: '', mealType: '' };
@@ -72,6 +73,23 @@ export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest 
   const isWithMeal = mealType && mealType !== 'ROOM ONLY' && mealType !== 'RO' && mealType !== 'Room Only';
   const isConfirmed = hotel.state === 'confirm';
 
+  // Metadata display untuk kartu favorit (bintang, skor, jumlah ulasan).
+  const rawRating = Number(hotel.rating) || 0;
+  const favStars =
+    Number((hotel as any).star_rating ?? (hotel as any).stars ?? (hotel as any).star ?? 0) ||
+    (rawRating > 0 && rawRating <= 5 ? Math.round(rawRating) : 0);
+  const favScore =
+    Number((hotel as any).review_score ?? (hotel as any).score ?? (hotel as any).guest_rating ?? 0) ||
+    (rawRating > 5 ? rawRating : 0);
+  const favReviews =
+    Number(
+      (hotel as any).review_count ??
+        (hotel as any).reviews ??
+        (hotel as any).total_reviews ??
+        (hotel as any).rating_count ??
+        0
+    ) || 0;
+
   const handleSelect = () => {
     const q = new URLSearchParams({
       hotel_id: hotel.id,
@@ -121,12 +139,30 @@ export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest 
           </div>
         )}
 
-        {/* Status badge */}
+        {/* Status badge — digeser ke kiri agar tidak bertabrakan dengan ikon favorit */}
         {!isConfirmed && (
-          <div className="absolute top-3 right-3">
+          <div className="absolute top-3 right-14 z-10">
             <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">Draft</span>
           </div>
         )}
+
+        {/* Simpan hotel ini sebagai favorit */}
+        <FavoriteButton
+          entityType="hotel"
+          dedupeKey={`hotel:${hotel.id}:${searchParams?.checkin_date || ''}`}
+          title={hotel.name || 'Hotel'}
+          subtitle={hotel.location?.city || searchParams?.q || ''}
+          price={price || null}
+          image={hotel.images?.[0]?.url || null}
+          searchParams={{
+            ...(searchParams || {}),
+            _stars: favStars,
+            _score: favScore,
+            _reviews: favReviews,
+            _country: hotel.location?.country_code || '',
+          }}
+          className="absolute top-3 right-3 z-10"
+        />
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
           <div className="rounded-full bg-white/90 backdrop-blur-sm px-3 py-1 text-[10px] font-black text-slate-700 shadow-sm">
             {hotel.location?.city || 'Lokasi populer'}

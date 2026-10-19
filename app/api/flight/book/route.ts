@@ -11,6 +11,7 @@ import { generateBookingId } from '@/lib/security';
 import { checkSubmittedPrice } from '@/lib/price-check';
 import { withIdempotency, hashPayload, readBodyIdempotencyKey, recordIdempotencyOrderId } from '@/lib/idempotency';
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
+import { sendBookingCheckoutEmail } from '@/lib/email';
 
 export const maxDuration = 90;
 
@@ -649,6 +650,29 @@ async function POSTHandler(
       });
     } catch (e: any) {
       console.error('[Flight Book] Payment log error (non-fatal):', e.message);
+    }
+  }
+
+  // ── STEP 9: Email "Pesanan Diterima" (non-fatal) ─────────────────────────
+  // Memberi tahu pemesan bahwa pesanan sudah tercatat, berisi kode pesanan +
+  // total tagihan, agar user tahu email konfirmasi sudah dikirim setelah checkout.
+  if (booker.email) {
+    try {
+      await sendBookingCheckoutEmail({
+        to: booker.email,
+        userName: `${booker.first_name} ${booker.last_name || ''}`.trim(),
+        booking: {
+          id: orderId,
+          orderNumber,
+          bookingType: 'flight',
+          routeLabel: route_label || `${origin || ''} → ${destination || ''}`,
+          totalAmount: markedUpAmount,
+          pnr,
+        },
+      });
+      console.log('[Flight Book] Checkout email sent to:', booker.email);
+    } catch (e: any) {
+      console.error('[Flight Book] Checkout email error (non-fatal):', e.message);
     }
   }
 

@@ -12,6 +12,7 @@ import { checkSubmittedPrice } from '@/lib/price-check';
 import { prisma } from '@/lib/prisma';
 import { withIdempotency, hashPayload, readBodyIdempotencyKey, recordIdempotencyOrderId } from '@/lib/idempotency';
 import type { Prisma } from '@prisma/client';
+import { sendBookingCheckoutEmail } from '@/lib/email';
 
 export const maxDuration = 90;
 
@@ -382,6 +383,28 @@ async function handleTrainBook(args: {
       }
       console.error('[Train Book] DB error:', e.message);
       return apiError('Gagal menyimpan pesanan. Silakan coba lagi.', 500);
+    }
+
+    // Email "Pesanan Diterima" (non-fatal) — beri tahu pemesan bahwa pesanan
+    // sudah tercatat + kode pesanan, sebelum/menunggu pembayaran.
+    if (booker.email) {
+      try {
+        await sendBookingCheckoutEmail({
+          to: booker.email,
+          userName: `${booker.first_name || ''} ${booker.last_name || ''}`.trim(),
+          booking: {
+            id: orderId,
+            orderNumber,
+            bookingType: 'train',
+            routeLabel,
+            totalAmount: finalAmount,
+            pnr,
+          },
+        });
+        console.log('[Train Book] Checkout email sent to:', booker.email);
+      } catch (e: any) {
+        console.error('[Train Book] Checkout email error (non-fatal):', e.message);
+      }
     }
 
     return NextResponse.json({

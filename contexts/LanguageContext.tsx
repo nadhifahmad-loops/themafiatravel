@@ -19,13 +19,28 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   // Baca dari localStorage saat mount
   useEffect(() => {
-    const stored = (localStorage.getItem('app_lang') as Lang) || 'ID';
-    setLanguageState(stored);
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = localStorage.getItem('app_lang');
+        if (stored === 'ID' || stored === 'EN') setLanguageState(stored);
+      } catch (error) {
+        console.error('Unable to read the saved language preference.', error);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = language === 'ID' ? 'id' : 'en';
+  }, [language]);
 
   const setLanguage = (lang: Lang) => {
     setLanguageState(lang);
-    localStorage.setItem('app_lang', lang);
+    try {
+      localStorage.setItem('app_lang', lang);
+    } catch (error) {
+      console.error('Unable to save the language preference.', error);
+    }
     // Tetap dispatch event untuk kompatibilitas backward
     window.dispatchEvent(new Event('appStateChange'));
   };

@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from './prisma';
 import { checkRateLimit } from './rate-limit';
 import { normalizeEmail, getRequestIp } from './security';
+import { linkGuestBookingsToUser } from './guest-bookings';
 import { verifyTwoFactorBackupCode, verifyTwoFactorCode, consumeBackupCode } from './two-factor';
 
 type ExtendedSessionUser = DefaultSession['user'] & {
@@ -165,6 +166,18 @@ export const authOptions: NextAuthOptions = {
 
   callbacks: {
     async signIn({ user, account, profile }) {
+      if (account?.provider === 'google' && user?.id && user.email) {
+        const googleProfile = profile as { email_verified?: unknown } | undefined;
+        if (googleProfile?.email_verified === true) {
+          try {
+            await linkGuestBookingsToUser(user.email, user.id);
+          } catch (error) {
+            console.error('[Guest Booking Claim Error]', error);
+            throw error;
+          }
+        }
+      }
+
       // Simpan foto profil dari Google jika login via Google
       if (account?.provider === 'google' && user?.id) {
         const googleImage = (profile as any)?.picture || (profile as any)?.image;

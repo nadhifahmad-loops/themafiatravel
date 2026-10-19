@@ -12,6 +12,7 @@ import { withIdempotency, hashPayload, readBodyIdempotencyKey, recordIdempotency
 // verifyHotelPrice DIHAPUS dari book route — provision hanya boleh dipanggil SEKALI
 // (oleh frontend checkout page). Re-provision di sini menyebabkan 4014 "Already call".
 import type { Prisma } from '@prisma/client';
+import { sendBookingCheckoutEmail } from '@/lib/email';
 
 export const maxDuration = 90;
 
@@ -323,6 +324,28 @@ async function handleBook(args: {
       // tetapi tanpa baris Booking pembayaran user tidak akan pernah tercatat.
       console.error('[Hotel Book] Save booking error:', dbErr.message);
       return apiError('Gagal menyimpan pesanan. Silakan coba lagi.', 500);
+    }
+
+    // Email "Pesanan Diterima" (non-fatal) — memberi tahu pemesan bahwa pesanan
+    // sudah tercatat + kode pesanan, sebelum/menunggu pembayaran.
+    if (booker.email) {
+      try {
+        await sendBookingCheckoutEmail({
+          to: booker.email,
+          userName: `${booker.first_name || ''} ${booker.last_name || ''}`.trim(),
+          booking: {
+            id: orderId,
+            orderNumber: effectiveOrderNumber,
+            bookingType: 'hotel',
+            hotelName: hotel_name,
+            totalAmount: snapAmount,
+            pnr: bookingData?.order_number || effectiveOrderNumber,
+          },
+        });
+        console.log('[Hotel Book] Checkout email sent to:', booker.email);
+      } catch (e: any) {
+        console.error('[Hotel Book] Checkout email error (non-fatal):', e.message);
+      }
     }
 
     return NextResponse.json({

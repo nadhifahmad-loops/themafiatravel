@@ -4,6 +4,7 @@ import { bookingStore } from '@/lib/store';
 import { prisma } from '@/lib/prisma';
 import { releaseVendorHold } from '@/lib/payment-cleanup';
 import { sendBookingConfirmationEmail } from '@/lib/email';
+import { buildBookingTicketAttachment } from '@/lib/email-ticket-pdf';
 import { sendWhatsApp, formatBookingConfirmationMessage } from '@/lib/whatsapp';
 import { getBookingContact } from '@/lib/notify';
 import { trainAPI } from '@/lib/orbis';
@@ -201,6 +202,7 @@ export async function POST(req: NextRequest) {
         };
 
         if (contact.email) {
+          const ticketAttachments = await buildBookingTicketAttachment(booking);
           await sendBookingConfirmationEmail({
             to: contact.email,
             userName: contact.name || 'pelanggan',
@@ -209,6 +211,7 @@ export async function POST(req: NextRequest) {
               ...messageArgs,
               provider: booking.provider,
             },
+            ...(ticketAttachments ? { attachments: ticketAttachments } : {}),
           });
         }
 
