@@ -32,7 +32,183 @@ export interface InsuranceProviderConfig {
   provider: string;
   trips: InsuranceTripType[];
   productTypes: InsuranceProductType[];
+  areas: string[];
+  destinations: string[];
+  destinationAreas: Record<string, string>;
   supportsSenior: boolean;
+}
+
+const PROVIDER_AREAS: Record<string, string[]> = {
+  assistcard: ['Europe', 'North America', 'Central America and Caribbean', 'South America', 'Africa', 'Asia', 'Oceania', 'Domestic', 'Receptive', 'Annual Card', 'Multiple Destinations'],
+  bcainsurance: ['Asia Pasifik', 'Worldwide', 'Negara Schengen', 'Domestik'],
+  zurich: ['Worldwide Excluding USA, Canada', 'Europe', 'Asia Pacific', 'Asia', 'Schengen', 'Worldwide', 'ASEAN', 'Domestic'],
+  great_eastern: ['ASEAN', 'Asia Pacific', 'Domestic', 'Worldwide', 'Worldwide exc US/Canada'],
+  oona: ['Domestic', 'ASEAN', 'APAC', 'Worldwide Exc USA CA', 'Worldwide'],
+};
+
+const REGION_AREA: Record<string, Record<string, string>> = {
+  assistcard: {
+    asia: 'Asia',
+    europe: 'Europe',
+    'north america': 'North America',
+    'south america': 'South America',
+    africa: 'Africa',
+    oceania: 'Oceania',
+    multiple: 'Multiple Destinations',
+    worldwide: 'Multiple Destinations',
+  },
+  bcainsurance: {
+    asia: 'Asia Pasifik',
+    europe: 'Worldwide',
+    'north america': 'Worldwide',
+    'south america': 'Worldwide',
+    africa: 'Worldwide',
+    oceania: 'Worldwide',
+    multiple: 'Worldwide',
+    worldwide: 'Worldwide',
+  },
+  zurich: {
+    asia: 'Asia Pacific',
+    europe: 'Europe',
+    'north america': 'Worldwide',
+    'south america': 'Worldwide',
+    africa: 'Worldwide',
+    oceania: 'Worldwide',
+    multiple: 'Worldwide',
+    worldwide: 'Worldwide',
+  },
+  great_eastern: {
+    asia: 'Asia Pacific',
+    europe: 'Worldwide',
+    'north america': 'Worldwide',
+    'south america': 'Worldwide',
+    africa: 'Worldwide',
+    oceania: 'Worldwide',
+    multiple: 'Worldwide',
+    worldwide: 'Worldwide',
+  },
+  oona: {
+    asia: 'APAC',
+    europe: 'Worldwide Exc USA CA',
+    'north america': 'Worldwide',
+    'south america': 'Worldwide Exc USA CA',
+    africa: 'Worldwide Exc USA CA',
+    oceania: 'APAC',
+    multiple: 'Worldwide Exc USA CA',
+    worldwide: 'Worldwide Exc USA CA',
+  },
+};
+
+/** Map the form's destination region to an area accepted by each provider. */
+export function resolveInsuranceDestinationArea(
+  provider: string,
+  requestedArea: string,
+  international: boolean,
+  configuredAreas: string[] = [],
+  tripFamily: TripFamily = 'single',
+): string {
+  const areas = configuredAreas.length > 0 ? configuredAreas : (PROVIDER_AREAS[provider] ?? []);
+  if (areas.length === 0) return requestedArea;
+
+  const requested = requestedArea.trim();
+  if (tripFamily === 'annual') {
+    if (provider === 'assistcard') {
+      return areas.find((area) => /annual/i.test(area)) ?? areas.find((area) => /multiple|worldwide/i.test(area)) ?? areas[0];
+    }
+    return areas.find((area) => /^worldwide$/i.test(area))
+      ?? areas.find((area) => /worldwide|all/i.test(area))
+      ?? areas[0];
+  }
+  if (!international || /domestic|domestik/i.test(requested)) {
+    return areas.find((area) => /domestic|domestik|indonesia/i.test(area)) ?? areas[0];
+  }
+
+  const normalized = /multiple|multi|worldwide|global/i.test(requested)
+    ? (/multiple|multi/i.test(requested) ? 'multiple' : 'worldwide')
+    : requested.toLowerCase();
+  const preferred = REGION_AREA[provider]?.[normalized];
+  if (preferred) {
+    const matchedPreferred = areas.find((area) => area.toLowerCase() === preferred.toLowerCase());
+    if (matchedPreferred) return matchedPreferred;
+  }
+
+  const exact = areas.find((area) => area.toLowerCase() === requested.toLowerCase());
+  if (exact) return exact;
+
+  const matching = areas.find((area) => (
+    area.toLowerCase().includes(normalized) || normalized.includes(area.toLowerCase())
+  ));
+  if (matching) return matching;
+  const regionalMatch = areas.find((area) => {
+    if (normalized === 'asia') return /asia|asean/i.test(area);
+    if (normalized === 'europe') return /europe|schengen/i.test(area);
+    if (normalized === 'worldwide' || normalized === 'multiple') return /worldwide|multiple|all/i.test(area);
+    return false;
+  });
+  if (regionalMatch) return regionalMatch;
+  return areas.find((area) => /worldwide/i.test(area))
+    ?? areas.find((area) => /multiple/i.test(area))
+    ?? areas[0];
+}
+
+function canonicalDestination(value: string): string {
+  const normalized = value.trim().toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const aliases: Record<string, string> = {
+    singapore: 'singapore',
+    singapura: 'singapore',
+    japan: 'japan',
+    jepang: 'japan',
+    'south korea': 'south korea',
+    'korea selatan': 'south korea',
+    china: 'china',
+    tiongkok: 'china',
+    'united kingdom': 'united kingdom',
+    inggris: 'united kingdom',
+    netherlands: 'netherlands',
+    belanda: 'netherlands',
+    france: 'france',
+    prancis: 'france',
+    germany: 'germany',
+    jerman: 'germany',
+    italy: 'italy',
+    italia: 'italy',
+    switzerland: 'switzerland',
+    swiss: 'switzerland',
+    spain: 'spain',
+    spanyol: 'spain',
+    turkey: 'turkey',
+    turki: 'turkey',
+    'new zealand': 'new zealand',
+    'selandia baru': 'new zealand',
+    philippines: 'philippines',
+    filipina: 'philippines',
+    'south africa': 'south africa',
+    'afrika selatan': 'south africa',
+    'united states': 'united states',
+    'amerika serikat': 'united states',
+    brazil: 'brazil',
+    brasil: 'brazil',
+    mexico: 'mexico',
+    meksiko: 'mexico',
+  };
+  return aliases[normalized] ?? normalized;
+}
+
+/** Match a selected destination with the provider's own configured city value. */
+export function resolveInsuranceDestination(
+  requested: string,
+  configuredDestinations: string[] = [],
+): string {
+  const selected = requested.split(',').map((name) => name.trim()).filter(Boolean);
+  if (selected.length === 0 || configuredDestinations.length === 0) return requested;
+
+  const providerNames = new Map<string, string>();
+  for (const value of configuredDestinations) {
+    const name = value.split(/\s+-\s+/)[0].trim();
+    if (name) providerNames.set(canonicalDestination(name), name);
+  }
+
+  return selected.map((name) => providerNames.get(canonicalDestination(name)) ?? name).join(', ');
 }
 
 // Fallback statis: dipakai hanya bila get_config gagal atau provider tidak ada
@@ -118,10 +294,37 @@ function parseProviderConfig(provider: string, entry: unknown): InsuranceProvide
     });
   }
 
+  const rawAreas = Array.isArray(record?.master_area) ? (record!.master_area as unknown[]) : [];
+  const areas = rawAreas.map((raw) => {
+    if (typeof raw === 'string') return raw.trim();
+    const area = asRecord(raw);
+    return String(area?.value ?? area?.name ?? area?.label ?? area?.code ?? '').trim();
+  }).filter(Boolean);
+
+  const cityGroups = asRecord(record?.city);
+  const destinationAreas: Record<string, string> = {};
+  const destinations = cityGroups
+    ? Object.entries(cityGroups)
+      .filter(([area]) => !/domestic|domestik/i.test(area))
+      .flatMap(([area, values]) => (Array.isArray(values) ? values : [])
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => {
+          const name = value.split(/\s+-\s+/)[0].trim();
+          if (name && !/^indonesia$/i.test(name) && !destinationAreas[name]) {
+            destinationAreas[name] = area;
+          }
+          return name;
+        }))
+      .filter((value) => value && !/^indonesia$/i.test(value))
+    : [];
+
   return {
     provider,
     trips,
     productTypes,
+    areas,
+    destinations: [...new Set(destinations)],
+    destinationAreas,
     supportsSenior: record?.is_senior === true || record?.is_senior === 'true',
   };
 }
@@ -173,7 +376,7 @@ function fallbackProviderConfig(provider: string): InsuranceProviderConfig | nul
   if (fb.annual) {
     trips.push({ code: fb.annual, name: fb.annual, family: 'annual', dateSetting: 365, minDate: 1, maxDate: 365 });
   }
-  return { provider, trips, productTypes: [], supportsSenior: FALLBACK_SENIOR[provider] === true };
+  return { provider, trips, productTypes: [], areas: [], destinations: [], destinationAreas: {}, supportsSenior: FALLBACK_SENIOR[provider] === true };
 }
 
 /** Ambil config satu provider dari map (dengan fallback bila tidak ada). */

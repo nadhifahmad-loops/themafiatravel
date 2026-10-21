@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession, signOut } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -109,33 +109,68 @@ function DeleteAccountModal({ onClose, onConfirm, loading, userEmail, isGoogleLo
 }
 
 // ─── Change Password Section ──────────────────────────────────────────────────
+async function fetchTwoFactorStatus(): Promise<{ enabled: boolean; configured: boolean }> {
+  const res = await fetch('/api/user/two-factor');
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Gagal memuat status 2FA');
+  return {
+    enabled: Boolean(data.data?.enabled),
+    configured: Boolean(data.data?.configured),
+  };
+}
+
 function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'error'; text: string }) => void }) {
   const [loading, setLoading] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [setupData, setSetupData] = useState<{ secret: string; otpauthUrl: string; qrCodeDataUrl: string; backupCodes: string[] } | null>(null);
   const [code, setCode] = useState('');
+  const [codesSaved, setCodesSaved] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [configured, setConfigured] = useState(false);
 
-  useEffect(() => {
-    async function loadStatus() {
-      try {
-        const res = await fetch('/api/user/two-factor');
-        const data = await res.json();
-        if (res.ok) {
-          setEnabled(data.data?.enabled || false);
-          setConfigured(data.data?.configured || false);
-        }
-      } catch {
-        // ignore
-      }
+  const loadStatus = useCallback(async () => {
+    try {
+      const status = await fetchTwoFactorStatus();
+      setEnabled(status.enabled);
+      setConfigured(status.configured);
+      setStatusError(false);
+    } catch (err) {
+      setStatusError(true);
+      onNotify({ type: 'error', text: err instanceof Error ? err.message : 'Gagal memuat status 2FA' });
+    } finally {
+      setStatusLoading(false);
     }
+  }, [onNotify]);
 
-    loadStatus();
-  }, []);
+  function retryLoadStatus() {
+    setStatusLoading(true);
+    setStatusError(false);
+    void loadStatus();
+  }
+
+  useEffect(() => {
+    let active = true;
+    fetchTwoFactorStatus().then((status) => {
+      if (!active) return;
+      setEnabled(status.enabled);
+      setConfigured(status.configured);
+    }).catch((err: unknown) => {
+      if (!active) return;
+      setStatusError(true);
+      onNotify({ type: 'error', text: err instanceof Error ? err.message : 'Gagal memuat status 2FA' });
+    }).finally(() => {
+      if (active) setStatusLoading(false);
+    });
+    return () => { active = false; };
+  }, [onNotify]);
 
   async function startSetup() {
     setLoading(true);
+    setSetupData(null);
+    setCode('');
+    setCodesSaved(false);
     try {
       const res = await fetch('/api/user/two-factor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'setup' }) });
       const data = await res.json();
@@ -151,14 +186,28 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
     }
   }
 
-  async function enable2FA() {
+  async function copyBackupCodes() {
     if (!setupData) return;
+    try {
+      await navigator.clipboard.writeText(setupData.backupCodes.join('\n'));
+      onNotify({ type: 'success', text: 'Backup code disalin. Simpan di tempat aman, lalu centang konfirmasi.' });
+    } catch {
+      onNotify({ type: 'error', text: 'Tidak dapat menyalin backup code. Salin secara manual sebelum mengaktifkan 2FA.' });
+    }
+  }
+
+  async function enable2FA() {
+    if (!setupData || !codesSaved || !/^\d{6}$/.test(code.trim())) return;
     setLoading(true);
     try {
       const res = await fetch('/api/user/two-factor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'enable', code }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gagal mengaktifkan 2FA');
       setEnabled(true);
+      setConfigured(true);
+      setSetupData(null);
+      setCode('');
+      setCodesSaved(false);
       onNotify({ type: 'success', text: data.message || '2FA berhasil diaktifkan' });
     } catch (err) {
       onNotify({ type: 'error', text: err instanceof Error ? err.message : 'Gagal mengaktifkan 2FA' });
@@ -168,9 +217,11 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
   }
 
   async function disable2FA() {
+    const normalizedCode = code.replace(/\s/g, '');
+    if (!/^(?:\d{6}|\d{8})$/.test(normalizedCode)) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/user/two-factor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'disable', code }) });
+      const res = await fetch('/api/user/two-factor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'disable', code: normalizedCode }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gagal menonaktifkan 2FA');
       setEnabled(false);
@@ -187,68 +238,99 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
 
   return (
     <div>
-      <button aria-label="Ubah autentikasi 2 langkah" onClick={() => setExpanded((prev) => !prev)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#F5FAFC', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer' }}>
+      <button aria-expanded={expanded} onClick={() => setExpanded((prev) => !prev)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: enabled ? '#EFF9FC' : '#FFF7EE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <i className={`fa-solid ${enabled ? 'fa-shield-halved' : 'fa-lock'}`} style={{ color: enabled ? '#338CB2' : '#F27717', fontSize: '14px' }} />
-          </div>
           <div style={{ textAlign: 'left' }}>
             <p style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px', margin: 0 }}>Autentikasi 2 Langkah</p>
-            <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>{enabled ? '2FA aktif untuk akun Anda' : 'Aktifkan perlindungan tambahan saat login'}</p>
+            <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>
+              {statusLoading ? 'Memuat status…' : statusError ? 'Status tidak tersedia' : enabled ? 'Aktif' : 'Opsional'}
+            </p>
           </div>
         </div>
-        <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }} />
+        <i className={`fa-solid ${expanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true" style={{ color: '#64748b', fontSize: '12px' }} />
       </button>
 
       {expanded && (
-        <div style={{ marginTop: '12px', border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden' }}>
-          <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <p style={{ margin: 0, color: '#64748b', fontSize: '13px', lineHeight: 1.6 }}>
-              2FA opsional untuk melindungi akun dari akses tidak sah, terutama karena data sensitif seperti KTP/paspor dan riwayat pembayaran disimpan di sistem.
+        <div style={{ marginTop: '10px', padding: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', background: 'white' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <p style={{ margin: 0, color: '#475569', fontSize: '13px', lineHeight: 1.6 }}>
+              2FA menambahkan kode authenticator setelah kata sandi saat login dengan email dan kata sandi. Login Google tidak meminta kode ini.
             </p>
 
-            {!setupData && !enabled && !configured && (
-              <button onClick={startSetup} disabled={loading} style={{ width: '100%', padding: '14px', background: '#F27717', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: 'pointer' }}>
-                {loading ? 'Mempersiapkan...' : 'Siapkan 2FA'}
-              </button>
-            )}
-
-            {!setupData && !enabled && configured && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <p style={{ margin: 0, color: '#64748b', fontSize: '13px', lineHeight: 1.6 }}>
-                  Setup 2FA sebelumnya belum selesai. Lanjutkan dengan membuat QR baru — kode backup lama dibatalkan.
-                </p>
-                <button onClick={startSetup} disabled={loading} style={{ width: '100%', padding: '14px', background: '#F27717', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: 'pointer' }}>
-                  {loading ? 'Mempersiapkan...' : 'Lanjutkan / Ulangi Setup'}
-                </button>
+            {statusError && (
+              <div role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px', background: '#fef2f2', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
+                <span>Status 2FA gagal dimuat.</span>
+                <button onClick={retryLoadStatus} disabled={statusLoading} style={{ border: 0, background: 'transparent', color: '#991b1b', fontWeight: 700, cursor: 'pointer' }}>Coba lagi</button>
               </div>
             )}
 
+            {!statusLoading && !statusError && !enabled && !setupData && (
+              <>
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                  <p style={{ margin: '0 0 8px', color: '#1f2937', fontSize: '13px', fontWeight: 700 }}>Sebelum mulai</p>
+                  <ol style={{ margin: 0, paddingLeft: '20px', color: '#475569', fontSize: '13px', lineHeight: 1.8 }}>
+                    <li>Pasang aplikasi authenticator seperti Google Authenticator, Microsoft Authenticator, atau 1Password.</li>
+                    <li>Pindai QR dan simpan backup code di tempat aman yang terpisah dari ponsel.</li>
+                    <li>Masukkan kode dari aplikasi untuk mengaktifkan 2FA.</li>
+                  </ol>
+                </div>
+                {configured && (
+                  <p style={{ margin: 0, color: '#92400e', background: '#fffbeb', borderRadius: '8px', padding: '12px', fontSize: '13px', lineHeight: 1.5 }}>
+                    Setup sebelumnya belum selesai. Membuat QR baru akan mengganti secret dan backup code lama.
+                  </p>
+                )}
+                <button onClick={startSetup} disabled={loading} style={{ alignSelf: 'flex-start', padding: '11px 16px', background: '#1f2937', color: 'white', fontWeight: 700, borderRadius: '8px', border: 'none', cursor: loading ? 'wait' : 'pointer' }}>
+                  {loading ? 'Menyiapkan…' : configured ? 'Ulangi setup' : 'Siapkan 2FA'}
+                </button>
+              </>
+            )}
+
             {setupData && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <img src={setupData.qrCodeDataUrl} alt="QR 2FA" style={{ width: '220px', height: '220px', borderRadius: '16px', border: '1px solid #e2e8f0', background: 'white' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                <div>
+                  <p style={{ margin: '0 0 6px', color: '#1f2937', fontSize: '13px', fontWeight: 700 }}>1. Tambahkan authenticator</p>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '13px', lineHeight: 1.5 }}>Pindai QR ini dari aplikasi authenticator. Jika tidak bisa memindai, masukkan secret secara manual.</p>
                 </div>
-                <div style={{ padding: '12px', background: '#F5FAFC', borderRadius: '12px', fontSize: '12px', color: '#475569', lineHeight: 1.6 }}>
-                  <div><strong>Secret:</strong> {setupData.secret}</div>
-                  <div style={{ marginTop: '8px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '8px 10px', color: '#92400e' }}>
-                    <strong>Backup codes:</strong> {setupData.backupCodes.join(', ')}
-                    <div style={{ marginTop: '4px', fontWeight: 700 }}>Simpan kode ini sekarang — kode tidak akan ditampilkan lagi setelah 2FA aktif.</div>
+                <Image src={setupData.qrCodeDataUrl} width={200} height={200} unoptimized alt="QR untuk menambahkan akun ke aplikasi authenticator" style={{ maxWidth: '100%', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
+                <details>
+                  <summary style={{ color: '#475569', fontSize: '13px', cursor: 'pointer' }}>Tampilkan secret manual</summary>
+                  <code style={{ display: 'block', marginTop: '8px', padding: '10px', overflowWrap: 'anywhere', background: '#f8fafc', borderRadius: '6px', fontSize: '13px' }}>{setupData.secret}</code>
+                </details>
+
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                  <p style={{ margin: '0 0 6px', color: '#1f2937', fontSize: '13px', fontWeight: 700 }}>2. Simpan backup code</p>
+                  <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '13px', lineHeight: 1.5 }}>Gunakan satu kode jika ponsel atau aplikasi authenticator tidak tersedia. Setiap kode hanya bisa dipakai sekali.</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8px', padding: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                    {setupData.backupCodes.map((backupCode) => <code key={backupCode} style={{ color: '#1f2937', fontSize: '13px' }}>{backupCode}</code>)}
                   </div>
+                  <button onClick={() => void copyBackupCodes()} type="button" style={{ marginTop: '10px', padding: '9px 12px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '7px', color: '#334155', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>
+                    Salin backup code
+                  </button>
                 </div>
-                <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Kode 6 digit dari aplikasi authenticator" style={{ width: '100%', padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: '12px' }} />
-                <button onClick={enable2FA} disabled={loading || code.length < 6} style={{ width: '100%', padding: '14px', background: loading || code.length < 6 ? '#cbd5e1' : '#338CB2', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: loading || code.length < 6 ? 'not-allowed' : 'pointer' }}>
-                  {loading ? 'Memproses...' : 'Aktifkan 2FA'}
+
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                  <label htmlFor="two-factor-setup-code" style={{ display: 'block', marginBottom: '8px', color: '#1f2937', fontSize: '13px', fontWeight: 700 }}>3. Verifikasi authenticator</label>
+                  <input id="two-factor-setup-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Kode 6 digit" inputMode="numeric" autoComplete="one-time-code" style={{ width: '100%', maxWidth: '320px', padding: '11px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px' }} />
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', color: '#475569', fontSize: '13px', lineHeight: 1.5 }}>
+                  <input type="checkbox" checked={codesSaved} onChange={(e) => setCodesSaved(e.target.checked)} style={{ marginTop: '3px' }} />
+                  Saya sudah menyimpan backup code di tempat aman.
+                </label>
+                <button onClick={enable2FA} disabled={loading || code.length !== 6 || !codesSaved} style={{ alignSelf: 'flex-start', padding: '11px 16px', background: loading || code.length !== 6 || !codesSaved ? '#e2e8f0' : '#1f2937', color: loading || code.length !== 6 || !codesSaved ? '#64748b' : 'white', fontWeight: 700, borderRadius: '8px', border: 'none', cursor: loading || code.length !== 6 || !codesSaved ? 'not-allowed' : 'pointer' }}>
+                  {loading ? 'Memverifikasi…' : 'Aktifkan 2FA'}
                 </button>
               </div>
             )}
 
             {enabled && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ padding: '12px', background: '#EFF9FC', borderRadius: '12px', color: '#065f46', fontSize: '13px', fontWeight: 700 }}>2FA aktif untuk akun Anda.</div>
-                <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Masukkan kode 6 digit untuk menonaktifkan" style={{ width: '100%', padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: '12px' }} />
-                <button onClick={disable2FA} disabled={loading || code.length < 6} style={{ width: '100%', padding: '14px', background: loading || code.length < 6 ? '#cbd5e1' : '#ef4444', color: 'white', fontWeight: 800, borderRadius: '14px', border: 'none', cursor: loading || code.length < 6 ? 'not-allowed' : 'pointer' }}>
-                  {loading ? 'Memproses...' : 'Nonaktifkan 2FA'}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                <p style={{ margin: 0, color: '#166534', fontSize: '13px', fontWeight: 700 }}>2FA aktif. Login dengan kata sandi akan meminta kode authenticator.</p>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '13px', lineHeight: 1.5 }}>Untuk menonaktifkan, masukkan kode authenticator atau satu backup code yang belum pernah dipakai. Ponsel hilang? Gunakan backup code.</p>
+                <label htmlFor="two-factor-disable-code" style={{ color: '#1f2937', fontSize: '13px', fontWeight: 700 }}>Kode verifikasi</label>
+                <input id="two-factor-disable-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="6 digit authenticator atau 8 digit backup code" inputMode="numeric" autoComplete="one-time-code" style={{ width: '100%', maxWidth: '360px', padding: '11px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '14px' }} />
+                <button onClick={disable2FA} disabled={loading || !/^(?:\d{6}|\d{8})$/.test(code)} style={{ alignSelf: 'flex-start', padding: '11px 16px', background: loading || !/^(?:\d{6}|\d{8})$/.test(code) ? '#e2e8f0' : '#1f2937', color: loading || !/^(?:\d{6}|\d{8})$/.test(code) ? '#64748b' : 'white', fontWeight: 700, borderRadius: '8px', border: 'none', cursor: loading || !/^(?:\d{6}|\d{8})$/.test(code) ? 'not-allowed' : 'pointer' }}>
+                  {loading ? 'Memproses…' : 'Nonaktifkan 2FA'}
                 </button>
               </div>
             )}
@@ -362,9 +444,8 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AccountPage() {
-  const { data: session, update, status } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { language } = useLanguage();
   const ta = i18n.account[language];
 
@@ -380,33 +461,6 @@ export default function AccountPage() {
   useEffect(() => {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
   }, [status, router]);
-
-  // Handle email verification redirect
-  useEffect(() => {
-    const verified = searchParams.get('email_verified');
-    if (!verified) return;
-    const messages: Record<string, { type: 'success' | 'error'; text: string }> = {
-      success: { type: 'success', text: 'Email berhasil diverifikasi dan diperbarui!' },
-      already: { type: 'error', text: 'Email sudah terverifikasi sebelumnya.' },
-      expired: { type: 'error', text: 'Link verifikasi sudah kedaluwarsa. Silakan ajukan ulang.' },
-      invalid: { type: 'error', text: 'Link verifikasi tidak valid.' },
-      taken: { type: 'error', text: 'Email sudah digunakan akun lain.' },
-      error: { type: 'error', text: 'Terjadi kesalahan. Silakan coba lagi.' },
-    };
-    const msg = messages[verified] || messages.error;
-    queueMicrotask(() => {
-      setToast(msg);
-      if (verified === 'success') {
-        fetch('/api/user/profile').then(r => r.json()).then(async (data) => {
-          if (data.user?.email) {
-            setForm(p => ({ ...p, email: data.user.email }));
-            await update({ user: { email: data.user.email } });
-          }
-        }).catch(() => {});
-      }
-      router.replace('/account');
-    });
-  }, [searchParams]);
 
   // Load profile
   useEffect(() => {

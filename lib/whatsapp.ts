@@ -6,16 +6,24 @@ import { randomInt } from 'node:crypto';
 
 const FONNTE_API_URL = 'https://api.fonnte.com/send';
 
+export type WhatsAppSendResult =
+  | { success: true }
+  | { success: false; reason: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Kirim pesan WhatsApp via Fonnte API
  * @param phone - Nomor tujuan full international (e.g. "6281234567890", "14155551234")
  * @param message - Isi pesan
  */
-export async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
+export async function sendWhatsAppWithResult(phone: string, message: string): Promise<WhatsAppSendResult> {
   const token = process.env.FONNTE_API_TOKEN;
   if (!token) {
     console.error('[WhatsApp] FONNTE_API_TOKEN tidak dikonfigurasi');
-    return false;
+    return { success: false, reason: 'FONNTE_API_TOKEN tidak dikonfigurasi' };
   }
 
   try {
@@ -31,19 +39,31 @@ export async function sendWhatsApp(phone: string, message: string): Promise<bool
       }),
     });
 
-    const data = await res.json();
+    const payload: unknown = await res.json();
+    const data = isRecord(payload) ? payload : {};
 
-    if (data.status === true || data.success === true) {
+    if (res.ok && (data.status === true || data.success === true)) {
       console.log('[WhatsApp] Pesan terkirim ke:', phone);
-      return true;
+      return { success: true };
     }
 
-    console.error('[WhatsApp] Gagal kirim:', data);
-    return false;
+    const reason = typeof data.reason === 'string'
+      ? data.reason
+      : `Provider menolak pengiriman (HTTP ${res.status})`;
+    console.error('[WhatsApp] Gagal kirim:', { status: res.status, reason, requestid: data.requestid });
+    return { success: false, reason };
   } catch (err) {
     console.error('[WhatsApp] Error:', err);
-    return false;
+    return {
+      success: false,
+      reason: err instanceof Error ? err.message : 'Kesalahan saat menghubungi provider WhatsApp',
+    };
   }
+}
+
+export async function sendWhatsApp(phone: string, message: string): Promise<boolean> {
+  const result = await sendWhatsAppWithResult(phone, message);
+  return result.success;
 }
 
 /**

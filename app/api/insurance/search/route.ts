@@ -7,20 +7,13 @@ import {
   getInsuranceConfig,
   normalizeTripFamily,
   resolveProductTypeFromConfig,
+  resolveInsuranceDestinationArea,
+  resolveInsuranceDestination,
   resolveTripFromConfig,
   supportsSeniorFromConfig,
 } from '@/lib/insurance-providers';
 
-// Map destination_area per provider agar API tidak error
-const PROVIDER_AREAS: Record<string, string[]> = {
-  assistcard: ['Europe', 'North America', 'Central America and Caribbean', 'South America', 'Africa', 'Asia', 'Oceania', 'Domestic', 'Receptive', 'Annual Card', 'Multiple Destinations'],
-  bcainsurance: ['Asia Pasifik', 'Worldwide', 'Negara Schengen', 'Domestik'],
-  zurich: ['Worldwide Excluding USA, Canada', 'Europe', 'Asia Pacific', 'Asia', 'Schengen', 'Worldwide', 'ASEAN', 'Domestic'],
-  great_eastern: ['ASEAN', 'Asia Pacific', 'Domestic', 'Worldwide', 'Worldwide exc US/Canada'],
-  oona: ['All'],
-};
-
-const DEFAULT_PROVIDERS = Object.keys(PROVIDER_AREAS);
+const DEFAULT_PROVIDERS = ['assistcard', 'bcainsurance', 'zurich', 'great_eastern', 'oona'];
 
 type InsuranceProduct = Record<string, unknown>;
 
@@ -59,21 +52,6 @@ function normalizeProducts(result: unknown, provider: string): InsuranceProduct[
       ),
     }))
     .filter((product) => product.product_code && Number.isFinite(product.total_price) && product.total_price > 0);
-}
-
-// Pilih area terbaik dari provider berdasarkan input user
-function pickBestArea(provider: string, requestedArea: string): string {
-  const validAreas = PROVIDER_AREAS[provider] || [];
-  // exact match dulu
-  if (validAreas.includes(requestedArea)) return requestedArea;
-  // case-insensitive
-  const lower = requestedArea.toLowerCase();
-  const found = validAreas.find(a => a.toLowerCase().includes(lower) || lower.includes(a.toLowerCase()));
-  if (found) return found;
-  // fallback: oona pakai "All", domestic, atau area pertama
-  if (provider === 'oona') return 'All';
-  const domestic = validAreas.find(a => a.toLowerCase().includes('domestic'));
-  return domestic || validAreas[0] || requestedArea;
 }
 
 export async function POST(req: NextRequest) {
@@ -137,6 +115,7 @@ export async function POST(req: NextRequest) {
     // `type` dari UI bersifat generik ("single_trip" | "annual"). Kode resmi
     // per provider ("DAILY", "ANNUALLY", "annual_180", ...) diambil dari get_config.
     const family = normalizeTripFamily(type);
+    const isInternational = family === 'annual' ? true : international;
     const config = await getInsuranceConfig();
 
     // Search semua provider secara parallel
@@ -150,16 +129,24 @@ export async function POST(req: NextRequest) {
 
       const supportsSenior = supportsSeniorFromConfig(config, provider);
       const providerProductType = resolveProductTypeFromConfig(config, provider, product_type);
-      const area = pickBestArea(provider, destination_area || (international ? 'Asia' : 'Domestic'));
+      const area = resolveInsuranceDestinationArea(
+        provider,
+        family === 'annual' ? 'Worldwide' : (destination_area || (isInternational ? 'Asia' : 'Domestic')),
+        isInternational,
+        config[provider]?.areas,
+        family,
+      );
       // Tipe tahunan: date_end dihitung dari date_setting provider.
       const providerDateEnd = family === 'annual' ? addDays(date_start, trip.dateSetting ?? 365) : date_end;
       const payload = {
         date_start,
         date_end: providerDateEnd,
         pax: passengerCount,
-        destination,
+        destination: isInternational && family !== 'annual'
+          ? resolveInsuranceDestination(destination, config[provider]?.destinations)
+          : '',
         is_senior: Boolean(is_senior) && supportsSenior,
-        international,
+        international: isInternational,
         destination_area: area,
         type: trip.code,
         provider,

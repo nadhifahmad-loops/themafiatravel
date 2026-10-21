@@ -202,7 +202,7 @@ function fmtElapsed(elapsed?: unknown): string {
   let h = 0;
   let m = 0;
   if (parts.length === 4) {
-    h = parts[1] || 0;
+    h = (parts[0] || 0) * 24 + (parts[1] || 0);
     m = parts[2] || 0;
   } else if (parts.length >= 2) {
     h = parts[0] || 0;

@@ -141,6 +141,7 @@ async function handleBook(args: {
         if (birthdayNotReached) age -= 1;
         return Math.max(0, age);
       });
+      const childCount = passengers.filter((passenger: any) => passenger.pax_type === 'CHD').length;
 
       const sellPayload = {
         data: {
@@ -152,7 +153,8 @@ async function handleBook(args: {
         package: Number(packageId) || 1,
         age: ageArray,
         age_type: 'age',
-        adult: passengers.length,
+        adult: passengers.length - childCount,
+        child: childCount,
       } as const;
       console.log('[INSURANCE] Sell insurance payload:', JSON.stringify(sellPayload));
       await insuranceAPI.sellInsurance(sellPayload);

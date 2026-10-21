@@ -2156,7 +2156,7 @@ export const i18n = {
         type: 'Perjalanan',
         domestic: 'Domestik',
         international: 'Internasional',
-        singleTrip: 'Sekali Jalan',
+        singleTrip: 'Single Trip',
         annualTrip: 'Tahunan',
         senior: 'Senior',
         seniorHint: 'Harga bisa berbeda untuk peserta lanjut usia',

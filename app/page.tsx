@@ -633,11 +633,15 @@ export default function LandingPage() {
     setIsSearching(true);
     const params = new URLSearchParams();
     params.set('provider',         payload.provider         ?? 'all');
+    params.set('destination',      payload.destination      ?? '');
     params.set('destination_area', payload.destination_area ?? 'Asia');
+    params.set('international',    String(payload.international ?? true));
     params.set('date_start',       payload.date_start       ?? '');
     params.set('date_end',         payload.date_end         ?? '');
     params.set('trip_type',        payload.trip_type        ?? 'single_trip');
     params.set('pax',              String(payload.pax       ?? 1));
+    params.set('adult',            String(payload.adult     ?? payload.pax ?? 1));
+    params.set('child',            String(payload.child     ?? 0));
     params.set('is_senior',        String(payload.is_senior ?? false));
     params.set('autoSearch',       '1');
     router.push(`/insurance/search?${params.toString()}`);

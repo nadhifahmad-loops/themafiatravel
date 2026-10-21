@@ -30,6 +30,8 @@ type FavoriteButtonProps = {
   className?: string;
   /** Ukuran ikon, sesuaikan kepadatan kartu. */
   iconSize?: 'sm' | 'md';
+  /** Tampilkan ikon tanpa latar, border, atau bentuk tombol bawaan. */
+  iconOnly?: boolean;
   /** Set saat tombol dipakai pada item yang sudah ada di daftar simpan. */
   savedFavoriteId?: string;
   currentCollectionId?: string | null;
@@ -45,6 +47,7 @@ export default function FavoriteButton({
   searchParams,
   className = 'absolute top-3 right-3 z-10',
   iconSize = 'md',
+  iconOnly = false,
   savedFavoriteId,
   currentCollectionId = null,
 }: FavoriteButtonProps) {
@@ -73,7 +76,7 @@ export default function FavoriteButton({
 
   const saved = isSaved(entityType, dedupeKey);
   const sizeCls = iconSize === 'sm' ? 'w-7 h-7' : 'w-8 h-8';
-  const fontCls = iconSize === 'sm' ? 'text-[13px]' : 'text-sm';
+  const fontCls = iconOnly ? 'text-[15px]' : iconSize === 'sm' ? 'text-[13px]' : 'text-sm';
 
   const payload: NewFavorite = {
     entityType,
@@ -219,9 +222,11 @@ export default function FavoriteButton({
         aria-label={saved ? t.savedLabel : t.saveLabel}
         title={saved ? t.savedLabel : t.saveLabel}
         className={`${className} ${
-          savedFavoriteId
-            ? 'p-1 flex items-center justify-center text-orange-500'
-            : `${sizeCls} rounded-full bg-white/90 backdrop-blur-sm border border-white/70 shadow-sm flex items-center justify-center`
+          iconOnly
+            ? 'flex h-9 w-9 items-center justify-center text-slate-900 transition hover:text-sky-700'
+            : savedFavoriteId
+              ? 'p-1 flex items-center justify-center text-orange-500'
+              : `${sizeCls} rounded-full bg-white/90 backdrop-blur-sm border border-white/70 shadow-sm flex items-center justify-center`
         } disabled:opacity-60`}
       >
         {busy ? (
@@ -229,7 +234,7 @@ export default function FavoriteButton({
         ) : (
           <i
             className={`fa-${saved ? 'solid' : 'regular'} fa-bookmark ${fontCls} ${
-              savedFavoriteId ? 'text-orange-500' : saved ? 'text-orange-500' : 'text-slate-400'
+              iconOnly ? '!text-slate-900' : savedFavoriteId ? 'text-orange-500' : saved ? 'text-orange-500' : 'text-slate-400'
             }`}
           ></i>
         )}

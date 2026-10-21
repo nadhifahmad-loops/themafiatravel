@@ -8,54 +8,6 @@ function getResend(): Resend {
   return new Resend(apiKey);
 }
 
-export async function sendVerificationEmail({
-  to,
-  token,
-  userName,
-}: {
-  to: string;
-  token: string;
-  userName: string;
-}) {
-  const resend = getResend();
-  const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/user/verify-email?token=${token}`;
-
-  await resend.emails.send({
-    from: 'The Mafia Travel <onboarding@resend.dev>',
-    to,
-    subject: 'Verifikasi Perubahan Email - The Mafia Travel',
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head><meta charset="utf-8"></head>
-      <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-        <div style="max-width:480px;margin:40px auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
-          <div style="padding:32px 32px 24px;text-align:center;">
-            <div style="width:56px;height:56px;border-radius:14px;background:#fff7ed;display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px;">
-              <span style="font-size:24px;">✉️</span>
-            </div>
-            <h1 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#0f172a;">Verifikasi Email Baru</h1>
-            <p style="margin:0;color:#64748b;font-size:14px;line-height:1.5;">
-              Halo ${userName},<br>
-              Kami menerima permintaan untuk mengubah alamat email akun kamu. Klik tombol di bawah untuk memverifikasi email baru.
-            </p>
-          </div>
-          <div style="padding:0 32px 32px;text-align:center;">
-            <a href="${verifyUrl}" style="display:inline-block;padding:14px 32px;background:#ea580c;color:white;font-weight:700;font-size:14px;text-decoration:none;border-radius:12px;">
-              Verifikasi Email
-            </a>
-            <p style="margin:20px 0 0;color:#94a3b8;font-size:12px;line-height:1.5;">
-              Link ini berlaku selama 1 jam.<br>
-              Jika kamu tidak merasa mengubah email, abaikan pesan ini.
-            </p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `,
-  });
-}
-
 export async function sendPasswordResetEmail({
   to,
   token,

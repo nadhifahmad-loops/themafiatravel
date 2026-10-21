@@ -38,6 +38,34 @@ export const COUNTRY_CODES = [
   { code: '94', label: 'LK', name: 'Sri Lanka', flag: '\u{1F1F1}\u{1F1F3}' },
 ];
 
+type OtpApiResponse = { success?: boolean; error?: string; phone?: string };
+
+async function readOtpResponse(response: Response): Promise<OtpApiResponse> {
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    if (response.status === 404) {
+      throw new Error('Endpoint OTP tidak ditemukan (404). Restart server Next.js lalu coba lagi.');
+    }
+    throw new Error(`Server mengirim respons yang tidak valid (HTTP ${response.status})`);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error('Respons server tidak valid. Silakan coba lagi.');
+  }
+
+  if (typeof payload !== 'object' || payload === null) {
+    throw new Error('Respons server tidak valid. Silakan coba lagi.');
+  }
+
+  return {
+    success: 'success' in payload && typeof payload.success === 'boolean' ? payload.success : undefined,
+    error: 'error' in payload && typeof payload.error === 'string' ? payload.error : undefined,
+    phone: 'phone' in payload && typeof payload.phone === 'string' ? payload.phone : undefined,
+  };
+}
+
 export function parsePhoneWithCode(raw: string): { code: string; number: string } {
   if (!raw) return { code: '62', number: '' };
   const sorted = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
@@ -195,7 +223,7 @@ export function PhoneVerifyModal({ phone, phoneCode, onSuccess, onClose }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: fullPhone }),
       });
-      const data = await res.json();
+      const data = await readOtpResponse(res);
       if (!res.ok) throw new Error(data.error || 'Gagal mengirim OTP');
       setMaskedPhone(data.phone || `+${phoneCode} ${phone.slice(0, 4)}${'*'.repeat(Math.max(0, phone.length - 4))}`);
       setStep('verify');
@@ -240,7 +268,7 @@ export function PhoneVerifyModal({ phone, phoneCode, onSuccess, onClose }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: fullPhone, code }),
       });
-      const data = await res.json();
+      const data = await readOtpResponse(res);
       if (!res.ok) throw new Error(data.error || 'Verifikasi gagal');
       onSuccess();
     } catch (err: unknown) {

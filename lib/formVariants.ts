@@ -36,8 +36,8 @@ export const vChevron   = (v: FormVariant) => v === 'light' ? 'text-slate-400' :
 export const vFieldLabel= (v: FormVariant) => v === 'light' ? 'text-slate-400' : 'text-white/40';
 export const vBtnSearch = (v: FormVariant) =>
   v === 'light'
-    ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl shadow-md shadow-orange-500/25 hover:shadow-orange-500/35 transition-all duration-200 active:scale-95 disabled:opacity-50'
-    : 'bg-orange-600 hover:bg-orange-700 text-white rounded-xl shadow-md shadow-orange-600/20 transition-all active:scale-95 disabled:opacity-50';
+    ? 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap text-sm font-semibold bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl shadow-md shadow-orange-500/25 hover:shadow-orange-500/35 transition-all duration-200 active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2'
+    : 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap text-sm font-semibold bg-orange-600 hover:bg-orange-700 text-white rounded-xl shadow-md shadow-orange-600/20 transition-all active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2';
 export const vFieldError = (v: FormVariant) =>
   v === 'light'
     ? 'border-red-400! ring-2 ring-red-400/20!'

@@ -9,53 +9,6 @@ import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { sanitizeInsuranceHtml } from '@/lib/insurance-html';
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
-const PROVIDER_AREAS: Record<string, { value: string; label: string; international: boolean }[]> = {
-  assistcard:    [
-    { value: 'Europe',                          label: 'Eropa',                      international: true  },
-    { value: 'Asia',                            label: 'Asia',                       international: true  },
-    { value: 'North America',                   label: 'Amerika Utara',              international: true  },
-    { value: 'South America',                   label: 'Amerika Selatan',            international: true  },
-    { value: 'Africa',                          label: 'Afrika',                     international: true  },
-    { value: 'Oceania',                         label: 'Oseania',                    international: true  },
-    { value: 'Multiple Destinations',           label: 'Multi Destinasi',            international: true  },
-    { value: 'Domestic',                        label: 'Domestik',                   international: false },
-  ],
-  bcainsurance:  [
-    { value: 'Asia Pasifik',                    label: 'Asia Pasifik',               international: true  },
-    { value: 'Worldwide',                       label: 'Seluruh Dunia',              international: true  },
-    { value: 'Negara Schengen',                 label: 'Negara Schengen',            international: true  },
-    { value: 'Domestik',                        label: 'Domestik',                   international: false },
-  ],
-  zurich:        [
-    { value: 'Asia Pacific',                    label: 'Asia Pasifik',               international: true  },
-    { value: 'Asia',                            label: 'Asia',                       international: true  },
-    { value: 'Europe',                          label: 'Eropa',                      international: true  },
-    { value: 'Schengen',                        label: 'Schengen',                   international: true  },
-    { value: 'Worldwide',                       label: 'Seluruh Dunia',              international: true  },
-    { value: 'Worldwide Excluding USA, Canada', label: 'Worldwide Excl. USA/CA',     international: true  },
-    { value: 'ASEAN',                           label: 'ASEAN',                      international: true  },
-    { value: 'Domestic',                        label: 'Domestik',                   international: false },
-  ],
-  great_eastern: [
-    { value: 'Asia Pacific',                    label: 'Asia Pasifik',               international: true  },
-    { value: 'ASEAN',                           label: 'ASEAN',                      international: true  },
-    { value: 'Worldwide',                       label: 'Seluruh Dunia',              international: true  },
-    { value: 'Worldwide exc US/Canada',         label: 'Worldwide Excl. USA/CA',     international: true  },
-    { value: 'Domestic',                        label: 'Domestik',                   international: false },
-  ],
-  oona:          [
-    { value: 'All',                             label: 'Semua Destinasi',            international: true  },
-  ],
-  all:           [
-    { value: 'Asia',                            label: 'Asia',                       international: true  },
-    { value: 'Asia Pacific',                    label: 'Asia Pasifik',               international: true  },
-    { value: 'Europe',                          label: 'Eropa',                      international: true  },
-    { value: 'Worldwide',                       label: 'Seluruh Dunia',              international: true  },
-    { value: 'ASEAN',                           label: 'ASEAN',                      international: true  },
-    { value: 'Domestic',                        label: 'Domestik',                   international: false },
-  ],
-};
-
 const PROVIDER_BADGE: Record<string, { label: string; bg: string; text: string }> = {
   assistcard:    { label: 'Assist Card',    bg: 'bg-blue-100',   text: 'text-blue-700'   },
   bcainsurance:  { label: 'BCA Insurance',  bg: 'bg-sky-100',    text: 'text-sky-700'    },
@@ -252,7 +205,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, product, searchMeta, priceDat
             {/* Info trip */}
             <div className="space-y-2">
               {[
-                { icon: 'fa-location-dot',  label: t.destination,  val: searchMeta?.destination_area },
+                { icon: 'fa-location-dot',  label: t.destination,  val: searchMeta?.destination || searchMeta?.destination_area },
                 { icon: 'fa-calendar',       label: bd.starts,     val: fmtDate(searchMeta?.date_start) },
                 { icon: 'fa-calendar-check', label: 'Selesai',     val: fmtDate(searchMeta?.date_end) },
                 { icon: 'fa-clock',          label: 'Durasi',      val: `${nights} ${t.days}` },
@@ -351,7 +304,7 @@ function InfoBanner({ searchMeta, nights }: { searchMeta: any; nights: number })
           </div>
           <div className="flex items-center gap-2 text-sm flex-wrap">
             <span className="font-black">
-              {searchMeta?.destination_area || 'Semua Area'}
+              {searchMeta?.destination || searchMeta?.destination_area || 'Semua Area'}
               {pv && <span className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${pv.bg} ${pv.text}`}>{pv.label}</span>}
             </span>
             <span className="text-white/60">·</span>
@@ -386,7 +339,7 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
           </div>
           <div>
             <p className="font-black text-brand-ink text-sm">
-              {searchMeta?.destination_area || 'Semua Area'}
+              {searchMeta?.destination || searchMeta?.destination_area || 'Semua Area'}
               {pv && <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${pv.bg} ${pv.text}`}>{pv.label}</span>}
             </p>
             <p className="text-xs text-slate-500">
@@ -429,8 +382,8 @@ function InsuranceSearchContent() {
   const searchParams = useSearchParams();
 
   usePageTitle(
-    searchParams.get('destination_area')
-      ? `Asuransi Perjalanan: ${searchParams.get('destination_area')}`
+    searchParams.get('destination')
+      ? `Asuransi Perjalanan: ${searchParams.get('destination')}`
       : 'Asuransi Perjalanan'
   );
   const today       = formatLocalDate(new Date());
@@ -443,13 +396,32 @@ function InsuranceSearchContent() {
   const [searchMeta, setSearchMeta] = useState<any>(() => {
     const p         = searchParams.get('provider')         || 'all';
     const area      = searchParams.get('destination_area') || 'Asia';
+    const destination = searchParams.get('destination') || '';
+    const international = searchParams.has('international')
+      ? searchParams.get('international') === 'true'
+      : !/domestic|domestik/i.test(area);
     const dateStart = searchParams.get('date_start')       || today;
     const dateEnd   = searchParams.get('date_end')         || nextWeek;
     const tripType  = searchParams.get('trip_type')        || 'single_trip';
     const pax       = parseInt(searchParams.get('pax') || '1', 10);
+    const adult     = parseInt(searchParams.get('adult') || String(pax), 10);
+    const child     = parseInt(searchParams.get('child') || '0', 10);
     const isSenior  = searchParams.get('is_senior') === 'true';
     const nights    = Math.max(1, Math.round((new Date(dateEnd).getTime() - new Date(dateStart).getTime()) / 86400000));
-    return { provider: p, destination_area: area, date_start: dateStart, date_end: dateEnd, pax, trip_type: tripType, is_senior: isSenior, nights };
+    return {
+      provider: p,
+      destination,
+      destination_area: area,
+      international,
+      date_start: dateStart,
+      date_end: dateEnd,
+      pax,
+      adult,
+      child,
+      trip_type: tripType,
+      is_senior: isSenior,
+      nights,
+    };
   });
 
   const [products,       setProducts]       = useState<any[]>([]);
@@ -485,15 +457,6 @@ function InsuranceSearchContent() {
         ? ['assistcard', 'bcainsurance', 'zurich', 'great_eastern', 'oona']
         : [params.provider];
 
-      const areaMap: Record<string, string> = {
-        all:           params.destination_area || 'Asia',
-        assistcard:    (PROVIDER_AREAS.assistcard.find(a  => a.value === params.destination_area) ? params.destination_area : 'Asia'),
-        bcainsurance:  (PROVIDER_AREAS.bcainsurance.find(a => a.value === params.destination_area) ? params.destination_area : 'Asia Pasifik'),
-        zurich:        (PROVIDER_AREAS.zurich.find(a       => a.value === params.destination_area) ? params.destination_area : 'Asia Pacific'),
-        great_eastern: (PROVIDER_AREAS.great_eastern.find(a=> a.value === params.destination_area) ? params.destination_area : 'Asia Pacific'),
-        oona:          'All',
-      };
-
       const res = await fetch('/api/insurance/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -501,8 +464,9 @@ function InsuranceSearchContent() {
           date_start:       params.date_start,
           date_end:         params.date_end,
           pax:              params.pax,
+          destination:      params.destination,
           is_senior:        params.is_senior,
-          international:    !/domestic|domestik/i.test(String(params.destination_area || '')),
+          international:    params.international ?? !/domestic|domestik/i.test(String(params.destination_area || '')),
           destination_area: params.destination_area,
           type:             params.trip_type,
           product_type:     'individual',
@@ -523,7 +487,21 @@ function InsuranceSearchContent() {
   }, []);
 
   const quickSearchArea = (area: string) => {
-    handleSearch({ provider: 'all', destination_area: area, date_start: today, date_end: nextWeek, pax: 1, trip_type: 'single_trip', is_senior: false, nights: 7 });
+    const international = !/domestic|domestik/i.test(area);
+    handleSearch({
+      provider: 'all',
+      destination: '',
+      destination_area: area,
+      international,
+      date_start: today,
+      date_end: nextWeek,
+      pax: 1,
+      adult: 1,
+      child: 0,
+      trip_type: 'single_trip',
+      is_senior: false,
+      nights: 7,
+    });
   };
 
   useEffect(() => {
@@ -547,11 +525,13 @@ function InsuranceSearchContent() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           data: { product_code: product.product_code, provider: product.provider, carrier_code: product.carrier_code },
-          pax, package: 1, age: Array(pax).fill(bd), age_type: 'birth_date', adult: pax,
+          pax, package: 1, age: Array(pax).fill(bd), age_type: 'birth_date',
+          adult: searchMeta?.adult || pax, child: searchMeta?.child || 0,
           date_start: searchMeta?.date_start, date_end: searchMeta?.date_end,
-          destination: searchMeta?.destination_area, destination_area: searchMeta?.destination_area,
+          destination: searchMeta?.destination || '',
+          destination_area: searchMeta?.destination_area,
           is_senior: searchMeta?.is_senior,
-          international: !/domestic|domestik/i.test(String(searchMeta?.destination_area || '')),
+          international: searchMeta?.international ?? !/domestic|domestik/i.test(String(searchMeta?.destination_area || '')),
           type: searchMeta?.trip_type, product_type: product.product_type_code || 'individual',
         }),
       });
@@ -588,8 +568,11 @@ function InsuranceSearchContent() {
         date_end:     searchMeta?.date_end   || '',
         pax:          String(searchMeta?.pax || 1),
         is_senior:    String(searchMeta?.is_senior === true),
-        destination:  searchMeta?.destination_area || '',
+        destination:  searchMeta?.destination || '',
         destination_area: searchMeta?.destination_area || '',
+        international: String(searchMeta?.international ?? !/domestic|domestik/i.test(String(searchMeta?.destination_area || ''))),
+        adult:        String(searchMeta?.adult || searchMeta?.pax || 1),
+        child:        String(searchMeta?.child || 0),
         total_amount: String(Math.round(price)),
         sector_type:  selectedProduct.sector_type || '',
         product_type: selectedProduct.product_type_code || 'individual',

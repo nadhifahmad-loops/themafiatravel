@@ -62,7 +62,7 @@ export default function LoginPage() {
       }
 
       if (res?.error === 'INVALID_2FA') {
-        setError('Kode 2FA salah atau tidak valid.');
+        setError('Kode authenticator atau backup code salah atau tidak valid.');
         setLoading(false);
         return;
       }
@@ -245,22 +245,23 @@ export default function LoginPage() {
                       type="text"
                       id="code"
                       value={code}
-                      onChange={e => setCode(e.target.value)}
+                      onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                       required
                       disabled={loading}
                       autoFocus
                       inputMode="numeric"
                       autoComplete="one-time-code"
+                      maxLength={8}
                       aria-describedby="code-hint"
                       className="peer w-full h-14 px-4 pt-4 pb-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm font-medium text-brand-ink bg-transparent disabled:bg-slate-50"
                       placeholder=" "
                     />
                     <label htmlFor="code" className="absolute left-4 top-4 text-slate-400 text-sm font-medium pointer-events-none transition-all duration-200 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-orange-600 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-not-placeholder-shown:-translate-y-2.5 peer-not-placeholder-shown:scale-75 origin-left">
-                      Kode 2FA
+                      Kode authenticator atau backup code
                     </label>
                   </div>
                   <p id="code-hint" className="text-xs text-slate-500">
-                    Masukkan 6 digit kode dari aplikasi authenticator, atau kode cadangan.
+                    Masukkan kode 6 digit dari aplikasi authenticator atau backup code 8 digit. Backup code hanya bisa dipakai sekali.
                   </p>
                 </div>
               )}

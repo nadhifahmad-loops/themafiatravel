@@ -193,10 +193,10 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
         }}
         className={`group flex flex-col px-4 py-3 rounded-xl cursor-pointer transition-all h-full ${vField(variant)}`}
       >
-        <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{label}</span>
+        <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>{label}</span>
         <div className="flex items-center gap-1.5">
-          <i className={`fa-solid ${icon} text-orange-500 text-[13px]`}></i>
-          <div className={`text-[13px] font-medium truncate ${vValue(variant)}`}>
+          <i className={`fa-solid ${icon} text-sky-600 text-sm`} aria-hidden="true"></i>
+          <div className={`text-sm font-medium truncate ${vValue(variant)}`}>
             {selected ? selected.label : (value || 'Pilih Destinasi')}
           </div>
         </div>
@@ -365,11 +365,11 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
         onClick={() => setOpenPax(!openPax)}
         className={`px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all h-full ${vField(variant)}`}
       >
-        <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vFieldLabel(variant)}`}>{tfh.guests}</span>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <i className="fa-solid fa-users text-orange-500 text-[13px]"></i>
-            <div className={`text-[13px] font-medium truncate ${vValue(variant)}`}>
+        <span className={`mb-1.5 text-xs font-semibold ${vFieldLabel(variant)}`}>{tfh.guests}</span>
+        <div className="flex min-w-0 items-center justify-between">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <i className="fa-solid fa-users text-sky-600 text-sm" aria-hidden="true"></i>
+            <div className={`min-w-0 truncate text-sm font-medium ${vValue(variant)}`}>
               {pax.room} {tfh.room}, {pax.adult} {tfh.adult}{pax.child > 0 ? `, ${pax.child} ${tfh.child}` : ''}
             </div>
           </div>
@@ -475,15 +475,15 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
   );
 
   const renderPropertyTypeToggle = () => (
-    <div className={`flex gap-1 p-1 rounded-lg w-fit ${vToggle(variant)}`}>
+    <div className={`grid w-full grid-cols-2 gap-1 p-1 rounded-lg sm:flex sm:w-fit ${vToggle(variant)}`}>
       {PROPERTY_TYPES.map(p => (
         <button
           key={p.value}
           type="button"
           onClick={() => setPropertyType(p.value)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap ${
+          className={`flex min-h-9 items-center gap-2 px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${
             propertyType === p.value
-              ? 'bg-orange-500 text-white shadow-md'
+              ? 'bg-sky-600 text-white shadow-sm'
               : vToggleIdle(variant)
           }`}
         >
@@ -495,7 +495,7 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
   );
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2 animate-fade-up">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 animate-fade-up">
       {formError && (
         <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700">
           <i className="fa-solid fa-circle-exclamation mr-2" />{formError}
@@ -503,7 +503,7 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
       )}
 
       {/* Baris 1: Property Type Toggle */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         {renderPropertyTypeToggle()}
 
         {/* Spacer */}
@@ -511,8 +511,10 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
       </div>
 
       {/* Semua field dalam 1 baris */}
-      <div className="flex flex-col md:flex-row items-stretch gap-2 w-full">
-        <DestinationInput label={tfh.destination} value={destination} onChange={setDestination} icon="fa-bed" variant={variant} />
+      <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 xl:grid-cols-12 w-full">
+        <div className="min-w-0 md:col-span-2 xl:col-span-4">
+          <DestinationInput label={tfh.destination} value={destination} onChange={setDestination} icon="fa-bed" variant={variant} />
+        </div>
 
         {/* DATE RANGE */}
         <CalendarRangeField
@@ -522,11 +524,11 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
           minDate={new Date()}
           defaultMonth={dateRange[0] ?? undefined}
         >
-          <div className={`flex-[1.5] min-w-[180px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
-            <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>Check-in - Check-out</span>
-            <div className="flex items-center gap-1.5">
-              <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
-              <div className={`font-medium text-[12px] truncate ${dateRange[0] ? vValue(variant) : vSub(variant)}`}>
+          <div className={`min-w-0 px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all md:col-span-1 xl:col-span-3 ${vField(variant)}`}>
+            <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>Check-in - Check-out</span>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <i className="fa-regular fa-calendar text-sky-600 text-sm" aria-hidden="true"></i>
+              <div className={`min-w-0 truncate font-medium text-sm ${dateRange[0] ? vValue(variant) : vSub(variant)}`}>
                 {dateRange[0]
                   ? `${format(dateRange[0], 'dd MMM', { locale: dateFnsId })}${dateRange[1] ? ` – ${format(dateRange[1], 'dd MMM yyyy', { locale: dateFnsId })}` : ' – Pilih checkout'}`
                   : 'Pilih tanggal'}
@@ -535,20 +537,21 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
           </div>
         </CalendarRangeField>
 
-        {renderGuestDropdown()}
+        <div className="min-w-0 md:col-span-1 xl:col-span-3">{renderGuestDropdown()}</div>
 
         {/* SUBMIT BUTTON */}
         <button
           type="submit"
           disabled={loading}
-          className={`shrink-0 w-full sm:w-full lg:w-12 h-12 lg:h-full min-h-[52px] flex items-center justify-center rounded-xl ${vBtnSearch(variant)}`}
+          aria-label={tfh.search}
+          className={`w-full h-[68px] px-4 md:col-span-2 xl:col-span-2 ${vBtnSearch(variant)}`}
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
           ) : (
-            <div className="flex items-center gap-2 lg:gap-0">
-              <i className="fa-solid fa-magnifying-glass text-sm"></i>
-              <span className="text-sm font-semibold lg:hidden">{tfh.search}</span>
+            <div className="flex items-center gap-2">
+              <i className="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i>
+              <span>{tfh.search}</span>
             </div>
           )}
         </button>

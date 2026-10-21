@@ -51,9 +51,13 @@ function InsuranceCheckoutContent() {
   const dateStart    = sp.get('date_start')   || '';
   const dateEnd      = sp.get('date_end')     || '';
   const paxCount     = Math.max(1, parseInt(sp.get('pax') || '1') || 1);
+  const adultCount   = Math.min(paxCount, Math.max(1, parseInt(sp.get('adult') || String(paxCount)) || paxCount));
   const isSenior     = sp.get('is_senior') === 'true';
   const destination  = sp.get('destination')  || '';
   const destinationArea = sp.get('destination_area') || destination;
+  const international = sp.has('international')
+    ? sp.get('international') === 'true'
+    : !/domestic|domestik/i.test(destinationArea);
   const totalAmount  = parseFloat(sp.get('total_amount') || '0') || 0;
   const sectorType   = sp.get('sector_type')  || '';
   const productType  = sp.get('product_type') || 'individual';
@@ -97,7 +101,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
   const grandTotal = Math.max(0, pricingAmount + adminFee - discountAmount);
 
   const initPax = () => Array.from({ length: paxCount }, (_, i) => ({
-    pax_type: 'ADT', title: 'MR', first_name: '', last_name: '',
+    pax_type: i < adultCount ? 'ADT' : 'CHD', title: 'MR', first_name: '', last_name: '',
     birth_date: '', nationality_code: 'ID',
     email: i === 0 ? (session?.user?.email || '') : '',
     phone_number: '',
@@ -192,7 +196,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
           package: packageId,
           date_start: dateStart, date_end: dateEnd, destination, destination_area: destinationArea,
           is_senior: isSenior,
-          international: !/domestic|domestik/i.test(destinationArea), type: tripType, product_type: productType,
+          international, type: tripType, product_type: productType,
           ...(appliedCoupon && { coupon_code: appliedCoupon.code, discount_amount: discountAmount }),
         }),
       });

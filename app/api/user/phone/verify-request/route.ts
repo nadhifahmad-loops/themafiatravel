@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { sendWhatsApp, generateOTP, formatOTPMessage } from '@/lib/whatsapp';
+import { sendWhatsAppWithResult, generateOTP, formatOTPMessage } from '@/lib/whatsapp';
 
 const OTP_EXPIRY_MINUTES = 5;
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 menit antar request
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
     // Simpan ke database
-    await prisma.otpVerification.create({
+    const otp = await prisma.otpVerification.create({
       data: {
         userId: user.id,
         phone,
@@ -64,12 +64,19 @@ export async function POST(req: NextRequest) {
     });
 
     // Kirim via WhatsApp — phone sudah full international format
-    const sent = await sendWhatsApp(phone, formatOTPMessage(code, 'verifikasi perubahan nomor telepon'));
+    const sent = await sendWhatsAppWithResult(phone, formatOTPMessage(code, 'verifikasi perubahan nomor telepon'));
 
-    if (!sent) {
+    if (!sent.success) {
+      await prisma.otpVerification.delete({ where: { id: otp.id } });
+      const disconnectedDevice = sent.reason.toLowerCase().includes('disconnected device');
       return NextResponse.json(
-        { success: false, error: 'Gagal mengirim OTP via WhatsApp. Pastikan nomor aktif dan bisa menerima pesan WhatsApp.' },
-        { status: 500 }
+        {
+          success: false,
+          error: disconnectedDevice
+            ? 'WhatsApp layanan sedang terputus. Admin perlu menghubungkan kembali perangkat pengirim di Fonnte sebelum OTP dapat dikirim.'
+            : 'Gagal mengirim OTP via WhatsApp. Silakan coba lagi nanti atau hubungi admin.',
+        },
+        { status: 503 }
       );
     }
 

@@ -18,26 +18,26 @@ const ANIM_CSS = `
 `;
 
 function InfoRow({ label, value, icon, color, href, delay }: {
-  label: string; value: string; icon: string; color: string; href: string; delay: number;
+  label: string; value: string; icon: string; color: string; href?: string; delay: number;
 }) {
-  return (
-    <Link href={href} style={{ textDecoration: 'none' }}>
-      <div className="detail-anim" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 32px', cursor: 'pointer', transition: 'background 0.15s', animationDelay: `${delay}s` }}
-        onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: `${color}10`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <i className={`fa-solid ${icon}`} style={{ color, fontSize: '15px' }}></i>
-          </div>
-          <div>
-            <p style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, margin: 0, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>{label}</p>
-            <p style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '3px 0 0' }}>{value || '—'}</p>
-          </div>
+  const row = (
+    <div className="detail-anim" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 32px', cursor: href ? 'pointer' : 'default', transition: 'background 0.15s', animationDelay: `${delay}s` }}
+      onMouseEnter={e => { if (href) e.currentTarget.style.background = '#f8fafc'; }}
+      onMouseLeave={e => { if (href) e.currentTarget.style.background = 'transparent'; }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: `${color}10`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <i className={`fa-solid ${icon}`} style={{ color, fontSize: '15px' }}></i>
         </div>
-        <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
+        <div>
+          <p style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, margin: 0, textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>{label}</p>
+          <p style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '3px 0 0' }}>{value || '—'}</p>
+        </div>
       </div>
-    </Link>
+      {href && <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>}
+    </div>
   );
+
+  return href ? <Link href={href} style={{ textDecoration: 'none' }}>{row}</Link> : row;
 }
 
 export default function AccountDetailPage() {
@@ -108,7 +108,7 @@ export default function AccountDetailPage() {
         <div className="detail-anim" style={{ background: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)', marginBottom: '24px' }}>
           <InfoRow label={ta.profile.nameLabel} value={name} icon="fa-user" color="#3b82f6" href="/account/edit/name" delay={0.12} />
           <div style={{ height: '1px', background: '#f1f5f9', margin: '0 32px' }} />
-          <InfoRow label={ta.profile.emailLabel} value={email} icon="fa-envelope" color="#10b981" href="/account/edit/email" delay={0.18} />
+          <InfoRow label={ta.profile.emailLabel} value={email} icon="fa-envelope" color="#10b981" delay={0.18} />
           <div style={{ height: '1px', background: '#f1f5f9', margin: '0 32px' }} />
           <InfoRow label={ta.profile.phoneLabel} value={displayPhone} icon="fa-phone" color="#8b5cf6" href="/account/edit/phone" delay={0.24} />
         </div>

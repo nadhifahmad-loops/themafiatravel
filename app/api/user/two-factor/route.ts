@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { Prisma } from '@prisma/client';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { generateTwoFactorSetupData, verifyTwoFactorCode, hashBackupCode } from '@/lib/two-factor';
+import { generateTwoFactorSetupData, hashBackupCode, verifyTwoFactorBackupCode, verifyTwoFactorCode } from '@/lib/two-factor';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
@@ -27,54 +27,100 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = await request.json().catch(() => ({}));
-  const action = body?.action ?? 'setup';
-  const code = body?.code ?? '';
+  const body: unknown = await request.json().catch(() => ({}));
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return NextResponse.json({ success: false, error: 'Permintaan tidak valid' }, { status: 400 });
+  }
+
+  const requestBody = body as { action?: unknown; code?: unknown };
+  const action = requestBody.action ?? 'setup';
+  const code = typeof requestBody.code === 'string' ? requestBody.code.trim() : '';
 
   if (action === 'setup') {
+    if (user.twoFactorEnabled) {
+      return NextResponse.json(
+        { success: false, error: '2FA sudah aktif. Nonaktifkan 2FA sebelum menyiapkan ulang.' },
+        { status: 409 }
+      );
+    }
+
     const setup = await generateTwoFactorSetupData(user.email, 'The Mafia Travel');
-    await prisma.user.update({
-      where: { id: user.id },
+    const updated = await prisma.user.updateMany({
+      where: { id: user.id, twoFactorEnabled: false },
       data: {
         twoFactorSecret: setup.secret,
-        twoFactorEnabled: false,
         twoFactorBackupCodes: setup.backupCodes.map(hashBackupCode),
       },
     });
+
+    if (!updated.count) {
+      return NextResponse.json(
+        { success: false, error: '2FA baru saja diaktifkan. Muat ulang halaman sebelum melanjutkan.' },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({ success: true, data: setup });
   }
 
   if (action === 'enable') {
+    if (user.twoFactorEnabled) {
+      return NextResponse.json({ success: false, error: '2FA sudah aktif' }, { status: 409 });
+    }
     if (!user.twoFactorSecret) {
       return NextResponse.json({ success: false, error: 'Setup 2FA belum dimulai' }, { status: 400 });
     }
 
-    if (!verifyTwoFactorCode(user.twoFactorSecret, code)) {
+    if (!/^\d{6}$/.test(code) || !verifyTwoFactorCode(user.twoFactorSecret, code)) {
       return NextResponse.json({ success: false, error: 'Kode 2FA tidak valid' }, { status: 400 });
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
+    const enabled = await prisma.user.updateMany({
+      where: { id: user.id, twoFactorEnabled: false, twoFactorSecret: user.twoFactorSecret },
       data: { twoFactorEnabled: true },
     });
+
+    if (!enabled.count) {
+      return NextResponse.json(
+        { success: false, error: 'Setup 2FA berubah. Muat ulang halaman dan coba lagi.' },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({ success: true, message: '2FA berhasil diaktifkan' });
   }
 
   if (action === 'disable') {
-    if (!verifyTwoFactorCode(user.twoFactorSecret ?? '', code)) {
-      return NextResponse.json({ success: false, error: 'Kode 2FA tidak valid' }, { status: 400 });
+    if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+      return NextResponse.json({ success: false, error: '2FA tidak sedang aktif' }, { status: 400 });
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
+    const backupCodes = Array.isArray(user.twoFactorBackupCodes)
+      ? user.twoFactorBackupCodes.filter((value): value is string => typeof value === 'string')
+      : [];
+    const validBackupCode = verifyTwoFactorBackupCode(backupCodes, code);
+    if (!verifyTwoFactorCode(user.twoFactorSecret, code) && !validBackupCode) {
+      return NextResponse.json(
+        { success: false, error: 'Kode authenticator atau backup code tidak valid' },
+        { status: 400 }
+      );
+    }
+
+    const disabled = await prisma.user.updateMany({
+      where: { id: user.id, twoFactorEnabled: true, twoFactorSecret: user.twoFactorSecret },
       data: {
         twoFactorEnabled: false,
         twoFactorSecret: null,
         twoFactorBackupCodes: Prisma.DbNull,
       },
     });
+
+    if (!disabled.count) {
+      return NextResponse.json(
+        { success: false, error: 'Status 2FA berubah. Muat ulang halaman sebelum mencoba lagi.' },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({ success: true, message: '2FA berhasil dinonaktifkan' });
   }

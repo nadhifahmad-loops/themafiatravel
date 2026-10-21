@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'product_code dan provider wajib diisi' }, { status: 400 });
     }
 
-    const paxCount = body.adult || body.pax || 1;
+    const paxCount = Number(body.pax ?? body.adult ?? 1);
+    if (!Number.isInteger(paxCount) || paxCount < 1 || paxCount > 20) {
+      return NextResponse.json({ error: 'Jumlah traveler harus antara 1 dan 20.' }, { status: 400 });
+    }
 
     if (!body.date_start || !body.date_end) {
       return NextResponse.json({ error: 'Tanggal perjalanan wajib diisi untuk validasi harga.' }, { status: 400 });

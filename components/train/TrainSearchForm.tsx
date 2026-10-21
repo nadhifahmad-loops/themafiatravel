@@ -130,10 +130,10 @@ function StationInput({ label, value, onChange, stations, icon, variant = 'dark'
   return (
     <div className="relative flex-1 min-w-0" ref={ref}>
       <div onClick={() => setOpen(true)} className={`group flex flex-col px-4 py-3 rounded-xl cursor-pointer transition-all h-full ${vField(variant)}`}>
-        <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{label}</span>
-        <div className="flex items-center gap-1.5">
-          <i className={`fa-solid ${icon} text-orange-500 text-[13px]`}></i>
-          <div className={`text-[13px] font-medium truncate ${vValue(variant)}`}>{selected ? `${selected.city} (${selected.code})` : (value || 'Pilih')}</div>
+        <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>{label}</span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <i className={`fa-solid ${icon} text-sky-600 text-sm`} aria-hidden="true"></i>
+          <div className={`min-w-0 truncate text-sm font-medium ${vValue(variant)}`}>{selected ? `${selected.city} (${selected.code})` : (value || 'Pilih')}</div>
         </div>
       </div>
       <FloatingPanel triggerRef={ref} open={open} onClose={() => setOpen(false)} className={`rounded-xl overflow-hidden ${vPanel(variant)}`}>
@@ -241,18 +241,15 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
   };
 
   const renderPaxDropdown = () => (
-    <div className="relative flex-1 min-w-[140px] shrink-0" ref={paxRef}>
-      <div onClick={() => setOpenPax(!openPax)} className={`px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all h-full ${vField(variant)}`}>
-        <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vFieldLabel(variant)}`}>{t.passengers}</span>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <i className="fa-solid fa-users text-orange-500 text-[13px]"></i>
-            <div className={`text-[13px] font-medium truncate ${vValue(variant)}`}>{pax.adult} {t.adult}, {pax.infant} {t.infant}</div>
-          </div>
-          <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`}></i>
+    <div className="relative flex-1 sm:flex-none sm:min-w-[240px] shrink-0" ref={paxRef}>
+      <div onClick={() => setOpenPax(!openPax)} className={`px-4 py-3 rounded-xl flex items-center justify-between cursor-pointer transition-all h-full ${vField(variant)}`}>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <i className="fa-solid fa-users text-sky-600 text-sm" aria-hidden="true"></i>
+          <div className={`min-w-0 truncate text-[13px] font-medium ${vValue(variant)}`}>{pax.adult} {t.adult}, {pax.infant} {t.infant}</div>
         </div>
+        <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`}></i>
       </div>
-      <FloatingPanel triggerRef={paxRef} open={openPax} onClose={() => setOpenPax(false)} align="right" className={`w-full lg:w-[280px] rounded-xl p-3 flex flex-col gap-3 ${vPanel(variant)}`}>
+      <FloatingPanel triggerRef={paxRef} open={openPax} onClose={() => setOpenPax(false)} align="right" className={`w-full lg:w-[320px] rounded-xl p-3 flex flex-col gap-3 ${vPanel(variant)}`}>
         {[{ k:'adult', l:t.adult, desc:'≥ 3 th', i:'fa-user' }, { k:'infant', l:t.infant, desc:'< 3 th', i:'fa-baby' }].map(({ k, l, desc, i }) => {
           const val = (pax as any)[k] as number;
           const isMin = k === 'adult' ? val <= 1 : val <= 0;
@@ -279,21 +276,25 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
   );
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-2 animate-fade-up">
-      {/* Baris 1: Toggle */}
-      <div className={`flex gap-1 p-1 rounded-lg w-fit ${vToggle(variant)}`}>
-        {[{id:'OW',l:'Sekali Jalan'},{id:'RT',l:'Pulang Pergi'}].map(t => (
-          <button key={t.id} type="button" onClick={() => setTripType(t.id)} className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap ${tripType === t.id ? 'bg-orange-500 text-white shadow-md' : vToggleIdle(variant)}`}>{t.l}</button>
-        ))}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 animate-fade-up">
+      {/* Baris 1: Toggle + Pax di kanan */}
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+        <div className={`grid w-full grid-cols-2 gap-1 p-1 rounded-lg sm:flex sm:w-fit ${vToggle(variant)}`}>
+          {[{id:'OW',l:'Sekali Jalan'},{id:'RT',l:'Pulang Pergi'}].map(t => (
+            <button key={t.id} type="button" onClick={() => setTripType(t.id)} className={`min-h-9 px-2 sm:px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${tripType === t.id ? 'bg-sky-600 text-white shadow-sm' : vToggleIdle(variant)}`}>{t.l}</button>
+          ))}
+        </div>
+        <div className="hidden flex-1 sm:block" />
+        {renderPaxDropdown()}
       </div>
 
       {/* Baris 2: Semua field dalam 1 baris */}
-      <div className="flex flex-col md:flex-row items-stretch gap-2 relative w-full">
+      <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 xl:grid-cols-12 relative w-full">
         {/* From + Swap + To */}
-        <div className="flex-1 flex items-stretch gap-2 relative min-w-0">
+        <div className="relative flex min-w-0 items-stretch gap-2 md:col-span-2 xl:col-span-6">
           <StationInput label={t.from} value={origin} onChange={(v) => { originTouched.current=true; setOrigin(v); }} stations={stations} icon="fa-train" variant={variant} />
           <button type="button" onClick={() => { originTouched.current=true; const tmp=origin; setOrigin(destination); setDestination(tmp); setSwapRotation(r => r + 180); }}
-            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-7 h-7 text-orange-500 rounded-full z-10 flex items-center justify-center hover:scale-110 transition-all duration-300 ${variant === 'light' ? 'bg-white/90 border border-white/40 shadow-md' : 'bg-slate-900 border border-white/20 shadow-xl'}`}>
+            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-sky-700 rounded-full z-10 flex items-center justify-center hover:scale-110 transition-all duration-300 ${variant === 'light' ? 'bg-white border border-slate-200 shadow-sm' : 'bg-slate-900 border border-white/20 shadow-xl'}`}>
             <i className="fa-solid fa-right-left text-[10px]" style={{ transition: 'transform 0.3s ease', transform: `rotate(${swapRotation}deg)` }}></i>
           </button>
           <StationInput label={t.to} value={destination} onChange={setDestination} stations={stations} icon="fa-train" variant={variant} />
@@ -306,11 +307,11 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
             minDate={minDateToday}
             defaultMonth={startDate ?? minDateToday}
           >
-            <div className={`flex-1 min-w-[170px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all animate-fade-in ${vField(variant)}`}>
-              <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{t.departure} – Pulang</span>
-              <div className="flex items-center gap-1.5">
-                <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
-                <div className={`font-medium text-[12px] truncate ${startDate ? vValue(variant) : vSub(variant)}`}>
+            <div className={`min-w-0 px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all animate-fade-in md:col-span-1 xl:col-span-4 ${vField(variant)}`}>
+              <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>{t.departure} – Pulang</span>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <i className="fa-regular fa-calendar text-sky-600 text-sm" aria-hidden="true"></i>
+                <div className={`min-w-0 truncate font-medium text-sm ${startDate ? vValue(variant) : vSub(variant)}`}>
                   {startDate
                     ? `${format(startDate, 'dd MMM', { locale: dateFnsId })}${endDate ? ` – ${format(endDate, 'dd MMM yyyy', { locale: dateFnsId })}` : ' – Pilih pulang'}`
                     : 'Pilih tanggal'}
@@ -324,21 +325,20 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
             onChange={setStartDate}
             minDate={minDateToday}
           >
-            <div className={`flex-[0.7] min-w-[120px] px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all ${vField(variant)}`}>
-              <span className={`text-[10px] font-medium uppercase tracking-wider mb-0 ${vLabel(variant)}`}>{t.departure}</span>
-              <div className="flex items-center gap-1.5">
-                <i className="fa-regular fa-calendar text-orange-500 text-[13px]"></i>
-                <div className={`font-medium text-[12px] truncate ${startDate ? vValue(variant) : vSub(variant)}`}>
+            <div className={`min-w-0 px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer md:col-span-1 xl:col-span-4 ${vField(variant)}`}>
+              <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>{t.departure}</span>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <i className="fa-regular fa-calendar text-sky-600 text-sm" aria-hidden="true"></i>
+                <div className={`min-w-0 truncate font-medium text-sm ${startDate ? vValue(variant) : vSub(variant)}`}>
                   {startDate ? format(startDate, 'dd MMM yyyy', { locale: dateFnsId }) : 'Pilih'}
                 </div>
               </div>
             </div>
           </CalendarField>
         )}
-        {renderPaxDropdown()}
-        <button type="submit" disabled={loading} className={`shrink-0 w-full sm:w-full lg:w-12 h-12 lg:h-full min-h-[52px] flex items-center justify-center rounded-xl ${vBtnSearch(variant)}`}>
+        <button type="submit" aria-label={t.search} disabled={loading} className={`w-full h-[68px] px-4 xl:col-span-2 ${vBtnSearch(variant)}`}>
           {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> :
-            <div className="flex items-center gap-2 lg:gap-0"><i className="fa-solid fa-magnifying-glass text-sm"></i><span className="text-sm font-semibold lg:hidden">{t.search}</span></div>}
+            <div className="flex items-center gap-2"><i className="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i><span>{t.search}</span></div>}
         </button>
       </div>
     </form>

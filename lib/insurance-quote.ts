@@ -4,27 +4,11 @@ import {
   getInsuranceConfig,
   normalizeTripFamily,
   resolveProductTypeFromConfig,
+  resolveInsuranceDestinationArea,
+  resolveInsuranceDestination,
   resolveTripFromConfig,
   supportsSeniorFromConfig,
 } from '@/lib/insurance-providers';
-
-const PROVIDER_AREAS: Record<string, string[]> = {
-  assistcard: ['Europe', 'North America', 'Central America and Caribbean', 'South America', 'Africa', 'Asia', 'Oceania', 'Domestic', 'Receptive', 'Annual Card', 'Multiple Destinations'],
-  bcainsurance: ['Asia Pasifik', 'Worldwide', 'Negara Schengen', 'Domestik'],
-  zurich: ['Worldwide Excluding USA, Canada', 'Europe', 'Asia Pacific', 'Asia', 'Schengen', 'Worldwide', 'ASEAN', 'Domestic'],
-  great_eastern: ['ASEAN', 'Asia Pacific', 'Domestic', 'Worldwide', 'Worldwide exc US/Canada'],
-  oona: ['All'],
-};
-
-function pickArea(provider: string, requestedArea: string): string {
-  const areas = PROVIDER_AREAS[provider] || [];
-  if (areas.includes(requestedArea)) return requestedArea;
-  const lower = requestedArea.toLowerCase();
-  const matchingArea = areas.find((area) => area.toLowerCase().includes(lower) || lower.includes(area.toLowerCase()));
-  if (matchingArea) return matchingArea;
-  if (provider === 'oona') return 'All';
-  return areas.find((area) => /domestic|domestik/i.test(area)) || areas[0] || requestedArea;
-}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null;
@@ -69,18 +53,29 @@ export async function revalidateInsurancePrice(params: {
   const trip = resolveTripFromConfig(config, params.provider, family);
   const supportsSenior = supportsSeniorFromConfig(config, params.provider);
   const productType = resolveProductTypeFromConfig(config, params.provider, params.productType || 'individual');
+  const international = family === 'annual'
+    ? true
+    : (params.international ?? !/domestic|domestik/i.test(params.destinationArea || ''));
   const dateEnd = family === 'annual'
     ? addDays(params.dateStart, trip?.dateSetting ?? 365)
     : params.dateEnd;
 
-  const area = pickArea(params.provider, params.destinationArea || params.destination || 'Asia');
+  const area = resolveInsuranceDestinationArea(
+    params.provider,
+    family === 'annual' ? 'Worldwide' : (params.destinationArea || params.destination || 'Asia'),
+    international,
+    config[params.provider]?.areas,
+    family,
+  );
   const result = await insuranceAPI.getAvailability({
     date_start: params.dateStart,
     date_end: dateEnd,
     pax: params.pax,
-    destination: params.destination || '',
+    destination: international && family !== 'annual'
+      ? resolveInsuranceDestination(params.destination || '', config[params.provider]?.destinations)
+      : '',
     is_senior: (params.isSenior ?? false) && supportsSenior,
-    international: params.international ?? !/domestic|domestik/i.test(area),
+    international,
     destination_area: area,
     type: trip?.code ?? params.type ?? 'single_trip',
     provider: params.provider,
