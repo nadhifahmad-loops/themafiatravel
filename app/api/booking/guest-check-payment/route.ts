@@ -4,19 +4,13 @@ import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { sendBookingConfirmationEmail } from '@/lib/email';
 import { buildBookingTicketAttachment } from '@/lib/email-ticket-pdf';
 import { getBookingContact } from '@/lib/notify';
+import { matchGuestContact } from '@/lib/booking-contact-match';
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === 'true';
 const BASE_URL = IS_PRODUCTION
   ? 'https://api.midtrans.com/v2'
   : 'https://api.sandbox.midtrans.com/v2';
-
-function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.startsWith('62')) return digits;
-  return '62' + digits.replace(/^0/, '');
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,24 +35,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Pesanan tidak ditemukan.' }, { status: 404 });
     }
 
-    const inputStr = phone.trim();
-    const isEmail = inputStr.includes('@');
-    const allDataStr = JSON.stringify(booking.bookingData || {}) + JSON.stringify(booking.passengerData || {});
-
-    let isMatch = false;
-    if (isEmail) {
-      isMatch = allDataStr.toLowerCase().includes(inputStr.toLowerCase());
-    } else {
-      const cleanInput = normalizePhone(inputStr);
-      if (cleanInput.length >= 10) {
-        const localFormat = cleanInput.replace(/^62/, '0');
-        isMatch = allDataStr.includes(localFormat)
-               || allDataStr.includes(cleanInput)
-               || allDataStr.includes('+' + cleanInput);
-      }
-    }
-
-    if (!isMatch) {
+    // Pencocokan presisi bersama (lib/booking-contact-match) — kredensial yang
+    // lolos /api/booking/find pasti lolos di sini; pesan 403 dipertahankan.
+    const match = matchGuestContact(phone, booking.bookingData, booking.passengerData);
+    if (!match.ok) {
       return NextResponse.json({ success: false, error: 'Verifikasi gagal.' }, { status: 403 });
     }
 

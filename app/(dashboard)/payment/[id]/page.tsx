@@ -123,14 +123,14 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
             if (session?.user) {
               router.push(`/bookings/${id}`);
             } else {
-              router.push(`/find-booking?orderId=${booking.orderNumber || id}`);
+              router.push(`/find-booking?orderId=${booking.orderNumber || id}&result=success`);
             }
           },
           onPending: () => {
             if (session?.user) {
               router.push(`/bookings/${id}`);
             } else {
-              router.push(`/find-booking?orderId=${booking.orderNumber || id}`);
+              router.push(`/find-booking?orderId=${booking.orderNumber || id}&result=pending`);
             }
           },
           onError: (e: any) => {
@@ -243,7 +243,7 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
               <p className="text-xs text-emerald-700 leading-relaxed">{t.paidEmailNotice}</p>
             </div>
             <Link
-              href={session?.user ? `/bookings/${id}` : `/find-booking?orderId=${booking.orderNumber || id}`}
+              href={session?.user ? `/bookings/${id}` : `/find-booking?orderId=${booking.orderNumber || id}&result=success`}
               className="mt-6 inline-block px-6 py-3 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800"
             >
               {t.viewBooking}

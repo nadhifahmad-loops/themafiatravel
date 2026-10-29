@@ -34,6 +34,14 @@ export const vRowBorder = (v: FormVariant) => v === 'light' ? 'border-t border-w
 export const vEmpty     = (v: FormVariant) => v === 'light' ? 'text-slate-300' : 'text-white/30';
 export const vChevron   = (v: FormVariant) => v === 'light' ? 'text-slate-400' : 'text-white/30';
 export const vFieldLabel= (v: FormVariant) => v === 'light' ? 'text-slate-400' : 'text-white/40';
+
+/* ─── Struktur label & field form pencarian (selaras dengan InsuranceSearchForm) ─── */
+/** Judul seksi di dalam form ("Pilih Jenis Perlindungan", "Detail Penerbangan", dst). */
+export const vFormHeading = (v: FormVariant) => `mb-1.5 block text-xs font-semibold ${vValue(v)}`;
+/** Label field di atas kotak input. */
+export const vFormLabel   = (v: FormVariant) => `mb-1.5 block text-xs font-semibold ${vValue(v)}`;
+/** Kotak field seragam: tinggi minimal 44px, radius md, padding asuransi. */
+export const vFormField   = (v: FormVariant) => `min-h-[44px] rounded-md px-3 py-2.5 ${vField(v)}`;
 export const vBtnSearch = (v: FormVariant) =>
   v === 'light'
     ? 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap text-sm font-semibold bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl shadow-md shadow-orange-500/25 hover:shadow-orange-500/35 transition-all duration-200 active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2'

@@ -142,6 +142,7 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string }> =
   pending_payment:  { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500' },
   payment_failed:   { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500' },
   cancelled:        { bg: 'bg-slate-100',  text: 'text-slate-600',   dot: 'bg-slate-400' },
+  expired:          { bg: 'bg-red-50',     text: 'text-red-700',     dot: 'bg-red-500' },
   refund_requested: { bg: 'bg-orange-50',  text: 'text-orange-700',  dot: 'bg-orange-500' },
   refund:           { bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-500' },
 };

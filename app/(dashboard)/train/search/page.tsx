@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useMemo, Suspense, useEffect, useCallback } from 'react';
+import { useState, useMemo, Suspense, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TrainSearchForm from '@/components/train/TrainSearchForm';
 import TrainCard from '@/components/train/TrainCard';
+import { CalendarField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { i18n } from '@/lib/i18n';
+import { useToast } from '@/contexts/ToastContext';
+import { i18n, tpl } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { toLocalISODate } from '@/lib/checkout-utils';
 
@@ -14,17 +16,27 @@ function fmtIDR(n: number) {
   if (!n) return 'Rp 0';
   return 'Rp ' + Math.round(n).toLocaleString('id-ID');
 }
-function fmtTime(dt: string) {
-  if (!dt) return '--:--';
-  return dt.split(' ')[1]?.substring(0, 5) || dt.substring(11, 16);
+function parseLocalDate(value: string): Date {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
 }
-function fmtDate(dt: string) {
-  if (!dt) return '';
-  return new Date(dt).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+function getDateOnly(value: string | undefined) {
+  if (!value) return '';
+  return value.slice(0, 10);
 }
 
-const CABIN_LABELS: Record<string, string> = {
-  E: 'Eksekutif', B: 'Bisnis', K: 'Ekonomi', P: 'Prioritas',
+type TrainCoupon = {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  type: string;
+  value: number;
+  minOrderAmount: number;
+};
+
+const CABIN_LABEL_KEYS: Record<string, 'cabinExecutive' | 'cabinBusiness' | 'cabinEconomy' | 'cabinPriority'> = {
+  E: 'cabinExecutive', B: 'cabinBusiness', K: 'cabinEconomy', P: 'cabinPriority',
 };
 
 // Gambar per kota tujuan (disamakan dengan pola beranda: public/images/domestik/<kota>.png)
@@ -48,6 +60,7 @@ function formatLocalDate(date: Date): string {
 function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMeta: any; onSearch: (p: any) => void; onRetry?: () => void }) {
   const { language } = useLanguage();
   const t = i18n.trainSearch[language];
+  const tc = i18n.common[language];
   const isEN = language === 'EN';
 
   const quickTrain = (route: typeof POPULAR_TRAIN_ROUTES[0]) => {
@@ -73,7 +86,7 @@ function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMe
         <p className="text-slate-400 text-sm max-w-md mx-auto">{t.noResultDesc}</p>
         {onRetry && (
           <button onClick={onRetry} className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-colors">
-            <i className="fa-solid fa-rotate-right"></i> Coba Lagi
+            <i className="fa-solid fa-rotate-right"></i> {tc.retry}
           </button>
         )}
       </div>
@@ -91,7 +104,7 @@ function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMe
                 <div className="absolute bottom-0 left-0 right-0 p-2.5">
                   <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
                   <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
-                    Mulai dari Rp {(d.price / 1000).toLocaleString('id-ID')}K
+                    {t.startingFrom} Rp {(d.price / 1000).toLocaleString(isEN ? 'en-US' : 'id-ID')}K
                   </p>
                 </div>
               </div>
@@ -132,53 +145,16 @@ function SkeletonLoader() {
   );
 }
 
-// ─── Filter Skeleton ────────────────────────────────────────────────────────
-function FilterSkeleton() {
-  return (
-    <div className="w-full lg:w-64 shrink-0 lg:sticky lg:top-24 lg:self-start">
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden animate-pulse">
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-          <div className="w-4 h-4 bg-slate-200 rounded"></div>
-          <div className="h-3 w-12 bg-slate-200 rounded"></div>
-        </div>
-        <div className="p-4 space-y-5">
-          {/* Departure time */}
-          <div>
-            <div className="h-2 w-24 bg-slate-200 rounded mb-3"></div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[1,2,3].map(i => <div key={i} className="h-14 bg-slate-100 rounded-xl"></div>)}
-            </div>
-          </div>
-          <div className="h-px bg-slate-100"></div>
-          {/* Cabin class */}
-          <div>
-            <div className="h-2 w-20 bg-slate-200 rounded mb-3"></div>
-            <div className="space-y-2">
-              {[1,2,3].map(i => <div key={i} className="flex items-center gap-3"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-16 bg-slate-100 rounded"></div></div>)}
-            </div>
-          </div>
-          <div className="h-px bg-slate-100"></div>
-          {/* Sort */}
-          <div>
-            <div className="h-2 w-16 bg-slate-200 rounded mb-3"></div>
-            <div className="space-y-2">
-              {[1,2,3].map(i => <div key={i} className="flex items-center gap-3"><div className="w-4 h-4 bg-slate-100 rounded"></div><div className="h-2.5 w-20 bg-slate-100 rounded"></div></div>)}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Compact Search Bar ───────────────────────────────────────────────────────
 function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; onSearch: (p: any) => void; loading: boolean }) {
   const { language } = useLanguage();
   const tc = i18n.common[language];
+  const t = i18n.trainSearch[language];
+  const tf = i18n.searchForm[language].train;
   const [collapsed, setCollapsed] = useState(true);
   
   if (collapsed) {
-    const dirLabel = searchMeta?.direction === 'RT' ? 'Pulang Pergi' : 'Sekali Jalan';
+    const dirLabel = searchMeta?.direction === 'RT' ? tf.roundTrip : tf.oneWay;
     const origin = searchMeta?.journey_list?.[0]?.origin || searchMeta?.origin;
     const dest = searchMeta?.journey_list?.[0]?.destination || searchMeta?.destination;
     const date = searchMeta?.journey_list?.[0]?.departure_date || searchMeta?.depart;
@@ -197,7 +173,7 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
           </div>
         </div>
         <button className="px-4 py-2 bg-orange-100 text-orange-700 font-bold text-xs rounded-xl hover:bg-orange-200 transition-colors shrink-0">
-          Ubah Pencarian
+          {t.changeSearch}
         </button>
       </div>
     );
@@ -217,7 +193,7 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 relative z-50 transition-all">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-black text-brand-ink text-sm">Ubah Pencarian</h3>
+        <h3 className="font-black text-brand-ink text-sm">{t.changeSearch}</h3>
         <button onClick={() => setCollapsed(true)} className="text-slate-400 hover:text-brand-ink transition-colors">
           <i className="fa-solid fa-xmark text-lg"></i>
         </button>
@@ -284,16 +260,19 @@ function TrainLanding({ onSearch, loading }: { onSearch: (p: any) => void; loadi
 // ─── Main Content ─────────────────────────────────────────────────────────────
 function TrainSearchContent() {
   const { language } = useLanguage();
+  const { toast } = useToast();
   const t = i18n.trainSearch[language];
-  const tc = i18n.common[language];
 
   const searchParamsHook = useSearchParams();
   const router = useRouter();
 
   usePageTitle(
     searchParamsHook.get('origin') && searchParamsHook.get('destination')
-      ? `Pencarian Kereta: ${searchParamsHook.get('origin')} → ${searchParamsHook.get('destination')}`
-      : 'Pencarian Kereta'
+      ? tpl(t.pageTitleWithRoute, {
+          origin: searchParamsHook.get('origin')!,
+          destination: searchParamsHook.get('destination')!,
+        })
+      : t.pageTitle
   );
 
   const [results, setResults] = useState<any>(null);
@@ -320,6 +299,80 @@ function TrainSearchContent() {
   const [sortBy, setSortBy] = useState<'price_asc' | 'price_desc' | 'earliest' | 'latest'>('price_asc');
   const [filterCabin, setFilterCabin] = useState<string[]>([]);
   const [filterDepartureTime, setFilterDepartureTime] = useState<string[]>([]);
+  const [filterCarriers, setFilterCarriers] = useState<string[]>([]);
+  const [openToolbarMenu, setOpenToolbarMenu] = useState<'time' | 'class' | 'train' | 'sort' | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [trainCoupons, setTrainCoupons] = useState<TrainCoupon[]>([]);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState('');
+  const [copiedPromo, setCopiedPromo] = useState('');
+  const [promoCopyError, setPromoCopyError] = useState('');
+
+  useEffect(() => {
+    if (!openToolbarMenu) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (event.target instanceof Node && !toolbarRef.current?.contains(event.target)) {
+        setOpenToolbarMenu(null);
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [openToolbarMenu]);
+
+  useEffect(() => {
+    if (!promoOpen) return;
+    let isCurrent = true;
+    fetch('/api/coupons/active?category=train&limit=100')
+      .then(async response => {
+        if (!response.ok) throw new Error(`Coupon request failed (${response.status})`);
+        return response.json();
+      })
+      .then(data => {
+        if (isCurrent) setTrainCoupons(Array.isArray(data.coupons) ? data.coupons : []);
+      })
+      .catch(error => {
+        console.error('[TRAIN PROMO] Failed to load active coupons:', error);
+        if (isCurrent) setPromoError(t.promoLoadError);
+      })
+      .finally(() => {
+        if (isCurrent) setPromoLoading(false);
+      });
+    return () => { isCurrent = false; };
+  }, [promoOpen, t.promoLoadError]);
+
+  useEffect(() => {
+    if (!promoOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPromoOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [promoOpen]);
+
+  const copyTrainCoupon = async (code: string) => {
+    setPromoCopyError('');
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedPromo(code);
+      toast(t.promoCopiedToast, { variant: 'success' });
+      window.setTimeout(() => setCopiedPromo(current => current === code ? '' : current), 2000);
+    } catch (error) {
+      console.error('[TRAIN PROMO] Failed to copy coupon:', error);
+      setPromoCopyError(t.promoCopyError);
+      toast(t.promoCopyFailedToast, { variant: 'error' });
+    }
+  };
+  const openTrainPromos = () => {
+    setPromoError('');
+    setPromoLoading(true);
+    setPromoOpen(true);
+  };
 
   const handleSearch = async (formPayload: any) => {
     setLoading(true);
@@ -328,6 +381,7 @@ function TrainSearchContent() {
     setHasSearched(true);
     setFilterCabin([]);
     setFilterDepartureTime([]);
+    setFilterCarriers([]);
     
     // Normalisasi payload ke format KAI API
     let apiPayload: any = { provider: 'kai' };
@@ -355,11 +409,11 @@ function TrainSearchContent() {
         body: JSON.stringify(apiPayload),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Gagal mencari jadwal kereta. Pastikan rute & tanggal benar.');
+      if (!res.ok || !data.success) throw new Error(data.error || t.errorSearchFailed);
       setResults(data.data);
     } catch (e: any) {
       setError(e instanceof TypeError
-        ? 'Koneksi internet terputus. Periksa sinyalmu lalu coba lagi.'
+        ? t.errorOffline
         : e.message);
     }
     setLoading(false);
@@ -416,6 +470,9 @@ function TrainSearchContent() {
   const cabinOptions = useMemo(() => {
     return [...new Set(allJourneys.map((j: any) => j.cabin_class))].filter(Boolean) as string[];
   }, [allJourneys]);
+  const carrierOptions = useMemo(() => {
+    return [...new Set(allJourneys.map((j: any) => j.carrier_name || j.carrier_code).filter(Boolean))] as string[];
+  }, [allJourneys]);
 
   // Filter & Sort Logic
   const filteredJourneys = useMemo(() => {
@@ -424,6 +481,10 @@ function TrainSearchContent() {
     // Filter Kelas
     if (filterCabin.length > 0) {
       list = list.filter((j: any) => filterCabin.includes(j.cabin_class));
+    }
+
+    if (filterCarriers.length > 0) {
+      list = list.filter((j: any) => filterCarriers.includes(j.carrier_name || j.carrier_code));
     }
 
     // Filter Waktu Keberangkatan
@@ -453,7 +514,7 @@ function TrainSearchContent() {
     });
 
     return list;
-  }, [allJourneys, filterCabin, filterDepartureTime, sortBy]);
+  }, [allJourneys, filterCabin, filterCarriers, filterDepartureTime, sortBy]);
 
   // ── Indeks jadwal termurah (badge highlight) ──
   const cheapestIdx = useMemo(() => {
@@ -470,10 +531,26 @@ function TrainSearchContent() {
   const toggleFilter = (arr: string[], val: string, setArr: (a: string[]) => void) => {
     setArr(arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val]);
   };
+  const resetFilters = () => {
+    setFilterCabin([]);
+    setFilterDepartureTime([]);
+    setFilterCarriers([]);
+    setSortBy('price_asc');
+  };
 
   const isRT = searchMeta?.direction === 'RT';
   const outDate = searchMeta?.journey_list?.[0]?.departure_date || searchMeta?.depart;
-  const inDate = searchMeta?.journey_list?.[1]?.departure_date || searchMeta?.return_date;
+  const selectedDate = getDateOnly(outDate) || todayDefault;
+  const changeDepartureDate = (dateStr: string) => {
+    const params = {
+      ...searchMeta,
+      journey_list: searchMeta?.journey_list?.map((journey: any, index: number) =>
+        index === 0 ? { ...journey, departure_date: dateStr } : journey
+      ),
+      depart: dateStr,
+    };
+    handleSearch(params);
+  };
 
   return (
     <div className="bg-brand-bgLight min-h-screen pt-20">
@@ -481,52 +558,6 @@ function TrainSearchContent() {
         <TrainLanding onSearch={handleSearch} loading={loading} />
       ) : (
       <>
-      {/* ─── Route Banner ──────────────────────────────────────────────────── */}
-      <div className="bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-white">
-        <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="w-9 h-9 bg-white/10 rounded-xl flex items-center justify-center shrink-0">
-              <i className="fa-solid fa-train text-orange-400 text-sm"></i>
-            </div>
-            <div>
-              <div className="text-sm font-black">
-                {searchMeta?.journey_list?.[0]?.origin || searchMeta.origin} → {searchMeta?.journey_list?.[0]?.destination || searchMeta.destination}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-white/60 mt-0.5">
-                <span>{fmtDate(outDate)}</span>
-                {isRT && inDate && (
-                  <><span>→</span><span>{fmtDate(inDate)}</span></>
-                )}
-                <span>·</span>
-                <span>{searchMeta.adult || 1} {tc.adult} · {isRT ? 'Pulang Pergi' : 'Sekali Jalan'}</span>
-              </div>
-            </div>
-          </div>
-          
-          {/* Quick Date Navigator (Hanya aktif untuk Oneway agar mudah) */}
-          {!isRT && (
-            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-              {[-2, -1, 0, 1, 2].map(offset => {
-                const d = new Date(outDate || todayDefault);
-                d.setDate(d.getDate() + offset);
-                const dateStr = toLocalISODate(d);
-                return (
-                  <button key={offset} onClick={() => {
-                    const params = {...searchMeta};
-                    if(params.journey_list) params.journey_list[0].departure_date = dateStr;
-                    else params.depart = dateStr;
-                    handleSearch(params);
-                  }}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${offset === 0 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}>
-                    {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* ─── Sticky Compact Search Bar ─────────────────────────────────────── */}
       <div data-compact-search className="sticky top-0 z-[900] bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
         <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3">
@@ -537,157 +568,218 @@ function TrainSearchContent() {
       <div className="max-w-[1280px] mx-auto px-4 md:px-8 pt-5 pb-10">
 
         {!loading && !noResultsAfterSearch && allJourneys.length > 0 && (
-          <div className="mb-5 rounded-2xl border border-slate-100 bg-white p-4 shadow-card flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-black text-brand-ink">Jadwal kereta yang paling relevan</p>
-              <p className="text-xs text-slate-500 mt-1">Bandingkan kelas, waktu berangkat, dan harga dalam satu tampilan yang lebih rapi.</p>
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-600">
+                {tpl(t.showingResults, { count: filteredJourneys.length, total: allJourneys.length })}
+              </p>
+              {(filterCabin.length + filterDepartureTime.length + filterCarriers.length > 0) && (
+                <button type="button" onClick={resetFilters} className="text-xs font-semibold text-orange-600 hover:underline">
+                  {t.resetFilter}
+                </button>
+              )}
             </div>
-            <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-slate-600">
-              <span className="rounded-full bg-orange-50 px-2.5 py-1 text-orange-700">Kursi tersedia terpantau</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1">Pilih tarif lebih cepat</span>
-            </div>
-          </div>
-        )}
 
-        {/* ─── Main Layout ─────────────────────────────────────────────────── */}
-        <div className="flex flex-col lg:flex-row gap-5 items-start">
+            <div ref={toolbarRef} className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-100 bg-white p-3 shadow-card">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-xs font-semibold text-slate-700">{t.filterTrain}</span>
 
-          {/* SIDEBAR FILTER */}
-          {loading && <FilterSkeleton />}
-          {!loading && !error && !noResultsAfterSearch && allJourneys.length > 0 && (
-          <div className="w-full lg:w-64 shrink-0 space-y-4">
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden sticky top-24">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <i className="fa-solid fa-sliders text-orange-500 text-sm"></i>
-                  <h3 className="font-black text-brand-ink text-sm">{tc.filter}</h3>
-                </div>
-                <button
-                  onClick={() => { setFilterCabin([]); setFilterDepartureTime([]); setSortBy('price_asc'); }}
-                  className="text-orange-600 text-xs font-bold hover:underline"
-                >Reset</button>
-              </div>
-
-              <div className="p-4 space-y-5 max-h-[calc(100vh-180px)] overflow-y-auto">
-                {/* Waktu Berangkat */}
-                <div>
-                  <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">{t.departure}</h4>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {[
-                      { id: 'morning',   label: 'Pagi',  icon: 'fa-sun',       sub: '00-12' },
-                      { id: 'afternoon', label: 'Siang', icon: 'fa-cloud-sun', sub: '12-17' },
-                      { id: 'evening',   label: 'Malam', icon: 'fa-moon',      sub: '17-24' },
-                    ].map(t => (
-                      <button key={t.id}
-                        onClick={() => toggleFilter(filterDepartureTime, t.id, setFilterDepartureTime)}
-                        className={`flex flex-col items-center py-2 px-1 rounded-xl border-2 text-xs font-bold transition-all ${filterDepartureTime.includes(t.id) ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                        <i className={`fa-solid ${t.icon} text-sm mb-1`}></i>
-                        <span>{t.label}</span>
-                        <span className="text-[9px] text-slate-400 font-normal">{t.sub}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="h-px bg-slate-100"></div>
-
-                {/* Kelas Kereta */}
-                {cabinOptions.length > 0 && (
-                  <div>
-                    <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">{t.class}</h4>
-                    <div className="space-y-1.5">
-                      {cabinOptions.map(cabin => (
-                        <label key={cabin} className="flex items-center gap-2.5 cursor-pointer group">
-                          <input type="checkbox" checked={filterCabin.includes(cabin)}
-                            onChange={() => toggleFilter(filterCabin, cabin, setFilterCabin)}
-                            className="w-4 h-4 rounded text-orange-600 border-slate-300 focus:ring-orange-500" />
-                          <span className="text-sm text-slate-600 group-hover:text-slate-900 font-medium">
-                            {CABIN_LABELS[cabin] || cabin}
-                          </span>
+                <div className="relative">
+                  <button type="button" aria-expanded={openToolbarMenu === 'time'} onClick={() => setOpenToolbarMenu(current => current === 'time' ? null : 'time')} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-sky-700 shadow-sm hover:border-sky-300">
+                    {t.departure}{filterDepartureTime.length > 0 ? ` (${filterDepartureTime.length})` : ''}
+                    <i className={`fa-solid fa-chevron-${openToolbarMenu === 'time' ? 'up' : 'down'} text-[9px] text-slate-400`} aria-hidden="true"></i>
+                  </button>
+                  {openToolbarMenu === 'time' && (
+                    <div className="absolute left-0 top-full z-30 mt-2 w-56 rounded-xl border border-slate-100 bg-white p-3 shadow-xl">
+                      {[
+                        { id: 'morning', label: t.morningSlot, range: '00.00–11.59' },
+                        { id: 'afternoon', label: t.afternoonSlot, range: '12.00–16.59' },
+                        { id: 'evening', label: t.eveningSlot, range: '17.00–23.59' },
+                      ].map(option => (
+                        <label key={option.id} className="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
+                          <span className="text-slate-700">{option.label} <span className="text-xs text-slate-400">{option.range}</span></span>
+                          <input type="checkbox" checked={filterDepartureTime.includes(option.id)} onChange={() => toggleFilter(filterDepartureTime, option.id, setFilterDepartureTime)} className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500" />
                         </label>
                       ))}
                     </div>
+                  )}
+                </div>
+
+                {cabinOptions.length > 0 && (
+                  <div className="relative">
+                    <button type="button" aria-expanded={openToolbarMenu === 'class'} onClick={() => setOpenToolbarMenu(current => current === 'class' ? null : 'class')} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-sky-700 shadow-sm hover:border-sky-300">
+                      {t.class}{filterCabin.length > 0 ? ` (${filterCabin.length})` : ''}
+                      <i className={`fa-solid fa-chevron-${openToolbarMenu === 'class' ? 'up' : 'down'} text-[9px] text-slate-400`} aria-hidden="true"></i>
+                    </button>
+                    {openToolbarMenu === 'class' && (
+                      <div className="absolute left-0 top-full z-30 mt-2 min-w-48 rounded-xl border border-slate-100 bg-white p-3 shadow-xl">
+                        {cabinOptions.map(cabin => (
+                          <label key={cabin} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
+                            <span className="text-slate-700">{t[CABIN_LABEL_KEYS[cabin]] || cabin}</span>
+                            <input type="checkbox" checked={filterCabin.includes(cabin)} onChange={() => toggleFilter(filterCabin, cabin, setFilterCabin)} className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500" />
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                <div className="h-px bg-slate-100"></div>
-
-                {/* Urutkan */}
-                <div>
-                  <h4 className="font-bold text-slate-700 mb-2 text-xs uppercase tracking-wider">{t.sortBy}</h4>
-                  <div className="space-y-1.5">
-                    {[
-                      { id: 'price_asc',  label: t.sortOptions.price },
-                      { id: 'earliest',   label: t.sortOptions.departure },
-                      { id: 'latest',     label: 'Berangkat Paling Akhir' },
-                    ].map(opt => (
-                      <label key={opt.id} className="flex items-center gap-2.5 cursor-pointer group">
-                        <input type="radio" name="sortBy" checked={sortBy === opt.id} onChange={() => setSortBy(opt.id as any)}
-                          className="w-4 h-4 text-orange-600 border-slate-300 focus:ring-orange-500" />
-                        <span className="text-sm text-slate-600 group-hover:text-slate-900 font-medium">{opt.label}</span>
-                      </label>
-                    ))}
+                {carrierOptions.length > 1 && (
+                  <div className="relative">
+                    <button type="button" aria-expanded={openToolbarMenu === 'train'} onClick={() => setOpenToolbarMenu(current => current === 'train' ? null : 'train')} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-sky-700 shadow-sm hover:border-sky-300">
+                      {t.trainFilter}{filterCarriers.length > 0 ? ` (${filterCarriers.length})` : ''}
+                      <i className={`fa-solid fa-chevron-${openToolbarMenu === 'train' ? 'up' : 'down'} text-[9px] text-slate-400`} aria-hidden="true"></i>
+                    </button>
+                    {openToolbarMenu === 'train' && (
+                      <div className="absolute left-0 top-full z-30 mt-2 min-w-52 rounded-xl border border-slate-100 bg-white p-3 shadow-xl">
+                        {carrierOptions.map(carrier => (
+                          <label key={carrier} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
+                            <span className="text-slate-700">{carrier}</span>
+                            <input type="checkbox" checked={filterCarriers.includes(carrier)} onChange={() => toggleFilter(filterCarriers, carrier, setFilterCarriers)} className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500" />
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
+              </div>
 
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                {!isRT && (
+                  <CalendarField value={parseLocalDate(selectedDate)} onChange={date => { if (date) changeDepartureDate(formatLocalDate(date)); }} defaultMonth={parseLocalDate(selectedDate)}>
+                    <button type="button" disabled={loading} aria-label={t.calendar} className="flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50">
+                      <i className="fa-regular fa-calendar text-sky-600" aria-hidden="true"></i>
+                      <span className="hidden sm:inline">{t.calendar}</span>
+                    </button>
+                  </CalendarField>
+                )}
+
+                <button type="button" onClick={() => { setPromoCopyError(''); openTrainPromos(); }} className="flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700">
+                  <i className="fa-solid fa-ticket text-sky-600" aria-hidden="true"></i>
+                  {t.promo}
+                </button>
+
+                <div className="relative">
+                  <button type="button" aria-expanded={openToolbarMenu === 'sort'} onClick={() => setOpenToolbarMenu(current => current === 'sort' ? null : 'sort')} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-sky-700 shadow-sm hover:border-sky-300">
+                    {t.sortButton}
+                    <i className={`fa-solid fa-chevron-${openToolbarMenu === 'sort' ? 'up' : 'down'} text-[9px] text-slate-400`} aria-hidden="true"></i>
+                  </button>
+                  {openToolbarMenu === 'sort' && (
+                    <div className="absolute right-0 top-full z-30 mt-2 min-w-56 rounded-xl border border-slate-100 bg-white p-3 shadow-xl">
+                      {[
+                        { id: 'price_asc' as const, label: t.sortOptions.price },
+                        { id: 'price_desc' as const, label: t.highestPrice },
+                        { id: 'earliest' as const, label: t.sortOptions.departure },
+                        { id: 'latest' as const, label: t.latestDeparture },
+                      ].map(option => (
+                        <label key={option.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
+                          <input type="radio" name="trainSortBy" checked={sortBy === option.id} onChange={() => { setSortBy(option.id); setOpenToolbarMenu(null); }} className="h-4 w-4 border-slate-300 text-orange-600 focus:ring-orange-500" />
+                          <span className="text-slate-700">{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-          )}
+          </>
+        )}
 
-          {/* MAIN RESULTS */}
-          <div className="flex-1 min-w-0 space-y-3">
-            {/* Header Summary */}
-            {!loading && !noResultsAfterSearch && allJourneys.length > 0 && (
-              <div className="flex items-center justify-between bg-white px-5 py-3 border border-slate-100 rounded-2xl shadow-card">
-                <p className="text-sm font-semibold text-slate-600">
-                  Menampilkan <span className="font-black text-brand-ink">{filteredJourneys.length}</span> jadwal kereta KAI
-                </p>
-                <div className="flex gap-2">
-                  {[{ id: 'price_asc', label: t.sortOptions.price }, { id: 'earliest', label: t.sortOptions.departure }].map(s => (
-                    <button key={s.id} onClick={() => setSortBy(s.id as any)}
-                      className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${sortBy === s.id ? 'bg-orange-600 text-white border-orange-600' : 'bg-white text-slate-600 border-slate-200 hover:border-orange-300'}`}>
-                      {s.label}
-                    </button>
+        {loading && <SkeletonLoader />}
+
+        {error && (
+          <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} onRetry={() => handleSearch(searchMeta)} />
+        )}
+
+        {!loading && filteredJourneys.length > 0 && (
+          <div className="space-y-3 animate-fade-in">
+            {filteredJourneys.map((j: any, i: number) => (
+              <TrainCard key={`${j.journey_code || `${j.carrier_code}-${j.departure_date}-${j.origin}-${j.destination}`}-${i}`} journey={j} onSelect={handleSelect} adultCount={parseInt(searchMeta?.adult || '1')} isCheapest={cheapestIdx === i} />
+            ))}
+          </div>
+        )}
+
+        {!loading && allJourneys.length > 0 && filteredJourneys.length === 0 && (
+          <div className="rounded-2xl border border-slate-100 bg-white p-12 text-center shadow-card">
+            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-slate-50">
+              <i className="fa-solid fa-train text-3xl text-slate-300"></i>
+            </div>
+            <h3 className="mb-2 text-lg font-black text-brand-ink">{t.noFilterResult}</h3>
+            <p className="text-sm text-slate-500">{t.changeFilter}</p>
+            <button type="button" onClick={resetFilters} className="mt-4 rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-bold text-white transition-all hover:bg-orange-700">
+              {t.resetFilterUpper}
+            </button>
+          </div>
+        )}
+
+        {noResultsAfterSearch && (
+          <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} />
+        )}
+      </div>
+      {promoOpen && (
+        <div
+          className="fixed inset-0 z-[1200] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) setPromoOpen(false);
+          }}
+        >
+          <section role="dialog" aria-modal="true" aria-labelledby="train-promo-title" className="flex max-h-[min(80vh,42rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
+              <div>
+                <h2 id="train-promo-title" className="text-base font-bold text-slate-800">{t.promoTitle}</h2>
+                <p className="mt-0.5 text-xs text-slate-500">{t.promoSubtitle}</p>
+              </div>
+              <button type="button" onClick={() => setPromoOpen(false)} aria-label={t.closePromo} className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800">
+                <i className="fa-solid fa-xmark" aria-hidden="true"></i>
+              </button>
+            </header>
+            <div className="overflow-y-auto p-5 sm:p-6">
+              {promoLoading ? (
+                <div className="flex min-h-40 items-center justify-center gap-3 text-sm font-medium text-slate-500">
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600"></span>
+                  {t.loadingPromos}
+                </div>
+              ) : promoError ? (
+                <div className="py-10 text-center">
+                  <p role="alert" className="text-sm text-rose-600">{promoError}</p>
+                  <button type="button" onClick={() => { setTrainCoupons([]); setPromoOpen(false); window.setTimeout(openTrainPromos, 0); }} className="mt-3 text-xs font-bold text-sky-700 hover:underline">
+                    {t.tryAgain}
+                  </button>
+                </div>
+              ) : trainCoupons.length === 0 ? (
+                <div className="py-12 text-center">
+                  <i className="fa-solid fa-ticket text-3xl text-slate-300" aria-hidden="true"></i>
+                  <p className="mt-3 text-sm font-semibold text-slate-700">{t.noActivePromos}</p>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {trainCoupons.map(coupon => (
+                    <article key={coupon.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-800">{coupon.name}</p>
+                          {coupon.description && <p className="mt-1 text-xs leading-relaxed text-slate-500">{coupon.description}</p>}
+                        </div>
+                        <span className="shrink-0 rounded-full bg-sky-50 px-2 py-1 text-xs font-bold text-sky-700">
+                          {coupon.type === 'percentage' ? `${coupon.value}%` : fmtIDR(coupon.value)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3 border-t border-dashed border-slate-200 pt-3">
+                        <code className="min-w-0 truncate rounded bg-slate-100 px-2 py-1 text-xs font-bold tracking-wide text-slate-700">{coupon.code}</code>
+                        <button type="button" onClick={() => void copyTrainCoupon(coupon.code)} className="shrink-0 text-xs font-bold text-sky-700 hover:text-sky-900">
+                          {copiedPromo === coupon.code ? t.copied : t.copy}
+                        </button>
+                      </div>
+                      {coupon.minOrderAmount > 0 && <p className="mt-2 text-[11px] text-slate-500">{t.minTransaction} {fmtIDR(coupon.minOrderAmount)}</p>}
+                    </article>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {loading && <SkeletonLoader />}
-
-            {error && (
-              <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} onRetry={() => handleSearch(searchMeta)} />
-            )}
-
-            {!loading && filteredJourneys.length > 0 && (
-              <div className="space-y-4 animate-fade-in">
-                {filteredJourneys.map((j: any, i: number) => (
-                  <TrainCard key={i} journey={j} onSelect={handleSelect} adultCount={parseInt(searchMeta?.adult || '1')} isCheapest={cheapestIdx === i} searchParams={searchMeta} />
-                ))}
-              </div>
-            )}
-
-            {!loading && allJourneys.length > 0 && filteredJourneys.length === 0 && (
-              <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center shadow-card">
-                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <i className="fa-solid fa-train text-3xl text-slate-300"></i>
-                </div>
-                <h3 className="text-lg font-black text-brand-ink mb-2">Tidak Ada Hasil Filter</h3>
-                <p className="text-slate-500 text-sm">Coba ubah filter atau reset pilihan.</p>
-                <button onClick={() => { setFilterCabin([]); setFilterDepartureTime([]); setSortBy('price_asc'); }}
-                  className="mt-4 px-6 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-all">
-                  Reset Filter
-                </button>
-              </div>
-            )}
-
-            {noResultsAfterSearch && (
-              <NoResultsWithAlternatives searchMeta={searchMeta} onSearch={handleSearch} />
-            )}
-          </div>
+              )}
+              {promoCopyError && <p role="alert" className="mt-3 text-xs text-rose-600">{promoCopyError}</p>}
+            </div>
+          </section>
         </div>
-      </div>
+      )}
       </>
       )}
 

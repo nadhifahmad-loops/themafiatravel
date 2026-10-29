@@ -21,6 +21,16 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null;
 }
 
+/**
+ * Pass-through normalizer.
+ *
+ * It only guarantees a handful of required keys (`product_code`,
+ * `product_name`, `package`, `total_price`, `provider`, `carrier_code`) and
+ * spreads the ORIGINAL product object through untouched. Everything else —
+ * `MasterBenefitName(Idn)`, `additional_benefit`, `info`, `minAdultOld`,
+ * `sequence`, `pdf`, `service_charge_summary`, etc. — must survive so the
+ * client-side `normalizeInsuranceProduct()` can read it. Do NOT whitelist.
+ */
 function normalizeProducts(result: unknown, provider: string): InsuranceProduct[] {
   const resultRecord = asRecord(result);
   const responseRecord = asRecord(resultRecord?.response);
@@ -34,6 +44,15 @@ function normalizeProducts(result: unknown, provider: string): InsuranceProduct[
     result,
   ];
   const rawProducts = candidates.find((value) => Array.isArray(value)) || [];
+
+  // Dev-only raw dump so the real benefit/coverage shape can be verified once
+  // against a real get_availability response. Never runs in production.
+  if (process.env.NODE_ENV !== 'production' && rawProducts[0]) {
+    console.log(
+      `[INSURANCE RAW PRODUCT] provider=${provider}\n`,
+      JSON.stringify(rawProducts[0], null, 2),
+    );
+  }
 
   return rawProducts
     .filter((product): product is InsuranceProduct => Boolean(asRecord(product)))

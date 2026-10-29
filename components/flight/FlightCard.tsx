@@ -1,7 +1,7 @@
 'use client';
 import { memo, useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { i18n } from '@/lib/i18n';
+import { i18n, tpl } from '@/lib/i18n';
 import { CARRIER_CODE_TO_AIRLINE } from '@/lib/providers';
 import { airportCity, loadAirportGeo } from '@/lib/geo';
 import type { GeoAirport } from '@/lib/geo';
@@ -538,8 +538,8 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false, searchP
               </div>
             </div>
             <div className="text-center">
-              <h3 className="font-black text-xl text-brand-ink">Sedang Diproses...</h3>
-              <p className="text-sm text-slate-500 mt-2">Mohon tunggu sebentar</p>
+              <h3 className="font-black text-xl text-brand-ink">{t.processing}</h3>
+              <p className="text-sm text-slate-500 mt-2">{t.pleaseWait}</p>
             </div>
             <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
               <div className="h-full bg-orange-500 animate-pulse w-3/4"></div>
@@ -610,7 +610,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false, searchP
                 </p>
                 {seg?.operating_airline_code && seg.operating_airline_code !== airlineCode && (
                   <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-600">
-                    Dioperasikan oleh {getCarrierDisplayName(seg.operating_airline_code, undefined, '', language)}
+                    {t.operatedBy} {getCarrierDisplayName(seg.operating_airline_code, undefined, '', language)}
                   </p>
                 )}
                 <div className="mt-3 border-t border-slate-100 pt-3">
@@ -652,7 +652,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false, searchP
                   onClick={() => toggleTooltip('transit')}
                   aria-expanded={activeTooltip === 'transit'}
                   aria-describedby={activeTooltip === 'transit' ? `itinerary-tooltip-${airlineCode}-${flightNum}` : undefined}
-                  aria-label={`Lihat detail waktu dan rute penerbangan, ${stopsCount === 0 ? 'langsung' : `${stopsCount} transit`}`}
+                  aria-label={tpl(t.flightDetailAria, { stops: stopsCount === 0 ? t.nonstop : tpl(t.stopsCount, { count: stopsCount }) })}
                 >
                   <span className="text-xs text-slate-500">{formatDuration(journey.elapsed_time)}</span>
                   <span className="my-1 flex w-full items-center gap-1">
@@ -661,7 +661,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false, searchP
                     <span className="h-px flex-1 bg-slate-300" />
                   </span>
                   <span className={`text-[11px] font-medium ${stopsCount > 0 ? 'text-sky-700 underline decoration-dotted underline-offset-2' : 'text-slate-500'}`}>
-                    {stopsCount === 0 ? t.directOnly : `${stopsCount} Transit`}
+                    {stopsCount === 0 ? t.directOnly : tpl(t.stopsCount, { count: stopsCount })}
                   </span>
                 </button>
                 <div
@@ -738,7 +738,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false, searchP
             <div className="min-w-0">
               {isCheapest && (
                 <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                  <i className="fa-solid fa-tag" aria-hidden="true" /> Termurah
+                  <i className="fa-solid fa-tag" aria-hidden="true" /> {t.cheapest}
                 </span>
               )}
               <p className="whitespace-nowrap text-lg font-bold leading-tight text-orange-600">{fmtIDR(lowestPrice)}</p>
@@ -816,7 +816,7 @@ function FlightCard({ journey, onSelect, adultCount, isCheapest = false, searchP
                   type="button"
                   onClick={() => setFarePickerOpen(false)}
                   autoFocus
-                  aria-label="Tutup pilihan tarif"
+                  aria-label={t.closeFareOptions}
                   className="flex h-9 w-9 shrink-0 items-center justify-center text-[15px] text-slate-900 transition hover:text-sky-700"
                 >
                   <i className="fa-solid fa-xmark" aria-hidden="true" />

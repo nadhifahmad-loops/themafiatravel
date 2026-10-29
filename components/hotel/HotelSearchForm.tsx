@@ -2,11 +2,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
-import { id as dateFnsId } from 'date-fns/locale';
+import { id as dateFnsId, enUS as dateFnsEnUS } from 'date-fns/locale';
 import { CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
-import { type FormVariant, vField, vLabel, vValue, vPanel, vInput, vItem, vSub, vMuted, vCode, vDiv, vSection, vToggle, vToggleIdle, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vFieldLabel, vBtnSearch, vItemBg } from '@/lib/formVariants';
+import { type FormVariant, vFormField, vFormHeading, vFormLabel, vValue, vPanel, vInput, vItem, vItemBg, vSub, vMuted, vCode, vDiv, vSection, vToggle, vToggleIdle, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vBtnSearch } from '@/lib/formVariants';
 
 function FloatingPanel({ triggerRef, open, onClose, children, className, align = 'left' }: {
   triggerRef: React.RefObject<HTMLDivElement | null>;
@@ -137,7 +137,7 @@ function parseLocalDate(value: string): Date {
 }
 
 /* ─── DESTINATION SELECTOR (AUTO-LOAD API ORBIS + RECENT SEARCH) ─── */
-function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { label: string; value: string; onChange: (v: string) => void; icon: string; variant?: FormVariant }) {
+function DestinationInput({ label, value, onChange, icon, variant = 'dark', id }: { label: string; value: string; onChange: (v: string) => void; icon: string; variant?: FormVariant; id?: string }) {
   const { language } = useLanguage();
   const tfh = i18n.searchForm[language].hotel;
   const [open, setOpen] = useState(false);
@@ -159,6 +159,7 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
     }
   });
   const ref = useRef<HTMLDivElement>(null);
+  const labelId = id ? `${id}-label` : undefined;
 
   const handleSelect = (item: Destination) => {
     onChange(item.code);
@@ -170,7 +171,7 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
   };
 
   const selected = DESTINATION_OPTIONS.find(a => a.code === value);
-  
+
   const filtered = DESTINATION_OPTIONS.filter(a =>
     a.city?.toLowerCase().includes(search.toLowerCase()) ||
     a.label?.toLowerCase().includes(search.toLowerCase()) ||
@@ -178,12 +179,15 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
   ).slice(0, 20);
 
   return (
-    <div className="relative flex-1 w-full" ref={ref}>
+    <div className="relative flex w-full flex-col" ref={ref}>
+      <span id={labelId} className={vFormLabel(variant)}>{label}</span>
       <div
+        id={id}
         role="button"
         tabIndex={0}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-labelledby={labelId}
         onClick={() => setOpen(true)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -191,15 +195,13 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
             setOpen(true);
           }
         }}
-        className={`group flex flex-col px-4 py-3 rounded-xl cursor-pointer transition-all h-full ${vField(variant)}`}
+        className={`group flex h-full cursor-pointer items-center gap-2 transition-all ${vFormField(variant)}`}
       >
-        <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>{label}</span>
-        <div className="flex items-center gap-1.5">
-          <i className={`fa-solid ${icon} text-sky-600 text-sm`} aria-hidden="true"></i>
-          <div className={`text-sm font-medium truncate ${vValue(variant)}`}>
-            {selected ? selected.label : (value || 'Pilih Destinasi')}
-          </div>
+        <i className={`fa-solid ${icon} text-sky-600 text-sm`} aria-hidden="true"></i>
+        <div className={`min-w-0 flex-1 truncate text-sm font-medium ${vValue(variant)}`}>
+          {selected ? selected.label : (value || tfh.destination)}
         </div>
+        <i className={`fa-solid fa-chevron-down text-[10px] ${vChevron(variant)}`} aria-hidden="true"></i>
       </div>
 
       <FloatingPanel
@@ -209,19 +211,19 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
         className={`rounded-xl overflow-hidden ${vPanel(variant)}`}
       >
         <div className={`p-3 ${variant === 'light' ? 'border-b border-slate-100/60' : 'border-b border-white/5'}`}>
-            <input 
-              autoFocus value={search} onChange={e => setSearch(e.target.value)} 
-              placeholder={tfh.searchPlaceholder} 
+            <input
+              autoFocus value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={tfh.searchPlaceholder}
               className={`w-full rounded-lg px-3 py-2 outline-none transition-all ${vInput(variant)}`}
             />
           </div>
-          
+
           <div className="max-h-[350px] overflow-y-auto scrollbar-hide">
             {search.length === 0 ? (
               <div className={`divide-y ${vDiv(variant)}`}>
                 {recent.length > 0 && (
                   <div className="py-2">
-                    <div className="px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-orange-500">Pencarian Terakhir</div>
+                    <div className={`px-4 py-2 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>{language === 'EN' ? 'Recent searches' : 'Pencarian Terakhir'}</div>
                     {recent.map(a => (
                       <div key={`rec-${a.code}`} onClick={() => handleSelect(a)} className={`px-4 py-2.5 cursor-pointer flex items-center gap-3 transition-colors ${vItem(variant)}`}>
                         <i className={`fa-solid fa-clock-rotate-left text-xs ${vMuted(variant)}`}></i>
@@ -235,7 +237,7 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
                   </div>
                 )}
                 <div className="py-2">
-                  <div className={`px-4 py-2 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>Destinasi Populer</div>
+                  <div className={`px-4 py-2 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>{language === 'EN' ? 'Popular destinations' : 'Destinasi Populer'}</div>
                   {POPULAR_DESTINATIONS.map(a => (
                     <div key={`pop-${a.code}`} onClick={() => handleSelect(a)} className={`px-4 py-2.5 cursor-pointer flex items-center gap-3 transition-colors ${vItem(variant)}`}>
                       <i className="fa-solid fa-star text-orange-500/50 text-xs"></i>
@@ -251,7 +253,7 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
             ) : (
               <div className="py-2">
                 {filtered.length === 0 ? (
-                  <div className={`p-10 text-center text-xs font-bold ${vEmpty(variant)}`}>Destinasi tidak ditemukan.</div>
+                  <div className={`p-10 text-center text-xs font-bold ${vEmpty(variant)}`}>{language === 'EN' ? 'Destination not found.' : 'Destinasi tidak ditemukan.'}</div>
                 ) : (
                   filtered.map(a => (
                     <div key={`res-${a.code}`} onClick={() => handleSelect(a)} className={`px-4 py-2.5 cursor-pointer flex justify-between items-center transition-colors ${vItemBg(variant)}`}>
@@ -274,16 +276,18 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark' }: { 
 export default function HotelSearchForm({ onSearch, loading, initialData, variant = 'dark' }: Props) {
   const { language } = useLanguage();
   const tfh = i18n.searchForm[language].hotel;
+  const isEnglish = language === 'EN';
+  const dateLocale = isEnglish ? dateFnsEnUS : dateFnsId;
   const defaultDest = initialData?.destination_id || POPULAR_DESTINATIONS[2]?.code || 'ID8731';
   const [destination, setDestination] = useState(defaultDest);
   const [formError, setFormError] = useState('');
 
   // Property type filter
   const PROPERTY_TYPES = [
-    { value: 'all', label: language === 'EN' ? 'All' : 'Semua', icon: 'fa-solid fa-list' },
-    { value: 'hotel', label: language === 'EN' ? 'Hotel' : 'Hotel', icon: 'fa-solid fa-hotel' },
-    { value: 'villa', label: language === 'EN' ? 'Villa' : 'Villa', icon: 'fa-solid fa-house-chimney' },
-    { value: 'apartment', label: language === 'EN' ? 'Apartment' : 'Apartemen', icon: 'fa-solid fa-building' },
+    { value: 'all', label: isEnglish ? 'All' : 'Semua', icon: 'fa-solid fa-list' },
+    { value: 'hotel', label: 'Hotel', icon: 'fa-solid fa-hotel' },
+    { value: 'villa', label: 'Villa', icon: 'fa-solid fa-house-chimney' },
+    { value: 'apartment', label: isEnglish ? 'Apartment' : 'Apartemen', icon: 'fa-solid fa-building' },
   ];
   const [propertyType, setPropertyType] = useState(initialData?.property_type || 'all');
 
@@ -294,12 +298,12 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
     return [start, end];
   });
 
-  const [pax, setPax] = useState({ 
+  const [pax, setPax] = useState({
     room: parseInt(String(initialData?.room || '1')),
-    adult: parseInt(String(initialData?.adult || '2')), 
-    child: parseInt(String(initialData?.child || '0')) 
+    adult: parseInt(String(initialData?.adult || '2')),
+    child: parseInt(String(initialData?.child || '0'))
   });
-  
+
   const [childAges, setChildAges] = useState<number[]>(() =>
     (initialData?.child_ages ?? [])
       .map(age => typeof age === 'number' ? age : Number.parseInt(String(age), 10))
@@ -310,7 +314,8 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
 
   useEffect(() => {
     function clickOutside(e: MouseEvent) {
-      if (paxRef.current && !paxRef.current.contains(e.target as Node)) setOpenPax(false);
+      const target = e.target as Node;
+      if (paxRef.current && !paxRef.current.contains(target) && !(e.target as HTMLElement).closest?.('[data-floating-panel]')) setOpenPax(false);
     }
     document.addEventListener("mousedown", clickOutside);
     return () => document.removeEventListener("mousedown", clickOutside);
@@ -329,17 +334,17 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
     setFormError('');
 
     if (!destination) {
-      setFormError('Silakan pilih destinasi terlebih dahulu.');
+      setFormError(isEnglish ? 'Please choose a destination first.' : 'Silakan pilih destinasi terlebih dahulu.');
       return;
     }
 
     if (!dateRange[0] || !dateRange[1]) {
-      setFormError('Silakan pilih tanggal check-in dan check-out.');
+      setFormError(isEnglish ? 'Please choose check-in and check-out dates.' : 'Silakan pilih tanggal check-in dan check-out.');
       return;
     }
 
     if (dateRange[1] <= dateRange[0]) {
-      setFormError('Tanggal check-out harus setelah tanggal check-in.');
+      setFormError(isEnglish ? 'Check-out date must be after check-in date.' : 'Tanggal check-out harus setelah tanggal check-in.');
       return;
     }
 
@@ -360,26 +365,29 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
   };
 
   const renderGuestDropdown = () => (
-    <div className="relative flex-1 min-w-[140px] shrink-0" ref={paxRef}>
-      <div 
+    <div className="relative flex flex-col" ref={paxRef}>
+      <span id="hotel-guests-label" className={vFormLabel(variant)}>{tfh.guests}</span>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-haspopup="listbox"
+        aria-expanded={openPax}
+        aria-labelledby="hotel-guests-label"
         onClick={() => setOpenPax(!openPax)}
-        className={`px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all h-full ${vField(variant)}`}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenPax(!openPax); } }}
+        className={`flex h-full cursor-pointer items-center justify-between transition-all ${vFormField(variant)}`}
       >
-        <span className={`mb-1.5 text-xs font-semibold ${vFieldLabel(variant)}`}>{tfh.guests}</span>
-        <div className="flex min-w-0 items-center justify-between">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <i className="fa-solid fa-users text-sky-600 text-sm" aria-hidden="true"></i>
-            <div className={`min-w-0 truncate text-sm font-medium ${vValue(variant)}`}>
-              {pax.room} {tfh.room}, {pax.adult} {tfh.adult}{pax.child > 0 ? `, ${pax.child} ${tfh.child}` : ''}
-            </div>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <i className="fa-solid fa-users text-sky-600 text-sm" aria-hidden="true"></i>
+          <div className={`min-w-0 truncate text-sm font-medium ${vValue(variant)}`}>
+            {pax.room} {tfh.room}, {pax.adult} {tfh.adult}{pax.child > 0 ? `, ${pax.child} ${tfh.child}` : ''}
           </div>
-          <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`}></i>
         </div>
+        <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`}></i>
       </div>
 
       {openPax && (
         <div className={`absolute top-full left-0 mt-2 w-full lg:w-[320px] rounded-xl z-[300] p-4 flex flex-col gap-3 animate-fade-in shadow-2xl ${vPanel(variant)}`}>
-          
           {/* Room Control */}
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -391,11 +399,11 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
               </div>
             </div>
             <div className={`flex items-center gap-3 px-2 py-1 rounded-xl ${vStepper(variant)}`}>
-              <button type="button" disabled={pax.room <= 1} onClick={() => setPax(p => ({ ...p, room: Math.max(1, p.room - 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.room <= 1 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Remove' : 'Kurangi'} ${tfh.room}`} disabled={pax.room <= 1} onClick={() => setPax(p => ({ ...p, room: Math.max(1, p.room - 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.room <= 1 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-minus text-[10px]"></i>
               </button>
               <span className={`text-[13px] font-medium w-4 text-center ${vValue(variant)}`}>{pax.room}</span>
-              <button type="button" disabled={pax.room >= 5} onClick={() => setPax(p => ({ ...p, room: Math.min(5, p.room + 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.room >= 5 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.room}`} disabled={pax.room >= 5} onClick={() => setPax(p => ({ ...p, room: Math.min(5, p.room + 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.room >= 5 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-plus text-[10px]"></i>
               </button>
             </div>
@@ -409,15 +417,15 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
               </div>
               <div className="flex flex-col">
                 <span className={`text-[13px] font-medium ${vValue(variant)}`}>{tfh.adult}</span>
-                <span className={`text-[11px] ${vSub(variant)}`}>≥ 12 tahun</span>
+                <span className={`text-[11px] ${vSub(variant)}`}>≥ 12 {isEnglish ? 'yrs' : 'tahun'}</span>
               </div>
             </div>
             <div className={`flex items-center gap-3 px-2 py-1 rounded-xl ${vStepper(variant)}`}>
-              <button type="button" disabled={pax.adult <= 1} onClick={() => setPax(p => ({ ...p, adult: Math.max(1, p.adult - 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.adult <= 1 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Remove' : 'Kurangi'} ${tfh.adult}`} disabled={pax.adult <= 1} onClick={() => setPax(p => ({ ...p, adult: Math.max(1, p.adult - 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.adult <= 1 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-minus text-[10px]"></i>
               </button>
               <span className={`text-[13px] font-medium w-4 text-center ${vValue(variant)}`}>{pax.adult}</span>
-              <button type="button" disabled={pax.adult >= 10} onClick={() => setPax(p => ({ ...p, adult: Math.min(10, p.adult + 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.adult >= 10 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.adult}`} disabled={pax.adult >= 10} onClick={() => setPax(p => ({ ...p, adult: Math.min(10, p.adult + 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.adult >= 10 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-plus text-[10px]"></i>
               </button>
             </div>
@@ -431,15 +439,15 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
               </div>
               <div className="flex flex-col">
                 <span className={`text-[13px] font-medium ${vValue(variant)}`}>{tfh.child}</span>
-                <span className={`text-[11px] ${vSub(variant)}`}>0 - 11 tahun</span>
+                <span className={`text-[11px] ${vSub(variant)}`}>0 - 11 {isEnglish ? 'yrs' : 'tahun'}</span>
               </div>
             </div>
             <div className={`flex items-center gap-3 px-2 py-1 rounded-xl ${vStepper(variant)}`}>
-              <button type="button" disabled={pax.child <= 0} onClick={() => updateChildCount(Math.max(0, pax.child - 1))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.child <= 0 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Remove' : 'Kurangi'} ${tfh.child}`} disabled={pax.child <= 0} onClick={() => updateChildCount(Math.max(0, pax.child - 1))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.child <= 0 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-minus text-[10px]"></i>
               </button>
               <span className={`text-[13px] font-medium w-4 text-center ${vValue(variant)}`}>{pax.child}</span>
-              <button type="button" disabled={pax.child >= 4} onClick={() => updateChildCount(Math.min(4, pax.child + 1))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.child >= 4 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.child}`} disabled={pax.child >= 4} onClick={() => updateChildCount(Math.min(4, pax.child + 1))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.child >= 4 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-plus text-[10px]"></i>
               </button>
             </div>
@@ -448,21 +456,22 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
           {/* Child Ages Selectors */}
           {pax.child > 0 && (
             <div className={`mt-2 pt-4 flex flex-col gap-3 ${variant === 'light' ? 'border-t border-slate-100/60' : 'border-t border-white/10'}`}>
-              <span className={`text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>Umur Anak</span>
+              <span className={`text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>{isEnglish ? 'Child ages' : 'Umur Anak'}</span>
               <div className="grid grid-cols-2 gap-2">
                 {childAges.map((age, idx) => (
                   <select
                     key={idx}
+                    aria-label={`${isEnglish ? 'Child' : 'Anak'} ${idx + 1}`}
                     value={age}
                     onChange={(e) => {
                       const newAges = [...childAges];
                       newAges[idx] = parseInt(e.target.value);
                       setChildAges(newAges);
                     }}
-                    className={`text-[13px] font-medium p-2 rounded-lg outline-none transition-colors ${variant === 'light' ? 'bg-white/60 border border-white/40 text-slate-700 focus:border-orange-400' : 'bg-slate-800 text-white border border-white/10 focus:border-orange-500'}`}
+                    className={`text-[13px] font-medium p-2 rounded-md outline-none transition-colors ${variant === 'light' ? 'bg-white/60 border border-white/40 text-slate-700 focus:border-orange-400' : 'bg-slate-800 text-white border border-white/10 focus:border-orange-500'}`}
                   >
                     {Array.from({length: 12}).map((_, i) => (
-                      <option key={i} value={i}>{i} Tahun</option>
+                      <option key={i} value={i}>{i} {isEnglish ? 'yrs' : 'Tahun'}</option>
                     ))}
                   </select>
                 ))}
@@ -475,13 +484,14 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
   );
 
   const renderPropertyTypeToggle = () => (
-    <div className={`grid w-full grid-cols-2 gap-1 p-1 rounded-lg sm:flex sm:w-fit ${vToggle(variant)}`}>
+    <div className={`grid w-full grid-cols-2 gap-1 rounded-lg p-1 sm:flex sm:w-fit ${vToggle(variant)}`}>
       {PROPERTY_TYPES.map(p => (
         <button
           key={p.value}
           type="button"
+          aria-pressed={propertyType === p.value}
           onClick={() => setPropertyType(p.value)}
-          className={`flex min-h-9 items-center gap-2 px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${
+          className={`flex min-h-11 items-center justify-center gap-2 px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${
             propertyType === p.value
               ? 'bg-sky-600 text-white shadow-sm'
               : vToggleIdle(variant)
@@ -496,67 +506,56 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 animate-fade-up">
-      {formError && (
-        <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-medium text-orange-700">
-          <i className="fa-solid fa-circle-exclamation mr-2" />{formError}
-        </div>
-      )}
-
       {/* Baris 1: Property Type Toggle */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      <section>
+        <h3 className={vFormHeading(variant)}>{tfh.tripTypeLabel}</h3>
         {renderPropertyTypeToggle()}
+      </section>
 
-        {/* Spacer */}
-        <div className="hidden sm:block flex-1" />
-      </div>
-
-      {/* Semua field dalam 1 baris */}
-      <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 xl:grid-cols-12 w-full">
-        <div className="min-w-0 md:col-span-2 xl:col-span-4">
-          <DestinationInput label={tfh.destination} value={destination} onChange={setDestination} icon="fa-bed" variant={variant} />
+      {/* Baris 2: Semua field + tombol cari dalam satu baris */}
+      <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-12 w-full">
+        <div className="flex min-w-0 flex-col md:col-span-2 xl:col-span-4">
+          <DestinationInput id="hotel-destination" label={tfh.destination} value={destination} onChange={setDestination} icon="fa-bed" variant={variant} />
         </div>
 
         {/* DATE RANGE */}
-        <CalendarRangeField
-          startDate={dateRange[0]}
-          endDate={dateRange[1]}
-          onChange={(r) => setDateRange([r.from, r.to])}
-          minDate={new Date()}
-          defaultMonth={dateRange[0] ?? undefined}
-        >
-          <div className={`min-w-0 px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all md:col-span-1 xl:col-span-3 ${vField(variant)}`}>
-            <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>Check-in - Check-out</span>
-            <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex flex-col md:col-span-1 xl:col-span-3">
+          <span id="hotel-dates-label" className={vFormLabel(variant)}>{tfh.checkin} – {tfh.checkout}</span>
+          <CalendarRangeField
+            startDate={dateRange[0]}
+            endDate={dateRange[1]}
+            onChange={(r) => setDateRange([r.from, r.to])}
+            minDate={new Date()}
+            defaultMonth={dateRange[0] ?? undefined}
+          >
+            <div className={`flex h-full min-w-0 cursor-pointer items-center gap-1.5 transition-all ${vFormField(variant)}`}>
               <i className="fa-regular fa-calendar text-sky-600 text-sm" aria-hidden="true"></i>
-              <div className={`min-w-0 truncate font-medium text-sm ${dateRange[0] ? vValue(variant) : vSub(variant)}`}>
+              <div className={`min-w-0 truncate text-sm font-medium ${dateRange[0] ? vValue(variant) : vSub(variant)}`}>
                 {dateRange[0]
-                  ? `${format(dateRange[0], 'dd MMM', { locale: dateFnsId })}${dateRange[1] ? ` – ${format(dateRange[1], 'dd MMM yyyy', { locale: dateFnsId })}` : ' – Pilih checkout'}`
-                  : 'Pilih tanggal'}
+                  ? `${format(dateRange[0], 'dd MMM', { locale: dateLocale })}${dateRange[1] ? ` – ${format(dateRange[1], 'dd MMM yyyy', { locale: dateLocale })}` : ` – ${tfh.checkout}`}`
+                  : tfh.checkin}
               </div>
             </div>
-          </div>
-        </CalendarRangeField>
+          </CalendarRangeField>
+        </div>
 
-        <div className="min-w-0 md:col-span-1 xl:col-span-3">{renderGuestDropdown()}</div>
+        <div className="flex min-w-0 flex-col md:col-span-1 xl:col-span-3">{renderGuestDropdown()}</div>
 
-        {/* SUBMIT BUTTON */}
         <button
           type="submit"
           disabled={loading}
-          aria-label={tfh.search}
-          className={`w-full h-[68px] px-4 md:col-span-2 xl:col-span-2 ${vBtnSearch(variant)}`}
+          className={`w-full md:col-span-2 xl:col-span-2 ${vBtnSearch(variant)}`}
         >
           {loading ? (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
           ) : (
-            <div className="flex items-center gap-2">
-              <i className="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i>
-              <span>{tfh.search}</span>
-            </div>
+            <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />
           )}
+          {loading ? (isEnglish ? 'Searching...' : 'Mencari...') : tfh.search}
         </button>
       </div>
 
+      {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
     </form>
   );
 }

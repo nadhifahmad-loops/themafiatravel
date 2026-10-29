@@ -1,15 +1,37 @@
 'use client';
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { format } from 'date-fns';
-import { id as dateFnsId } from 'date-fns/locale';
+import { id as dateFnsId, enUS as dateFnsEnUS } from 'date-fns/locale';
 import { CalendarField, CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { i18n } from '@/lib/i18n';
-import { type FormVariant, vField, vLabel, vValue, vPanel, vInput, vItem, vSub, vMuted, vCode, vDiv, vSection, vToggle, vToggleIdle, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vFieldLabel, vBtnSearch } from '@/lib/formVariants';
+import { type FormVariant, vFormField, vFormHeading, vFormLabel, vValue, vPanel, vInput, vItem, vSub, vMuted, vCode, vDiv, vSection, vToggle, vToggleIdle, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vFieldError, vBtnSearch } from '@/lib/formVariants';
+
+/** Lihat catatan di FlightSearchForm: nilai klien hanya dipakai setelah hidrasi. */
+const emptySubscribe = () => () => {};
 
 interface Station { code: string; name: string; city: string; label: string; }
+
+interface TrainInitialData {
+  direction?: string;
+  adult?: string | number;
+  infant?: string | number;
+  origin?: string;
+  destination?: string;
+  departure_date?: string;
+  return_date?: string;
+}
+
+interface TrainSearchPayload {
+  direction: string;
+  adult: number;
+  infant: number;
+  provider: string;
+  journey_list: { origin: string; destination: string; departure_date: string }[];
+}
+
 const POPULAR_STATIONS: Station[] = [
   { code: 'GMR', name: 'Gambir', city: 'Jakarta', label: 'Gambir (GMR)' },
   { code: 'PSE', name: 'Pasar Senen', city: 'Jakarta', label: 'Pasar Senen (PSE)' },
@@ -99,13 +121,25 @@ function FloatingPanel({ triggerRef, open, onClose, children, className, align =
   );
 }
 
-function StationInput({ label, value, onChange, stations, icon, variant = 'dark' }: { label: string; value: string; onChange: (v: string) => void; stations: Station[]; icon: string; variant?: FormVariant }) {
+function StationInput({ label, value, onChange, stations, icon, variant = 'dark', showLabel = true, id, error = false }: {
+  label: string; value: string; onChange: (v: string) => void; stations: Station[]; icon: string;
+  variant?: FormVariant; showLabel?: boolean; id?: string; error?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [recent, setRecent] = useState<Station[]>([]);
+  const { language } = useLanguage();
+  const t = i18n.searchForm[language].train;
+  const [recent, setRecent] = useState<Station[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('mafia_recent_stations');
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  });
   const ref = useRef<HTMLDivElement>(null);
+  const labelId = id ? `${id}-label` : undefined;
 
-  useEffect(() => { const s = localStorage.getItem('mafia_recent_stations'); if (s) setRecent(JSON.parse(s)); }, []);
   useEffect(() => {
     const h = (e: MouseEvent) => {
       const t = e.target as Node;
@@ -128,24 +162,34 @@ function StationInput({ label, value, onChange, stations, icon, variant = 'dark'
   const filtered = stations.filter(s => s.city.toLowerCase().includes(search.toLowerCase()) || s.code.toLowerCase().includes(search.toLowerCase()) || s.name.toLowerCase().includes(search.toLowerCase())).slice(0, 20);
 
   return (
-    <div className="relative flex-1 min-w-0" ref={ref}>
-      <div onClick={() => setOpen(true)} className={`group flex flex-col px-4 py-3 rounded-xl cursor-pointer transition-all h-full ${vField(variant)}`}>
-        <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>{label}</span>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <i className={`fa-solid ${icon} text-sky-600 text-sm`} aria-hidden="true"></i>
-          <div className={`min-w-0 truncate text-sm font-medium ${vValue(variant)}`}>{selected ? `${selected.city} (${selected.code})` : (value || 'Pilih')}</div>
-        </div>
+    <div className="relative flex min-w-0 flex-1 flex-col" ref={ref}>
+      {showLabel && <span id={labelId} className={vFormLabel(variant)}>{label}</span>}
+      <div
+        id={id}
+        role="button"
+        tabIndex={0}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-labelledby={showLabel ? labelId : undefined}
+        aria-label={showLabel ? undefined : label}
+        onClick={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true); } }}
+        className={`group flex h-full items-center gap-1.5 cursor-pointer transition-all ${vFormField(variant)} ${error ? vFieldError(variant) : ''}`}
+      >
+        <i className={`fa-solid ${icon} text-sky-600 text-sm`} aria-hidden="true"></i>
+        <div className={`min-w-0 flex-1 truncate text-sm font-medium ${vValue(variant)}`}>{selected ? `${selected.city} (${selected.code})` : (value || t.pick)}</div>
+        <i className={`fa-solid fa-chevron-down text-[10px] ${vChevron(variant)}`} aria-hidden="true"></i>
       </div>
       <FloatingPanel triggerRef={ref} open={open} onClose={() => setOpen(false)} className={`rounded-xl overflow-hidden ${vPanel(variant)}`}>
         <div className={`p-2.5 ${variant === 'light' ? 'border-b border-slate-100/60' : 'border-b border-white/5'}`}>
-          <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari kota atau stasiun..." className={`w-full rounded-lg px-3 py-2 outline-none ${vInput(variant)}`} />
+          <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder={t.searchCityStation} className={`w-full rounded-lg px-3 py-2 outline-none ${vInput(variant)}`} />
         </div>
         <div className="max-h-[320px] overflow-y-auto scrollbar-hide">
           {search.length === 0 ? (
             <div className={`divide-y ${vDiv(variant)}`}>
               {recent.length > 0 && (
                 <div className="py-1.5">
-                  <div className={`px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>Terakhir</div>
+                  <div className={`px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>{t.recent}</div>
                   {recent.map(s => (
                     <div key={`rec-${s.code}`} onClick={() => handleSelect(s)} className={`px-4 py-2.5 cursor-pointer flex items-center gap-2.5 transition-colors ${vItem(variant)}`}>
                       <i className={`fa-solid fa-clock-rotate-left text-[11px] ${vMuted(variant)}`}></i>
@@ -159,7 +203,7 @@ function StationInput({ label, value, onChange, stations, icon, variant = 'dark'
                 </div>
               )}
               <div className="py-1.5">
-                <div className={`px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>Populer</div>
+                <div className={`px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>{t.popular}</div>
                 {POPULAR_STATIONS.map(s => (
                   <div key={`pop-${s.code}`} onClick={() => handleSelect(s)} className={`px-4 py-2.5 cursor-pointer flex items-center gap-2.5 transition-colors ${vItem(variant)}`}>
                     <i className="fa-solid fa-star text-orange-400/60 text-[11px]"></i>
@@ -175,7 +219,7 @@ function StationInput({ label, value, onChange, stations, icon, variant = 'dark'
           ) : (
             <div className="py-1.5">
               {filtered.length === 0 ? (
-                <div className={`p-8 text-center text-[13px] font-medium ${vEmpty(variant)}`}>Tidak ditemukan.</div>
+                <div className={`p-8 text-center text-[13px] font-medium ${vEmpty(variant)}`}>{t.noResult}</div>
               ) : filtered.map(s => (
                 <div key={`res-${s.code}`} onClick={() => handleSelect(s)} className={`px-4 py-2.5 cursor-pointer flex justify-between items-center transition-colors ${vItem(variant)}`}>
                   <div className="flex-1 min-w-0 pr-2">
@@ -193,24 +237,32 @@ function StationInput({ label, value, onChange, stations, icon, variant = 'dark'
   );
 }
 
-export default function TrainSearchForm({ onSearch, loading, initialData, variant = 'dark' }: { onSearch: (p: any) => void; loading: boolean; initialData?: any; variant?: FormVariant }) {
+export default function TrainSearchForm({ onSearch, loading, initialData, variant = 'dark' }: {
+  onSearch: (p: TrainSearchPayload) => void;
+  loading: boolean;
+  initialData?: TrainInitialData;
+  variant?: FormVariant;
+}) {
   const { language } = useLanguage();
   const { nearestStation } = useLocation();
   const t = i18n.searchForm[language].train;
+  const isEnglish = language === 'EN';
+  const dateLocale = isEnglish ? dateFnsEnUS : dateFnsId;
   const [tripType, setTripType] = useState(initialData?.direction || 'OW');
   const [stations, setStations] = useState<Station[]>(POPULAR_STATIONS);
-  const [pax, setPax] = useState({ adult: parseInt(initialData?.adult || '1'), infant: parseInt(initialData?.infant || '0') });
+  const [pax, setPax] = useState({ adult: parseInt(String(initialData?.adult ?? '1')), infant: parseInt(String(initialData?.infant ?? '0')) });
   const [openPax, setOpenPax] = useState(false);
   const paxRef = useRef<HTMLDivElement>(null);
-  const [origin, setOrigin] = useState(initialData?.origin || 'GMR');
+  const [originOverride, setOriginOverride] = useState<string | null>(initialData?.origin ?? null);
+  const nearestOriginCode = useSyncExternalStore(
+    emptySubscribe,
+    () => nearestStation?.code ?? 'GMR',
+    () => 'GMR',
+  );
+  const origin = originOverride ?? nearestOriginCode;
   const [destination, setDestination] = useState(initialData?.destination || 'BD');
   const [swapRotation, setSwapRotation] = useState(0);
-  const originTouched = useRef(false);
-
-  useEffect(() => {
-    if (originTouched.current || initialData?.origin) return;
-    if (nearestStation?.code && origin !== nearestStation.code) setOrigin(nearestStation.code);
-  }, [nearestStation?.code]);
+  const [formError, setFormError] = useState('');
 
   const [startDate, setStartDate] = useState<Date | null>(() => initialData?.departure_date ? parseLocalDate(initialData.departure_date) : new Date(Date.now()+86400000));
   const [endDate, setEndDate] = useState<Date | null>(() => initialData?.return_date ? parseLocalDate(initialData.return_date) : null);
@@ -218,31 +270,44 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
 
   useEffect(() => {
     fetch('/api/train/destinations').then(r => r.json()).then(d => {
-      if (d.success && Array.isArray(d.data) && d.data.length > 0) setStations(d.data.map((s: any) => ({ ...s, label: s.label || `${s.name} (${s.code})` })));
+      if (d.success && Array.isArray(d.data) && d.data.length > 0) setStations(d.data.map((s: Station) => ({ ...s, label: s.label || `${s.name} (${s.code})` })));
     }).catch(() => {});
   }, []);
   useEffect(() => {
     const h = (e: MouseEvent) => {
-      const t = e.target as Node;
+      const target = e.target as Node;
       // Panel penumpang juga di-portal ke document.body — sama seperti
       // StationInput di atas, klik di dalamnya tidak boleh dihitung "klik di
       // luar"; tanpa itu tombol +/− tidak akan pernah bisa ditekan.
-      if (paxRef.current && !paxRef.current.contains(t) && !(e.target as HTMLElement).closest?.('[data-floating-panel]')) setOpenPax(false);
+      if (paxRef.current && !paxRef.current.contains(target) && !(e.target as HTMLElement).closest?.('[data-floating-panel]')) setOpenPax(false);
     };
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (origin === destination) { alert('Stasiun asal dan tujuan tidak boleh sama'); return; }
-    const payload: any = { direction: tripType, adult: pax.adult, infant: pax.infant, provider: 'kai', journey_list: [{ origin, destination, departure_date: startDate ? formatLocalDate(startDate) : '' }] };
+    if (origin === destination) { setFormError(t.errSameStation); return; }
+    if (!startDate) { setFormError(t.errDeparture); return; }
+    if (tripType === 'RT' && !endDate) { setFormError(t.errReturn); return; }
+    setFormError('');
+    const payload: TrainSearchPayload = { direction: tripType, adult: pax.adult, infant: pax.infant, provider: 'kai', journey_list: [{ origin, destination, departure_date: startDate ? formatLocalDate(startDate) : '' }] };
     if (tripType === 'RT' && endDate) payload.journey_list.push({ origin: destination, destination: origin, departure_date: formatLocalDate(endDate) });
     onSearch(payload);
   };
 
   const renderPaxDropdown = () => (
-    <div className="relative flex-1 sm:flex-none sm:min-w-[240px] shrink-0" ref={paxRef}>
-      <div onClick={() => setOpenPax(!openPax)} className={`px-4 py-3 rounded-xl flex items-center justify-between cursor-pointer transition-all h-full ${vField(variant)}`}>
+    <div className="relative flex flex-col" ref={paxRef}>
+      <span id="train-pax-label" className={vFormLabel(variant)}>{t.passengers}</span>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-haspopup="listbox"
+        aria-expanded={openPax}
+        aria-labelledby="train-pax-label"
+        onClick={() => setOpenPax(!openPax)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenPax(!openPax); } }}
+        className={`flex h-full cursor-pointer items-center justify-between transition-all ${vFormField(variant)}`}
+      >
         <div className="flex min-w-0 items-center gap-1.5">
           <i className="fa-solid fa-users text-sky-600 text-sm" aria-hidden="true"></i>
           <div className={`min-w-0 truncate text-[13px] font-medium ${vValue(variant)}`}>{pax.adult} {t.adult}, {pax.infant} {t.infant}</div>
@@ -250,8 +315,8 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
         <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`}></i>
       </div>
       <FloatingPanel triggerRef={paxRef} open={openPax} onClose={() => setOpenPax(false)} align="right" className={`w-full lg:w-[320px] rounded-xl p-3 flex flex-col gap-3 ${vPanel(variant)}`}>
-        {[{ k:'adult', l:t.adult, desc:'≥ 3 th', i:'fa-user' }, { k:'infant', l:t.infant, desc:'< 3 th', i:'fa-baby' }].map(({ k, l, desc, i }) => {
-          const val = (pax as any)[k] as number;
+        {([{ k: 'adult', l: t.adult, desc: t.adultAge, i: 'fa-user' }, { k: 'infant', l: t.infant, desc: t.infantAge, i: 'fa-baby' }] as const).map(({ k, l, desc, i }) => {
+          const val = pax[k];
           const isMin = k === 'adult' ? val <= 1 : val <= 0;
           const isMax = val >= 9;
           return (
@@ -264,9 +329,9 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
               </div>
             </div>
             <div className={`flex items-center gap-2 px-1.5 py-0.5 rounded-lg ${vStepper(variant)}`}>
-              <button type="button" disabled={isMin} onClick={() => setPax(p => ({...p,[k]:Math.max(k==='adult'?1:0,val-1)}))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${isMin ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}><i className="fa-solid fa-minus text-[10px]"></i></button>
+              <button type="button" aria-label={`${isEnglish ? 'Remove' : 'Kurangi'} ${l}`} disabled={isMin} onClick={() => setPax(p => ({...p,[k]:Math.max(k==='adult'?1:0,val-1)}))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${isMin ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}><i className="fa-solid fa-minus text-[10px]"></i></button>
               <span className={`text-[13px] font-medium w-4 text-center ${vValue(variant)}`}>{val}</span>
-              <button type="button" disabled={isMax} onClick={() => setPax(p => ({...p,[k]:val+1}))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${isMax ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}><i className="fa-solid fa-plus text-[10px]"></i></button>
+              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${l}`} disabled={isMax} onClick={() => setPax(p => ({...p,[k]:val+1}))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${isMax ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}><i className="fa-solid fa-plus text-[10px]"></i></button>
             </div>
           </div>
           );
@@ -277,70 +342,78 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 animate-fade-up">
-      {/* Baris 1: Toggle + Pax di kanan */}
-      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-        <div className={`grid w-full grid-cols-2 gap-1 p-1 rounded-lg sm:flex sm:w-fit ${vToggle(variant)}`}>
-          {[{id:'OW',l:'Sekali Jalan'},{id:'RT',l:'Pulang Pergi'}].map(t => (
-            <button key={t.id} type="button" onClick={() => setTripType(t.id)} className={`min-h-9 px-2 sm:px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${tripType === t.id ? 'bg-sky-600 text-white shadow-sm' : vToggleIdle(variant)}`}>{t.l}</button>
+      {/* Baris 1: Trip type */}
+      <section>
+        <h3 className={vFormHeading(variant)}>{t.tripTypeLabel}</h3>
+        <div className={`grid w-full grid-cols-2 gap-1 rounded-lg p-1 sm:flex sm:w-fit ${vToggle(variant)}`}>
+          {[{id:'OW',l:t.oneWay},{id:'RT',l:t.roundTrip}].map(opt => (
+            <button key={opt.id} type="button" aria-pressed={tripType === opt.id} onClick={() => { setTripType(opt.id); setFormError(''); }} className={`min-h-11 px-2 sm:px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${tripType === opt.id ? 'bg-sky-600 text-white shadow-sm' : vToggleIdle(variant)}`}>{opt.l}</button>
           ))}
         </div>
-        <div className="hidden flex-1 sm:block" />
-        {renderPaxDropdown()}
-      </div>
+      </section>
 
-      {/* Baris 2: Semua field dalam 1 baris */}
-      <div className="grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 xl:grid-cols-12 relative w-full">
+      {/* Baris 2: Semua field + tombol cari dalam satu baris */}
+      <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-12 relative w-full">
         {/* From + Swap + To */}
-        <div className="relative flex min-w-0 items-stretch gap-2 md:col-span-2 xl:col-span-6">
-          <StationInput label={t.from} value={origin} onChange={(v) => { originTouched.current=true; setOrigin(v); }} stations={stations} icon="fa-train" variant={variant} />
-          <button type="button" onClick={() => { originTouched.current=true; const tmp=origin; setOrigin(destination); setDestination(tmp); setSwapRotation(r => r + 180); }}
-            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-sky-700 rounded-full z-10 flex items-center justify-center hover:scale-110 transition-all duration-300 ${variant === 'light' ? 'bg-white border border-slate-200 shadow-sm' : 'bg-slate-900 border border-white/20 shadow-xl'}`}>
-            <i className="fa-solid fa-right-left text-[10px]" style={{ transition: 'transform 0.3s ease', transform: `rotate(${swapRotation}deg)` }}></i>
-          </button>
-          <StationInput label={t.to} value={destination} onChange={setDestination} stations={stations} icon="fa-train" variant={variant} />
+        <div className="flex min-w-0 flex-col md:col-span-2 xl:col-span-5">
+          <div className="grid grid-cols-2 gap-2">
+            <span className={vFormLabel(variant)}>{t.from}</span>
+            <span className={vFormLabel(variant)}>{t.to}</span>
+          </div>
+          <div className="relative flex flex-1 items-stretch gap-2">
+            <StationInput showLabel={false} label={t.from} value={origin} onChange={(v) => { setOriginOverride(v); setFormError(''); }} stations={stations} icon="fa-train" variant={variant} error={origin === destination} />
+            <button type="button" aria-label={t.swapBtn} onClick={() => { const tmp=origin; setOriginOverride(destination); setDestination(tmp); setSwapRotation(r => r + 180); setFormError(''); }}
+              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-sky-700 rounded-full z-10 flex items-center justify-center hover:scale-110 transition-all duration-300 ${variant === 'light' ? 'bg-white border border-slate-200 shadow-sm' : 'bg-slate-900 border border-white/20 shadow-xl'}`}>
+              <i className="fa-solid fa-right-left text-[10px]" aria-hidden="true" style={{ transition: 'transform 0.3s ease', transform: `rotate(${swapRotation}deg)` }}></i>
+            </button>
+            <StationInput showLabel={false} label={t.to} value={destination} onChange={(v) => { setDestination(v); setFormError(''); }} stations={stations} icon="fa-train" variant={variant} error={origin === destination} />
+          </div>
         </div>
-        {tripType === 'RT' ? (
-          <CalendarRangeField
-            startDate={startDate}
-            endDate={endDate}
-            onChange={(r) => { setStartDate(r.from); setEndDate(r.to); }}
-            minDate={minDateToday}
-            defaultMonth={startDate ?? minDateToday}
-          >
-            <div className={`min-w-0 px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer transition-all animate-fade-in md:col-span-1 xl:col-span-4 ${vField(variant)}`}>
-              <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>{t.departure} – Pulang</span>
-              <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex flex-col md:col-span-1 xl:col-span-3">
+          <span className={vFormLabel(variant)}>{tripType === 'RT' ? t.departureReturn : t.departure}</span>
+          {tripType === 'RT' ? (
+            <CalendarRangeField
+              startDate={startDate}
+              endDate={endDate}
+              onChange={(r) => { setStartDate(r.from); setEndDate(r.to); setFormError(''); }}
+              minDate={minDateToday}
+              defaultMonth={startDate ?? minDateToday}
+            >
+              <div className={`flex h-full min-w-0 cursor-pointer items-center gap-1.5 transition-all animate-fade-in ${vFormField(variant)}`}>
                 <i className="fa-regular fa-calendar text-sky-600 text-sm" aria-hidden="true"></i>
-                <div className={`min-w-0 truncate font-medium text-sm ${startDate ? vValue(variant) : vSub(variant)}`}>
+                <div className={`min-w-0 truncate text-sm font-medium ${startDate ? vValue(variant) : vSub(variant)}`}>
                   {startDate
-                    ? `${format(startDate, 'dd MMM', { locale: dateFnsId })}${endDate ? ` – ${format(endDate, 'dd MMM yyyy', { locale: dateFnsId })}` : ' – Pilih pulang'}`
-                    : 'Pilih tanggal'}
+                    ? `${format(startDate, 'dd MMM', { locale: dateLocale })}${endDate ? ` – ${format(endDate, 'dd MMM yyyy', { locale: dateLocale })}` : ` ${t.selectReturn}`}`
+                    : t.pickDate}
                 </div>
               </div>
-            </div>
-          </CalendarRangeField>
-        ) : (
-          <CalendarField
-            value={startDate}
-            onChange={setStartDate}
-            minDate={minDateToday}
-          >
-            <div className={`min-w-0 px-4 py-3 rounded-xl flex flex-col justify-center cursor-pointer md:col-span-1 xl:col-span-4 ${vField(variant)}`}>
-              <span className={`mb-1.5 text-xs font-semibold ${vLabel(variant)}`}>{t.departure}</span>
-              <div className="flex min-w-0 items-center gap-1.5">
+            </CalendarRangeField>
+          ) : (
+            <CalendarField
+              value={startDate}
+              onChange={(d) => { setStartDate(d); setFormError(''); }}
+              minDate={minDateToday}
+            >
+              <div className={`flex h-full min-w-0 cursor-pointer items-center gap-1.5 transition-all ${vFormField(variant)}`}>
                 <i className="fa-regular fa-calendar text-sky-600 text-sm" aria-hidden="true"></i>
-                <div className={`min-w-0 truncate font-medium text-sm ${startDate ? vValue(variant) : vSub(variant)}`}>
-                  {startDate ? format(startDate, 'dd MMM yyyy', { locale: dateFnsId }) : 'Pilih'}
+                <div className={`min-w-0 truncate text-sm font-medium ${startDate ? vValue(variant) : vSub(variant)}`}>
+                  {startDate ? format(startDate, 'dd MMM yyyy', { locale: dateLocale }) : t.pickDate}
                 </div>
               </div>
-            </div>
-          </CalendarField>
-        )}
-        <button type="submit" aria-label={t.search} disabled={loading} className={`w-full h-[68px] px-4 xl:col-span-2 ${vBtnSearch(variant)}`}>
-          {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> :
-            <div className="flex items-center gap-2"><i className="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i><span>{t.search}</span></div>}
+            </CalendarField>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-col md:col-span-1 xl:col-span-2">{renderPaxDropdown()}</div>
+
+        <button type="submit" disabled={loading} className={`w-full md:col-span-2 xl:col-span-2 ${vBtnSearch(variant)}`}>
+          {loading
+            ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            : <i className="fa-solid fa-magnifying-glass" aria-hidden="true" />}
+          {loading ? (isEnglish ? 'Searching...' : 'Mencari...') : t.search}
         </button>
       </div>
+
+      {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
     </form>
   );
 }

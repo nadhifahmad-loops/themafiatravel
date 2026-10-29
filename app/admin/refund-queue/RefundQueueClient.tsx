@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
-import { Search, Plane, Hotel, Train, Shield, Clock3, CheckCircle2, ArrowRightLeft, RefreshCw, type LucideIcon } from 'lucide-react';
+import { Search, Plane, Hotel, Train, Shield, Clock3, CheckCircle2, ArrowRightLeft, RefreshCw, AlertTriangle, type LucideIcon } from 'lucide-react';
 import Pagination from '@/components/admin/Pagination';
 
 interface AdminRefundBooking {
@@ -32,6 +32,7 @@ const PAGE_SIZE = 10;
 const STATUS_BADGE: Record<string, { label: string; cls: string; icon: LucideIcon }> = {
   refund_requested: { label: 'Menunggu Review', cls: 'bg-orange-100 text-orange-700', icon: Clock3 },
   refund: { label: 'Refund Diproses', cls: 'bg-purple-100 text-purple-700', icon: RefreshCw },
+  expired: { label: 'Kedaluwarsa', cls: 'bg-red-100 text-red-600', icon: AlertTriangle },
 };
 
 const TYPE_ICON: Record<string, LucideIcon> = { flight: Plane, hotel: Hotel, train: Train, insurance: Shield };

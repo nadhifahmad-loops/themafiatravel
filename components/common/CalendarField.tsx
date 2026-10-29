@@ -13,6 +13,8 @@ import { useState, type ReactNode } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { DayPicker, type Matcher } from 'react-day-picker';
 import { id as rdpLocaleId } from 'react-day-picker/locale/id';
+import { enUS as rdpLocaleEnUS } from 'react-day-picker/locale/en-US';
+import { useLanguage } from '@/contexts/LanguageContext';
 import 'react-day-picker/style.css';
 
 const CALENDAR_CLASS =
@@ -65,6 +67,7 @@ export function CalendarField({
   children,
 }: CalendarFieldProps) {
   const [open, setOpen] = useState(false);
+  const { language } = useLanguage();
   const disabledDays = buildDisabledDays(minDate, maxDate);
 
   return (
@@ -81,7 +84,7 @@ export function CalendarField({
               onChange(d ?? null);
               setOpen(false);
             }}
-            locale={rdpLocaleId}
+            locale={language === 'EN' ? rdpLocaleEnUS : rdpLocaleId}
             captionLayout="dropdown"
             defaultMonth={value ?? defaultMonth}
             startMonth={minDate}
@@ -111,6 +114,7 @@ export function CalendarRangeField({
   children,
 }: CalendarRangeFieldProps) {
   const [open, setOpen] = useState(false);
+  const { language } = useLanguage();
   const disabledDays = buildDisabledDays(minDate, maxDate);
 
   return (
@@ -127,7 +131,7 @@ export function CalendarRangeField({
               onChange({ from: range?.from ?? null, to: range?.to ?? null });
               if (range?.from && range?.to) setOpen(false);
             }}
-            locale={rdpLocaleId}
+            locale={language === 'EN' ? rdpLocaleEnUS : rdpLocaleId}
             captionLayout="dropdown"
             defaultMonth={startDate ?? defaultMonth}
             startMonth={minDate}

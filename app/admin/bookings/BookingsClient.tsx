@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
-import { Search, Plane, Hotel, Train, Shield, CheckCircle, XCircle, Clock, type LucideIcon } from 'lucide-react';
+import { Search, Plane, Hotel, Train, Shield, CheckCircle, XCircle, Clock, AlertTriangle, type LucideIcon } from 'lucide-react';
 import Pagination from '@/components/admin/Pagination';
 
 const PAGE_SIZE = 10;
@@ -39,6 +39,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string; icon: LucideIco
   paid:            { label: 'Dibayar',        cls: 'bg-blue-100 text-blue-700',   icon: CheckCircle },
   issued:          { label: 'Issued',         cls: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
   cancelled:       { label: 'Batal',          cls: 'bg-red-100 text-red-600',      icon: XCircle },
+  expired:         { label: 'Kedaluwarsa',    cls: 'bg-red-100 text-red-600',      icon: AlertTriangle },
   refund_requested:{ label: 'Refund Diminta', cls: 'bg-orange-100 text-orange-700', icon: Clock },
   refund:          { label: 'Refund Proses',  cls: 'bg-purple-100 text-purple-700', icon: Clock },
 };

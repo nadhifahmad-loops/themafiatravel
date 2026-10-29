@@ -1,26 +1,85 @@
 'use client';
+
 import { memo, useMemo, useState, useCallback } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { i18n } from '@/lib/i18n';
+import { i18n, tpl } from '@/lib/i18n';
+import { STATION_COORDS } from '@/lib/geo';
 
-const CABIN_LABELS: Record<string, string> = {
-  E: 'Eksekutif', B: 'Bisnis', K: 'Ekonomi', P: 'Prioritas',
+const CABIN_LABEL_KEYS: Record<string, 'cabinExecutive' | 'cabinBusiness' | 'cabinEconomy' | 'cabinPriority'> = {
+  E: 'cabinExecutive', B: 'cabinBusiness', K: 'cabinEconomy', P: 'cabinPriority',
 };
 
-function formatDuration(elapsed: string) {
+type TrainFare = {
+  fare_code?: string;
+  fare_name?: string;
+  class_of_service?: string;
+  service_charge_summary?: {
+    total_price?: number | string;
+    base_price?: number | string;
+    base_fare?: number | string;
+    base_tax?: number | string;
+    service_charges?: {
+      name?: string;
+      type?: string;
+      description?: string;
+      total?: number | string;
+    }[];
+  }[];
+  fare_details?: {
+    detail_name?: string;
+    detail_type?: string;
+    amount?: number | string;
+    unit?: string;
+    description?: string[] | string;
+  }[];
+  fare_rules?: ({ description?: string[] | string } | string)[];
+};
+
+type TrainJourney = {
+  fares?: TrainFare[];
+  carrier_name?: string;
+  carrier_code?: string;
+  carrier_number?: string;
+  departure_date?: string;
+  arrival_date?: string;
+  elapsed_time?: string;
+  origin?: string;
+  origin_name?: string;
+  origin_city?: string;
+  destination?: string;
+  destination_name?: string;
+  destination_city?: string;
+  available_count?: number | string;
+  cabin_class?: string;
+  class_of_service?: string;
+  journey_code?: string;
+};
+
+function formatDuration(elapsed: string | undefined) {
   if (!elapsed) return '-';
   const parts = elapsed.split(':');
   if (parts.length >= 2) {
-    const h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
+    const h = Number.parseInt(parts[0], 10);
+    const m = Number.parseInt(parts[1], 10);
     return h > 0 ? `${h}j ${m}m` : `${m}m`;
   }
   return elapsed;
 }
 
-function formatTime(dt: string) {
+function formatTime(dt: string | undefined) {
   if (!dt) return '--:--';
   return dt.split(' ')[1]?.substring(0, 5) || dt.substring(11, 16);
+}
+
+function formatDate(dt: string | undefined, language: string) {
+  if (!dt) return '';
+  const date = new Date(dt.replace(' ', 'T'));
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(language === 'EN' ? 'en-US' : 'id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 function fmtIDR(n: number) {
@@ -28,182 +87,293 @@ function fmtIDR(n: number) {
   return 'Rp ' + Math.round(n).toLocaleString('id-ID');
 }
 
-function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { journey: any; onSelect: (journey: any, fare: any) => void; adultCount: number; isCheapest?: boolean; searchParams?: any; }) {
+function farePrice(fare: TrainFare) {
+  const summary = fare.service_charge_summary?.[0];
+  return Number(summary?.total_price || summary?.base_price || summary?.base_fare) || 0;
+}
+
+function getFareRuleText(rule: NonNullable<TrainFare['fare_rules']>[number]) {
+  const description = typeof rule === 'string' ? rule : rule.description;
+  return Array.isArray(description) ? description.filter(Boolean) : [description].filter((text): text is string => Boolean(text));
+}
+
+function getFareDetailText(detail: NonNullable<TrainFare['fare_details']>[number]) {
+  const description = Array.isArray(detail.description) ? detail.description.filter(Boolean).join(', ') : detail.description;
+  const label = detail.detail_name || detail.detail_type;
+  const quantity = [detail.amount, detail.unit].filter(Boolean).join(' ');
+  const parts = [label, description, quantity].filter((part): part is string => Boolean(part));
+  return parts.join(' · ');
+}
+
+function stationName(code: string, suppliedName?: string) {
+  return suppliedName || STATION_COORDS[code]?.name || code;
+}
+
+function stationCity(code: string, suppliedCity?: string) {
+  if (suppliedCity) return suppliedCity;
+  if (['GMR', 'PSE', 'JAKK', 'JNG', 'BKS', 'CKR'].includes(code)) return 'Jakarta';
+  return STATION_COORDS[code]?.name || code;
+}
+
+function formatStationLabel(name: string, code: string) {
+  if (!code || name.toLowerCase().includes(`(${code.toLowerCase()})`)) return name || code;
+  return `${name} (${code})`;
+}
+
+function TrainCard({ journey, onSelect, adultCount, isCheapest = false }: { journey: TrainJourney; onSelect: (journey: TrainJourney, fare: TrainFare) => void; adultCount: number; isCheapest?: boolean; }) {
   const { language } = useLanguage();
   const t = i18n.trainSearch[language];
+  const tc = i18n.common[language];
+  const [activePanel, setActivePanel] = useState<'journey' | 'info' | null>(null);
   const [showFares, setShowFares] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
 
-  const fares: any[] = useMemo(() => journey.fares || [], [journey]);
-  const trainName = journey.carrier_name || '';
-  const trainCode = journey.carrier_code || '';
+  const fares = useMemo(() => journey.fares || [], [journey]);
+  const trainName = journey.carrier_name || t.trainKai;
   const trainNum = journey.carrier_number || '';
-  
-  const departureTime = useMemo(() => formatTime(journey.departure_date), [journey]);
-  const arrivalTime = useMemo(() => formatTime(journey.arrival_date), [journey]);
+  const departureTime = formatTime(journey.departure_date);
+  const arrivalTime = formatTime(journey.arrival_date);
+  const departureDate = formatDate(journey.departure_date, language);
+  const arrivalDate = formatDate(journey.arrival_date, language);
+  const originCode = journey.origin || '';
+  const destinationCode = journey.destination || '';
+  const originName = stationName(originCode, journey.origin_name);
+  const destinationName = stationName(destinationCode, journey.destination_name);
+  const originCity = stationCity(originCode, journey.origin_city);
+  const destinationCity = stationCity(destinationCode, journey.destination_city);
 
+  const lowestFare = useMemo(() => fares.reduce<TrainFare | undefined>((lowest, fare) => {
+    if (!lowest) return fare;
+    return farePrice(fare) < farePrice(lowest) ? fare : lowest;
+  }, undefined), [fares]);
   const lowestPrice = useMemo(() => {
-    if (!fares.length) return 0;
-    const fare = fares[0];
-    const summary = fare.service_charge_summary?.[0];
-    if (!summary) return 0;
-    return (summary.base_price || summary.base_fare || 0) * adultCount;
-  }, [fares, adultCount]);
+    return lowestFare ? farePrice(lowestFare) : 0;
+  }, [lowestFare]);
+  const totalPrice = lowestPrice * adultCount;
+  const fareSummary = lowestFare?.service_charge_summary?.[0];
+  const fareRules = lowestFare?.fare_rules?.flatMap(getFareRuleText).filter(Boolean) || [];
+  const fareDetails = lowestFare?.fare_details?.map(getFareDetailText).filter(Boolean) || [];
 
-  const handleSelect = useCallback(async (fare: any) => {
-    if (isSelecting) return;
+  const handleSelect = useCallback(async (fare: TrainFare | undefined) => {
+    if (isSelecting || !fare) return;
     setIsSelecting(true);
     try { await onSelect(journey, fare); }
     catch (err) { console.error(err); }
     finally { setIsSelecting(false); }
   }, [journey, onSelect, isSelecting]);
 
-  const seatAvail = journey.available_count ?? 0;
-  const cabinLabel = CABIN_LABELS[journey.cabin_class] || `${t.class} ${journey.cabin_class}`;
+  const seatAvail = Number(journey.available_count) || 0;
+  const cabinKey = CABIN_LABEL_KEYS[journey.cabin_class || ''];
+  const cabinLabel = cabinKey ? t[cabinKey] : `${t.class} ${journey.cabin_class || ''}`;
+  const isOvernight = journey.departure_date && journey.arrival_date
+    && new Date(journey.arrival_date.replace(' ', 'T')).toDateString() !== new Date(journey.departure_date.replace(' ', 'T')).toDateString();
+
+  const togglePanel = (panel: 'journey' | 'info') => {
+    setActivePanel(current => current === panel ? null : panel);
+  };
 
   return (
     <>
       {isSelecting && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center">
-          <div className="bg-white rounded-3xl p-8 shadow-2xl flex flex-col items-center gap-5 max-w-sm w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+          <div className="mx-4 flex w-full max-w-sm flex-col items-center gap-5 rounded-3xl bg-white p-8 shadow-2xl">
             <div className="relative">
-              <div className="w-20 h-20 rounded-full border-[6px] border-orange-100"></div>
-              <div className="absolute inset-0 rounded-full border-[6px] border-orange-500 border-t-transparent animate-spin"></div>
+              <div className="h-20 w-20 rounded-full border-[6px] border-orange-100"></div>
+              <div className="absolute inset-0 animate-spin rounded-full border-[6px] border-orange-500 border-t-transparent"></div>
               <div className="absolute inset-0 flex items-center justify-center">
-                <i className="fa-solid fa-ticket text-orange-600 text-2xl"></i>
+                <i className="fa-solid fa-ticket text-2xl text-orange-600"></i>
               </div>
             </div>
             <div className="text-center">
-              <h3 className="font-black text-xl text-brand-ink">Sedang Diproses...</h3>
-              <p className="text-sm text-slate-500 mt-2">Mohon tunggu sebentar</p>
+              <h3 className="text-xl font-black text-brand-ink">{t.processing}</h3>
+              <p className="mt-2 text-sm text-slate-500">{t.pleaseWait}</p>
             </div>
-            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-orange-500 animate-pulse w-3/4"></div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full w-3/4 animate-pulse bg-orange-500"></div>
             </div>
           </div>
         </div>
       )}
 
-      <div className={`relative bg-white rounded-2xl border shadow-card overflow-hidden hover:shadow-md transition-all duration-200 ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}>
-        <div className="h-1.5 w-full bg-gradient-to-r from-orange-500 via-amber-400 to-orange-600" />
-
-        {isCheapest && (
-          <div className="px-5 pt-3 pb-0">
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white px-2.5 py-1 rounded-full shadow-sm">
-              <i className="fa-solid fa-tags text-[9px]"></i>
-              Harga Termurah
-            </span>
-          </div>
-        )}
-        <div className="p-4 md:p-5 flex flex-col md:flex-row items-stretch gap-4">
-          
-          {/* Bagian Kiri: Operator / KAI */}
-          <div className="flex items-center gap-3 md:w-48 shrink-0">
-            <div className="w-12 h-12 rounded-xl bg-orange-50 border border-orange-100 flex items-center justify-center overflow-hidden shrink-0">
-               <i className="fa-solid fa-train text-orange-500 text-xl"></i>
-            </div>
-            <div>
-              <p className="font-black text-brand-ink text-sm leading-tight">{trainName}</p>
-              <p className="text-[11px] text-slate-400 font-semibold">{trainCode}{trainNum ? ` ${trainNum}` : ''}</p>
-              <p className="text-[11px] text-slate-400">{cabinLabel} {journey.class_of_service && `· ${journey.class_of_service}`}</p>
-            </div>
-          </div>
-
-          {/* Bagian Tengah: Rute & Waktu */}
-          <div className="flex-1 flex items-center justify-between gap-2">
-            <div className="text-center">
-              <p className="text-2xl font-black text-brand-ink">{departureTime}</p>
-              <p className="text-xs font-bold text-slate-500 uppercase">{journey.origin}</p>
-            </div>
-
-            <div className="flex flex-col items-center flex-1 px-2">
-              <p className="text-[11px] font-bold text-slate-400 mb-1">{formatDuration(journey.elapsed_time)}</p>
-              <div className="w-full flex items-center gap-1">
-                <div className="flex-1 h-px bg-slate-200"></div>
-                <i className="fa-solid fa-train-tram text-orange-500 text-[10px]"></i>
-                <div className="flex-1 h-px bg-slate-200"></div>
-              </div>
-              <p className="text-[10px] font-bold mt-1 uppercase text-emerald-600">
-                Langsung
-              </p>
-            </div>
-
-            <div className="text-center">
-              <p className="text-2xl font-black text-brand-ink">{arrivalTime}</p>
-              <p className="text-xs font-bold text-slate-500 uppercase">{journey.destination}</p>
-            </div>
-          </div>
-
-          {/* Bagian Kanan: Harga & Tombol */}
-          <div className="md:w-52 shrink-0 border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 md:pl-5 flex flex-col gap-2">
-            
-            <div className="flex items-center gap-1.5 text-xs bg-slate-50 rounded-full px-2.5 py-1 self-start">
-               <i className="fa-solid fa-couch text-slate-400"></i>
-               {seatAvail > 20 ? (
-                 <span className="font-semibold text-emerald-600">{t.available} {seatAvail} {t.seat}</span>
-               ) : seatAvail > 0 ? (
-                 <span className="font-semibold text-amber-600">Sisa {seatAvail} kursi</span>
-               ) : (
-                 <span className="font-semibold text-red-500">Habis Terjual</span>
-               )}
-            </div>
-
-            <div className="mt-1">
-              <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wide">Mulai dari</p>
-              <p className="text-xl font-black text-orange-600 leading-tight">{fmtIDR(lowestPrice)}</p>
-              <p className="text-[10px] text-slate-400">/orang</p>
-            </div>
-
-            <div className="flex gap-2 mt-auto">
+      <article
+        onClick={event => {
+          const target = event.target;
+          if (!(target instanceof Element) || !target.closest('[data-train-card-summary]') || target.closest('button')) return;
+          setActivePanel(current => current ? null : 'journey');
+        }}
+        className={`overflow-hidden rounded-2xl border bg-white shadow-card transition-all hover:shadow-md ${isCheapest ? 'border-orange-300' : 'border-slate-100'}`}
+      >
+        <div data-train-card-summary className="grid cursor-pointer grid-cols-1 gap-4 p-4 md:grid-cols-[minmax(170px,1fr)_minmax(260px,1.6fr)_minmax(145px,auto)] md:items-center md:gap-5 md:px-5">
+          <div className="min-w-0">
+            {isCheapest && (
+              <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                <i className="fa-solid fa-tags" aria-hidden="true"></i> {t.cheapest}
+              </span>
+            )}
+            <h2 className="truncate text-base font-bold text-brand-ink">{trainName}{trainNum ? ` (${trainNum})` : ''}</h2>
+            <p className="mt-1 text-sm text-slate-500">{cabinLabel}{journey.class_of_service ? ` (${journey.class_of_service})` : ''}</p>
+            <div className="mt-3 flex items-center gap-5">
               <button
-                onClick={() => handleSelect(fares[0])}
-                disabled={isSelecting || !fares.length || seatAvail === 0}
-                className="flex-1 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-sm transition-all disabled:opacity-50 disabled:bg-slate-300 disabled:cursor-not-allowed active:scale-95"
+                type="button"
+                onClick={() => togglePanel('journey')}
+                aria-expanded={activePanel === 'journey'}
+                className={`relative py-1 text-sm font-semibold transition-colors ${activePanel === 'journey' ? 'text-sky-600' : 'text-slate-500 hover:text-sky-600'}`}
               >
-                {seatAvail === 0 ? 'Habis' : t.selectTrain}
+                {t.journeyDetail}
+                {activePanel === 'journey' && <span className="absolute -bottom-1 left-0 h-0.5 w-full bg-sky-500" />}
               </button>
-              {fares.length > 1 && (
-                <button
-                  onClick={() => setShowFares(!showFares)}
-                  className={`px-3 rounded-xl border-2 text-sm font-bold transition-all ${showFares ? 'border-orange-400 text-orange-600 bg-orange-50' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
-                >
-                  <i className={`fa-solid fa-chevron-${showFares ? 'up' : 'down'} text-xs`}></i>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => togglePanel('info')}
+                aria-expanded={activePanel === 'info'}
+                className={`relative py-1 text-sm font-semibold transition-colors ${activePanel === 'info' ? 'text-sky-600' : 'text-slate-500 hover:text-sky-600'}`}
+              >
+                Info
+                {activePanel === 'info' && <span className="absolute -bottom-1 left-0 h-0.5 w-full bg-sky-500" />}
+              </button>
             </div>
+          </div>
+
+          <div className="mx-auto grid w-full max-w-[420px] grid-cols-3 items-center gap-1 sm:gap-2">
+            <div className="text-center">
+              <p className="text-xl font-bold leading-none text-slate-900">{departureTime}</p>
+              <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">{originCode}</span>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] font-medium text-slate-500">{formatDuration(journey.elapsed_time)}</p>
+              <div className="my-1 flex items-center gap-1">
+                <span className="h-px flex-1 bg-slate-300" />
+                <i className="fa-solid fa-train text-[10px] text-slate-400" aria-hidden="true"></i>
+                <span className="h-px flex-1 bg-slate-300" />
+              </div>
+              <p className="text-[9px] text-slate-500">{t.direct}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-xl font-bold leading-none text-slate-900">{arrivalTime}</p>
+              <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500">{destinationCode}</span>
+              {isOvernight && <span className="ml-1 align-top text-[9px] text-slate-500">{t.nextDay}</span>}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 md:flex-col md:items-end md:border-0 md:pt-0">
+            <div className="text-left md:text-right">
+              <p className="text-lg font-bold leading-tight text-orange-600">{fmtIDR(lowestPrice)}<span className="text-sm font-normal text-slate-500">{t.perPax}</span></p>
+              {seatAvail > 0 && seatAvail <= 7 && <p className="text-[10px] font-medium text-red-500">{tpl(t.seatsLeft, { count: seatAvail })}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSelect(lowestFare)}
+              disabled={isSelecting || !lowestFare || seatAvail === 0}
+              className="shrink-0 rounded-full bg-orange-500 px-5 py-2 text-sm font-bold text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {seatAvail === 0 ? t.soldOut : t.selectTrain}
+            </button>
           </div>
         </div>
 
-        {/* Fares yang Diekspansi */}
-        {showFares && fares.length > 1 && (
-          <div className="bg-slate-50 border-t border-slate-100 p-5">
-            <p className="text-xs font-black text-slate-700 uppercase tracking-wider mb-4">Pilih Sub-Kelas Tarif</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              {fares.map((fare: any, i: number) => {
-                const summary = fare.service_charge_summary?.[0];
-                const farePrice = (summary?.base_price || summary?.base_fare || 0) * adultCount;
-                
-                return (
-                  <div
-                    key={i}
-                    onClick={() => { if (seatAvail > 0) handleSelect(fare); }}
-                    className={`bg-white rounded-xl border-2 border-slate-200 hover:border-orange-400 p-4 ${seatAvail > 0 ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'} transition-all hover:shadow-md relative`}
-                  >
-                    <div className="mb-3">
-                      <p className="text-lg font-black text-brand-ink">{fmtIDR(farePrice)}</p>
-                      <p className="text-[10px] text-slate-400 uppercase tracking-wide">per orang</p>
-                    </div>
-                    
-                    <button disabled={seatAvail === 0} className="mt-2 w-full py-2 rounded-lg bg-slate-100 hover:bg-orange-600 hover:text-white text-slate-700 font-black text-xs transition-all">
-                      Pilih Tarif
-                    </button>
-                  </div>
-                );
-              })}
+        {activePanel === 'journey' && (
+          <div className="border-t border-slate-100 bg-slate-50/70 px-4 py-4 md:px-5">
+            <div className="grid grid-cols-[16px_minmax(0,1fr)] gap-x-3">
+              <div className="row-span-3 flex flex-col items-center py-1">
+                <span className="h-2.5 w-2.5 rounded-full border border-sky-500 bg-white" />
+                <span className="my-1 w-px flex-1 border-l border-dashed border-slate-400" />
+                <span className="h-2.5 w-2.5 rounded-full bg-sky-500" />
+              </div>
+              <div className="min-w-0 pb-2">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                  <strong className="text-sm font-bold text-slate-900">{departureTime}</strong>
+                  <span className="text-sm font-semibold text-slate-800">{formatStationLabel(originName, originCode)}</span>
+                </div>
+                <p className="text-xs text-slate-500">{departureDate} · {originCity}</p>
+              </div>
+              <div className="py-1">
+                <span className="text-xs text-slate-500">{formatDuration(journey.elapsed_time)}</span>
+              </div>
+              <div className="min-w-0 pt-2">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                  <strong className="text-sm font-bold text-slate-900">{arrivalTime}</strong>
+                  <span className="text-sm font-semibold text-slate-800">{formatStationLabel(destinationName, destinationCode)}</span>
+                </div>
+                <p className="text-xs text-slate-500">{arrivalDate}{isOvernight ? t.nextDayShort : ''} · {destinationCity}</p>
+              </div>
             </div>
           </div>
         )}
-      </div>
+
+        {activePanel === 'info' && (
+          <div className="border-t border-slate-100 bg-slate-50/70 px-4 py-4 text-xs leading-relaxed text-slate-700 md:px-5">
+            <section>
+              <h3 className="font-bold text-slate-900">{t.priceBreakdown}</h3>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span>{lowestFare?.fare_name || lowestFare?.class_of_service || `${trainName} ${t.adultLabel}`} × {adultCount}</span>
+                <span className="shrink-0">{fmtIDR(lowestPrice)}</span>
+              </div>
+              {fareSummary?.service_charges?.map((charge, index) => (
+                <div key={`${charge.type || charge.name || 'charge'}-${index}`} className="mt-1 flex items-center justify-between gap-3 text-slate-500">
+                  <span>{charge.name || charge.description || charge.type || t.serviceFee}</span>
+                  <span className="shrink-0">{fmtIDR(Number(charge.total) || 0)}</span>
+                </div>
+              ))}
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-300 pt-2 font-bold text-slate-900">
+                <span>{t.totalPrice}{adultCount > 1 ? ` (${adultCount} ${tc.adult.toLowerCase()})` : ''}</span>
+                <span>{fmtIDR(totalPrice)}</span>
+              </div>
+            </section>
+
+            {fareDetails.length > 0 && (
+              <section className="mt-4 border-t border-slate-200 pt-3">
+                <h3 className="font-bold text-slate-900">{t.fareDetails}</h3>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {fareDetails.map((detail, index) => <li key={`${detail}-${index}`}>{detail}</li>)}
+                </ul>
+              </section>
+            )}
+
+            <section className="mt-4 border-t border-slate-200 pt-3">
+              <h3 className="font-bold text-slate-900">{t.importantPolicy}</h3>
+              {fareRules.length > 0 ? (
+                <ul className="mt-2 space-y-2">
+                  {fareRules.map((rule, index) => <li key={`${rule}-${index}`}>{rule}</li>)}
+                </ul>
+              ) : (
+                <p className="mt-2 text-slate-500">{t.policyUnavailable}</p>
+              )}
+            </section>
+
+            {fares.length > 1 && (
+              <div className="mt-4 border-t border-slate-200 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowFares(open => !open)}
+                  aria-expanded={showFares}
+                  className="text-sm font-semibold text-sky-700 hover:text-sky-800"
+                >
+                  {showFares ? t.hideFares : tpl(t.showFares, { count: fares.length })}
+                </button>
+                {showFares && (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {fares.map((fare, index) => {
+                      const price = farePrice(fare) * adultCount;
+                      return (
+                        <button
+                          key={fare.fare_code || index}
+                          type="button"
+                          onClick={() => handleSelect(fare)}
+                          disabled={isSelecting || seatAvail === 0}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:border-orange-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <span className="text-xs font-semibold text-slate-700">{fare.class_of_service || fare.fare_name || fare.fare_code || t.fareLabel}</span>
+                          <span className="text-sm font-bold text-orange-600">{fmtIDR(price)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </article>
     </>
   );
 }

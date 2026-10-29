@@ -118,8 +118,9 @@ const STATUS_CONFIG: Record<string, { label: string; dot: string; text: string; 
   pending_payment: { label: 'Menunggu Pembayaran', dot: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
   paid:            { label: 'Terkonfirmasi', dot: 'bg-emerald-400', text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
   issued:          { label: 'Selesai', dot: 'bg-emerald-400', text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  payment_failed:  { label: 'Kadaluarsa', dot: 'bg-red-400', text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
+  payment_failed:  { label: 'Pembayaran Gagal', dot: 'bg-red-400', text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
   cancelled:       { label: 'Dibatalkan', dot: 'bg-slate-400', text: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200' },
+  expired:         { label: 'Kedaluwarsa', dot: 'bg-red-400', text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
   refund_requested:{ label: 'Refund Diproses', dot: 'bg-orange-400', text: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' },
   refund:          { label: 'Berhasil Direfund', dot: 'bg-purple-400', text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
 };

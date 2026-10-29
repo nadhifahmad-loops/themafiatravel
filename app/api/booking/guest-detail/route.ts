@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { safeTrainProviderBookings } from '@/lib/train-seat-data';
+import { matchGuestContact } from '@/lib/booking-contact-match';
 
-function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.startsWith('62')) return digits;
-  return '62' + digits.replace(/^0/, '');
-}
+/** Bentuk mentah passenger di passengerData (JSON) — untuk pemetaan respons. */
+type GuestPassengerRow = {
+  title?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  pax_type?: string | null;
+  seat?: string | null;
+  nationality_code?: string | null;
+  ticket_number?: string | null;
+};
 
 export async function GET(req: NextRequest) {
   try {
@@ -36,39 +41,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Pesanan tidak ditemukan.' }, { status: 404 });
     }
 
-    const inputStr = phone.trim();
-    const isEmail = inputStr.includes('@');
-    const allDataStr = JSON.stringify(booking.bookingData || {}) + JSON.stringify(booking.passengerData || {});
-
-    let isMatch = false;
-    if (isEmail) {
-      isMatch = allDataStr.toLowerCase().includes(inputStr.toLowerCase());
-    } else {
-      const cleanInput = normalizePhone(inputStr);
-      if (cleanInput.length >= 10) {
-        const localFormat = cleanInput.replace(/^62/, '0');
-        isMatch = allDataStr.includes(localFormat)
-               || allDataStr.includes(cleanInput)
-               || allDataStr.includes('+' + cleanInput)
-               || allDataStr.includes(cleanInput.replace(/^62/, ''));
-      }
-    }
-
-    if (!isMatch) {
+    // Pencocokan presisi bersama (lib/booking-contact-match) — kredensial yang
+    // lolos /api/booking/find pasti lolos di sini; pesan 403 dipertahankan.
+    const match = matchGuestContact(phone, booking.bookingData, booking.passengerData);
+    if (!match.ok) {
       return NextResponse.json({ success: false, error: 'Verifikasi gagal.' }, { status: 403 });
     }
 
-    const bd = (booking.bookingData ?? {}) as any;
+    const bd = (booking.bookingData ?? {}) as Record<string, unknown>;
     const contacts = Array.isArray(bd.contacts) ? bd.contacts : [];
     const booker = bd.booker || contacts[0] || {};
-    const passengers = Array.isArray(booking.passengerData) ? booking.passengerData : [];
+    const passengers = (Array.isArray(booking.passengerData) ? booking.passengerData : []) as GuestPassengerRow[];
 
     // Subset aman dari segmen penerbangan provider (tanpa data harga/tarif).
     const rawSegments =
       Array.isArray(bd.provider_bookings) && bd.provider_bookings[0] && Array.isArray(bd.provider_bookings[0].segments)
         ? bd.provider_bookings[0].segments
         : [];
-    const flightSegments = rawSegments.map((s: any) => ({
+    const flightSegments = rawSegments.map((s: Record<string, unknown>) => ({
       origin: s.origin || null,
       destination: s.destination || null,
       origin_name: s.origin_name || null,
@@ -116,13 +106,16 @@ export async function GET(req: NextRequest) {
         couponCode: booking.couponCode || null,
         discountAmount: booking.discountAmount || 0,
         // Field tambahan untuk kebutuhan dokumen PDF (voucher/e-ticket).
-        hotelName: bd.hotel_name || bd.hotelName || null,
-        checkinDate: bd.checkin_date || bd.checkinDate || null,
-        checkoutDate: bd.checkout_date || bd.checkoutDate || null,
+        // Field voucher hotel — booking hotel menyimpan nama & tanggal di KOLOM;
+        // bookingData (respons Orbis createBooking) tidak memuatnya, jadi kolom
+        // dipakai sebagai fallback agar kartu hotel/PDF tamu terisi.
+        hotelName: bd.hotel_name || bd.hotelName || booking.hotelName || null,
+        checkinDate: bd.checkin_date || bd.checkinDate || booking.checkinDate || null,
+        checkoutDate: bd.checkout_date || bd.checkoutDate || booking.checkoutDate || null,
         coverage: bd.coverage || null,
         refundable,
         flightSegments,
-        passengers: passengers.map((p: any) => ({
+        passengers: passengers.map((p) => ({
           name: `${p.title || ''} ${p.first_name || ''} ${p.last_name || ''}`.trim(),
           type: p.pax_type || 'ADT',
           seat: p.seat || null,

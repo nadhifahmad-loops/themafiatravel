@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { GUEST_BOOKING_CREDS_KEY, getBookingStatusMeta } from '@/lib/booking-meta';
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 import Footer from '@/components/layout/Footer';
 import TrainSeatPicker from '@/components/train/TrainSeatPicker';
@@ -37,20 +38,53 @@ function getCountdown(createdAt: string) {
 function GuestBookingDetailContent() {
   const { language } = useLanguage();
   const isEN = language === 'EN';
+  const t = i18n.findBooking[language];
   const searchParams = useSearchParams();
 
-  const orderNumber = searchParams.get('orderNumber') || '';
-  const phone = searchParams.get('phone') || '';
+  // Kredensial tamu: utama dari sessionStorage (halaman cari menyimpannya
+  // sebelum navigasi — no. HP tidak pernah dibawa lewat URL). Fallback param
+  // URL lama (orderNumber&phone) agar link lawas tetap terbuka.
+  const urlOrderNumber = (searchParams.get('orderNumber') || '').replace(/\s+/g, '');
+  const urlPhone = searchParams.get('phone') || '';
+  const [creds, setCreds] = useState<{ orderNumber: string; phone: string } | null>(
+    urlOrderNumber && urlPhone ? { orderNumber: urlOrderNumber, phone: urlPhone } : null
+  );
+  const [credsReady, setCredsReady] = useState<boolean>(Boolean(urlOrderNumber && urlPhone));
 
+  const orderNumber = creds?.orderNumber || '';
+  const phone = creds?.phone || '';
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- payload guest-detail tidak punya skema ketat; field dibaca sesuai kebutuhan
   const [booking, setBooking] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [checkingPayment, setCheckingPayment] = useState(false);
-  const [countdown, setCountdown] = useState({ expired: true, hours: 0, minutes: 0, seconds: 0 });
+  const [, setCountdownTick] = useState(0); // pemaksa re-render tiap detik (countdown diturunkan saat render)
   const [paying, setPaying] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  // Ambil kredensial dari sessionStorage bila tidak ada di URL — jalur normal
+  // dari halaman cari. Ditunda lewat timer agar tidak ada setState sinkron di
+  // effect (initial render tetap "loading" → aman hydration); selama belum
+  // siap, load() menunggu lewat guard credsReady.
+  useEffect(() => {
+    if (credsReady) return;
+    const timer = setTimeout(() => {
+      try {
+        const raw = sessionStorage.getItem(GUEST_BOOKING_CREDS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as { orderNumber?: unknown; phone?: unknown };
+          if (typeof parsed.orderNumber === 'string' && typeof parsed.phone === 'string' && parsed.orderNumber && parsed.phone) {
+            setCreds({ orderNumber: parsed.orderNumber, phone: parsed.phone });
+          }
+        }
+      } catch { /* storage tidak tersedia / rusak — abaikan */ }
+      setCredsReady(true);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [credsReady]);
+
   const load = useCallback(async () => {
+    if (!credsReady) return; // kredensial belum siap — biarkan tetap loading
     await Promise.resolve();
     if (!orderNumber || !phone) {
       setError(isEN ? 'Invalid access. Please search again.' : 'Akses tidak valid. Silakan cari ulang.');
@@ -58,7 +92,9 @@ function GuestBookingDetailContent() {
       return;
     }
     try {
-      const res = await fetch(`/api/booking/guest-detail?orderNumber=${encodeURIComponent(orderNumber)}&phone=${encodeURIComponent(phone)}`);
+      const res = await fetch(`/api/booking/guest-detail?orderNumber=${encodeURIComponent(orderNumber)}&phone=${encodeURIComponent(phone)}`, {
+        headers: { 'Accept-Language': language },
+      });
       const data = await res.json();
       if (!res.ok || !data.success) {
         setError(data.error || (isEN ? 'Booking not found.' : 'Pesanan tidak ditemukan.'));
@@ -70,7 +106,7 @@ function GuestBookingDetailContent() {
     } finally {
       setLoading(false);
     }
-  }, [orderNumber, phone, isEN]);
+  }, [credsReady, orderNumber, phone, isEN]);
 
   useEffect(() => {
     const timer = setTimeout(() => { void load(); }, 0);
@@ -83,16 +119,15 @@ function GuestBookingDetailContent() {
 
     const checkPayment = async () => {
       try {
-        setCheckingPayment(true);
-        const res = await fetch(`/api/booking/guest-check-payment?orderNumber=${encodeURIComponent(orderNumber)}&phone=${encodeURIComponent(phone)}`);
+        const res = await fetch(`/api/booking/guest-check-payment?orderNumber=${encodeURIComponent(orderNumber)}&phone=${encodeURIComponent(phone)}`, {
+        headers: { 'Accept-Language': language },
+      });
         const data = await res.json();
         if (data.success && data.updated) {
-          setBooking((prev: any) => prev ? { ...prev, status: data.status } : prev);
+          setBooking((prev: Record<string, unknown> | null) => (prev ? { ...prev, status: data.status } : prev));
         }
       } catch {
         // silent fail
-      } finally {
-        setCheckingPayment(false);
       }
     };
 
@@ -101,14 +136,13 @@ function GuestBookingDetailContent() {
     return () => clearInterval(interval);
   }, [booking?.status, orderNumber, phone]);
 
-  // Countdown timer
+  // Tick per detik selama menunggu pembayaran — nilai countdown diturunkan
+  // saat render, jadi effect ini cukup memicu re-render (tanpa setState sinkron).
   useEffect(() => {
     if (!booking || booking.status !== 'pending_payment' || !booking.createdAt) return;
-
-    setCountdown(getCountdown(booking.createdAt));
-    const timer = setInterval(() => setCountdown(getCountdown(booking.createdAt)), 1000);
+    const timer = setInterval(() => setCountdownTick((v) => v + 1), 1000);
     return () => clearInterval(timer);
-  }, [booking?.status, booking?.createdAt]);
+  }, [booking]);
 
   const handlePayNow = async () => {
     if (!booking) return;
@@ -134,18 +168,8 @@ function GuestBookingDetailContent() {
   const fmtDateShort = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '--';
   const fmtTime = (d: string) => d ? new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--';
 
-  const statusConfig: Record<string, { text: string; color: string; icon: string }> = {
-    pending_payment: { text: isEN ? 'Awaiting Payment' : 'Menunggu Pembayaran', color: 'bg-amber-100 text-amber-700 border-amber-200', icon: 'fa-clock' },
-    paid:            { text: isEN ? 'Paid' : 'Dibayar', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: 'fa-check-circle' },
-    confirmed:       { text: isEN ? 'Confirmed' : 'Terkonfirmasi', color: 'bg-blue-100 text-blue-700 border-blue-200', icon: 'fa-check-circle' },
-    processing:      { text: isEN ? 'Processing' : 'Diproses', color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: 'fa-spinner' },
-    issued:          { text: isEN ? 'Issued' : 'Issued', color: 'bg-green-100 text-green-700 border-green-200', icon: 'fa-ticket' },
-    completed:       { text: isEN ? 'Completed' : 'Selesai', color: 'bg-green-100 text-green-700 border-green-200', icon: 'fa-check-double' },
-    cancelled:       { text: isEN ? 'Cancelled' : 'Dibatalkan', color: 'bg-red-100 text-red-700 border-red-200', icon: 'fa-times-circle' },
-    payment_failed:  { text: isEN ? 'Payment Failed' : 'Pembayaran Gagal', color: 'bg-red-100 text-red-700 border-red-200', icon: 'fa-xmark' },
-  };
-
-  const st = statusConfig[booking?.status] || { text: booking?.status || '--', color: 'bg-slate-100 text-slate-600 border-slate-200', icon: 'fa-circle-info' };
+  // Label+style status dari helper bersama (lib/booking-meta) — teks dari i18n.
+  const st = getBookingStatusMeta(booking?.status || '', t);
 
   const airlineName = resolveAirlineName(booking?.airlineName || '', booking?.provider || '');
   const cabinClass = booking?.cabinClass || '';
@@ -153,6 +177,11 @@ function GuestBookingDetailContent() {
   const airlineLogo = booking?.provider ? `/images/airlines/${booking.provider.toLowerCase()}.png` : '';
 
   const isPending = booking?.status === 'pending_payment';
+  // Sisa waktu bayar — diturunkan dari createdAt saat render (efek tick di
+  // atas hanya memaksa re-render per detik).
+  const countdown = isPending && booking?.createdAt
+    ? getCountdown(booking.createdAt)
+    : { expired: true, hours: 0, minutes: 0, seconds: 0 };
   const isExpired = isPending && countdown.expired;
 
   // Journeys train (KAI) — subset aman tanpa harga, dipakai tampilan/ubah kursi.
@@ -192,6 +221,22 @@ function GuestBookingDetailContent() {
   const isInsurance = bType === 'insurance';
   const isTransport = isFlight || isTrain;
   const canDownload = booking?.status === 'paid' || booking?.status === 'issued';
+
+  // Jumlah malam (hotel) — dihitung dari tanggal check-in/out yang tersedia.
+  const hotelNights = isHotel && booking?.checkinDate && booking?.checkoutDate
+    ? Math.max(1, Math.round((new Date(booking.checkoutDate).getTime() - new Date(booking.checkinDate).getTime()) / 86400000))
+    : 0;
+
+  // Nama stasiun asal/tujuan dari journey pertama (KAI) untuk kartu kereta.
+  const firstJourney = (() => {
+    const pb = providerBookings[0];
+    const journeys = pb && Array.isArray(pb.journeys) ? (pb.journeys as unknown[]) : [];
+    const j = journeys[0] as Record<string, unknown> | undefined;
+    return {
+      originName: j && typeof j.origin_name === 'string' ? j.origin_name : '',
+      destName: j && typeof j.destination_name === 'string' ? j.destination_name : '',
+    };
+  })();
 
   // Booking "mentah" untuk template: field yang dipakai PdfTemplate.
   const pdfBooking = booking ? {
@@ -482,7 +527,122 @@ function GuestBookingDetailContent() {
               </div>
             )}
 
-            {/* Passengers + Seats */}
+            {/* Train Card */}
+            {isTrain && (booking.origin || booking.destination) && (
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden mb-3">
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center border border-slate-200 shadow-sm">
+                      <i className="fa-solid fa-train text-emerald-600 text-sm"></i>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-slate-900 truncate">{airlineName || t.typeTrain}</p>
+                      {booking.flightNumber && (
+                        <p className="text-[10px] text-slate-400 font-semibold">{booking.flightNumber}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-slate-500 mb-1 text-[10px] font-bold uppercase tracking-wider">{t.labelDeparture}</p>
+                      <p className="text-lg font-black text-slate-900">{fmtTime(booking.departureDate)}</p>
+                      <p className="text-xs font-bold text-slate-600 mt-0.5">
+                        {booking.origin}{firstJourney.originName ? ` · ${firstJourney.originName}` : ''}
+                      </p>
+                      {booking.departureDate && (
+                        <p className="text-[10px] text-slate-400 mt-0.5">{fmtDateShort(booking.departureDate)}</p>
+                      )}
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-slate-500 mb-1 text-[10px] font-bold uppercase tracking-wider">{t.labelDestination}</p>
+                      <p className="text-lg font-black text-slate-900">{booking.destination || '--'}</p>
+                      {firstJourney.destName && (
+                        <p className="text-xs font-bold text-slate-600 mt-0.5">{firstJourney.destName}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Hotel Card */}
+            {isHotel && booking.hotelName && (
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden mb-3">
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center border border-slate-200 shadow-sm">
+                      <i className="fa-solid fa-hotel text-purple-600 text-sm"></i>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-slate-900 truncate">{booking.hotelName}</p>
+                      <p className="text-[10px] text-slate-400 font-semibold">{t.labelHotelVoucher}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-slate-500 mb-1 text-[10px] font-bold uppercase tracking-wider">Check-in</p>
+                      <p className="text-sm font-black text-slate-800">{fmtDateShort(booking.checkinDate)}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-slate-500 mb-1 text-[10px] font-bold uppercase tracking-wider">Check-out</p>
+                      <p className="text-sm font-black text-slate-800">{fmtDateShort(booking.checkoutDate)}</p>
+                    </div>
+                  </div>
+                  {hotelNights > 0 && (
+                    <p className="text-[11px] text-slate-400 text-center mt-2">
+                      {hotelNights} {t.labelNights}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Insurance Card */}
+            {isInsurance && (
+              <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden mb-3">
+                <div className="p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center border border-slate-200 shadow-sm">
+                      <i className="fa-solid fa-shield-halved text-blue-600 text-sm"></i>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black text-slate-900 truncate">
+                        {booking.hotelName || t.insuranceName}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-semibold">{t.labelCoverage}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-slate-500 mb-1 text-[10px] font-bold uppercase tracking-wider">{t.labelCoverageArea}</p>
+                      <p className="text-sm font-black text-slate-800">{booking.coverage || (isEN ? 'Worldwide' : 'Seluruh Dunia')}</p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-3">
+                      <p className="text-slate-500 mb-1 text-[10px] font-bold uppercase tracking-wider">{t.labelCoveragePeriod}</p>
+                      <p className="text-sm font-black text-slate-800">
+                        {booking.departureDate ? fmtDateShort(booking.departureDate) : '—'}
+                        {booking.arrivalDate ? ` → ${fmtDateShort(booking.arrivalDate)}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-50 rounded-xl p-3 mt-3 border border-amber-100">
+                    <div className="flex items-center gap-2 mb-1">
+                      <i className="fa-solid fa-users text-amber-500 text-xs"></i>
+                      <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+                        {isEN ? 'Insured' : 'Tertanggung'}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-slate-800">{booking.passengers?.length || 1} {isEN ? 'person' : 'orang'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Penumpang & Kursi */}
             {displayPassengers.length > 0 && (
               <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden mb-3">
                 <div className="p-5">
@@ -524,20 +684,31 @@ function GuestBookingDetailContent() {
                   {isEN ? 'Price Summary' : 'Ringkasan Harga'}
                 </h3>
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between text-slate-600">
-                    <span>{isEN ? 'Route' : 'Rute'}</span>
-                    <span className="font-semibold">{booking.origin} → {booking.destination}</span>
-                  </div>
+                  {(booking.origin && booking.destination) && (
+                    <div className="flex justify-between gap-4 text-slate-600">
+                      <span>{isEN ? 'Route' : 'Rute'}</span>
+                      <span className="font-semibold text-right">{booking.origin} → {booking.destination}</span>
+                    </div>
+                  )}
+                  {isHotel && (booking.checkinDate || booking.checkoutDate) && (
+                    <div className="flex justify-between gap-4 text-slate-600">
+                      <span>Check-in / Check-out</span>
+                      <span className="font-semibold text-right">
+                        {fmtDateShort(booking.checkinDate)}
+                        {booking.checkoutDate ? ` → ${fmtDateShort(booking.checkoutDate)}` : ''}
+                      </span>
+                    </div>
+                  )}
                   {booking.departureDate && (
-                    <div className="flex justify-between text-slate-600">
+                    <div className="flex justify-between gap-4 text-slate-600">
                       <span>{isEN ? 'Date' : 'Tanggal'}</span>
-                      <span className="font-semibold">{fmtDate(booking.departureDate)}</span>
+                      <span className="font-semibold text-right">{fmtDate(booking.departureDate)}</span>
                     </div>
                   )}
                   {booking.flightNumber && (
-                    <div className="flex justify-between text-slate-600">
-                      <span>{isEN ? 'Flight' : 'Penerbangan'}</span>
-                      <span className="font-semibold">{airlineName} {booking.flightNumber}</span>
+                    <div className="flex justify-between gap-4 text-slate-600">
+                      <span>{isTrain ? (isEN ? 'Train' : 'Kereta') : (isEN ? 'Flight' : 'Penerbangan')}</span>
+                      <span className="font-semibold text-right">{airlineName} {booking.flightNumber}</span>
                     </div>
                   )}
                   {cabinLabel && (
@@ -593,45 +764,52 @@ function GuestBookingDetailContent() {
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              {canDownload && (
-                <button
-                  onClick={handleDownloadPDF}
-                  disabled={downloading}
-                  className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
-                >
-                  {downloading ? (
-                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{isEN ? 'Preparing...' : 'Menyiapkan...'}</>
-                  ) : (
-                    <><i className="fa-solid fa-file-pdf text-xs"></i>{isEN ? 'Download Ticket (PDF)' : 'Unduh Tiket (PDF)'}</>
+            {/* Actions — aksi utama di baris atas, navigasi di baris bawah */}
+            <div className="space-y-3">
+              {(canDownload || (isTrainPaid && booking.id && providerBookings.length > 0)) && (
+                <div className="flex gap-3">
+                  {canDownload && (
+                    <button
+                      onClick={handleDownloadPDF}
+                      disabled={downloading}
+                      className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                    >
+                      {downloading ? (
+                        <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{isEN ? 'Preparing...' : 'Menyiapkan...'}</>
+                      ) : (
+                        <><i className="fa-solid fa-file-pdf text-xs"></i>{isEN ? 'Download Ticket (PDF)' : 'Unduh Tiket (PDF)'}</>
+                      )}
+                    </button>
                   )}
-                </button>
+                  {isTrainPaid && booking.id && providerBookings.length > 0 && (
+                    <TrainSeatPicker
+                      orderId={booking.id}
+                      providerBookings={providerBookings}
+                      passengers={rawPassengers.map((p) => ({ pax_type: p.type || 'ADT' }))}
+                      bookerEmail={booking.bookerEmail || undefined}
+                      orderNumber={orderNumber}
+                      phone={phone}
+                      onSaved={load}
+                    />
+                  )}
+                </div>
               )}
-              {isTrainPaid && booking.id && providerBookings.length > 0 && (
-                <TrainSeatPicker
-                  orderId={booking.id}
-                  providerBookings={providerBookings}
-                  passengers={rawPassengers.map((p) => ({ pax_type: p.type || 'ADT' }))}
-                  bookerEmail={booking.bookerEmail || undefined}
-                  orderNumber={orderNumber}
-                  phone={phone}
-                  onSaved={load}
-                />
-              )}
-              <Link
-                href="/find-booking"
-                className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
-              >
-                <i className="fa-solid fa-magnifying-glass text-xs"></i>
-                {isEN ? 'New Search' : 'Cari Lagi'}
-              </Link>
-              <Link
-                href="/"
-                className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-all text-sm"
-              >
-                {isEN ? 'Home' : 'Beranda'}
-              </Link>
+              <div className="flex gap-3">
+                <Link
+                  href="/find-booking"
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                >
+                  <i className="fa-solid fa-magnifying-glass text-xs"></i>
+                  {isEN ? 'New Search' : 'Cari Lagi'}
+                </Link>
+                <Link
+                  href="/"
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                >
+                  <i className="fa-solid fa-house text-xs"></i>
+                  {isEN ? 'Home' : 'Beranda'}
+                </Link>
+              </div>
             </div>
           </>
         )}

@@ -13,6 +13,7 @@ import { CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { i18n } from '@/lib/i18n';
+import { vBtnSearch, vField, vInput, vLabel, vValue } from '@/lib/formVariants';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 import UnifiedNavbar from '@/components/layout/UnifiedNavbar';
@@ -141,10 +142,10 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-end">
         {/* Property Type Filter */}
         <div className="lg:col-span-3 relative" ref={propertyRef}>
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{lang === 'EN' ? 'Property Type' : 'Tipe Properti'}</label>
+          <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${vValue('light')}`}>{lang === 'EN' ? 'Property Type' : 'Tipe Properti'}</label>
           <div
             onClick={() => setShowPropertyDrop(!showPropertyDrop)}
-            className="flex items-center gap-2 border border-white/30 rounded-lg px-3 py-2 bg-white/50 hover:border-orange-300/50 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-500/10 transition-all duration-200 cursor-pointer"
+            className={`flex items-center gap-2 ${vField('light')} cursor-pointer`}
           >
             <i className={`fa-solid ${PROPERTY_TYPES.find(p => p.value === propertyType)?.icon || 'fa-solid fa-list'} text-orange-500 text-xs shrink-0`} />
             <span className="flex-1 text-sm font-medium text-slate-800 truncate">{PROPERTY_TYPES.find(p => p.value === propertyType)?.label}</span>
@@ -181,10 +182,10 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
 
         {/* Destination */}
         <div className="lg:col-span-4 relative" ref={destRef}>
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{t.destination}</label>
+          <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${vValue('light')}`}>{t.destination}</label>
           <div
             onClick={() => setShowDrop(true)}
-            className="flex items-center gap-2 border border-white/30 rounded-lg px-3 py-2 bg-white/50 hover:border-orange-300/50 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-500/10 transition-all duration-200 cursor-pointer"
+            className={`flex items-center gap-2 ${vField('light')} cursor-pointer`}
           >
             <i className="fa-solid fa-location-dot text-orange-500 text-xs shrink-0" />
             <input
@@ -193,7 +194,7 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
               onChange={e => { setDestInput(e.target.value); setShowDrop(true); }}
               onFocus={() => setShowDrop(true)}
               placeholder={t.searchPlaceholder}
-              className="flex-1 outline-none bg-transparent text-sm font-medium text-slate-800 placeholder:text-slate-400 cursor-pointer"
+              className={`flex-1 outline-none bg-transparent ${vValue('light')} placeholder:text-slate-400 cursor-pointer`}
             />
           </div>
           {showDrop && filtered.length > 0 && (
@@ -227,7 +228,7 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
 
         {/* Date Range */}
         <div className="lg:col-span-3">
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">Check-in - Check-out</label>
+          <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${vValue('light')}`}>Check-in - Check-out</label>
           <CalendarRangeField
             startDate={dateRange[0]}
             endDate={dateRange[1]}
@@ -235,7 +236,7 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
             minDate={new Date()}
             defaultMonth={dateRange[0] ?? undefined}
           >
-            <div className="flex items-center gap-2 border border-white/30 rounded-lg px-3 py-2 bg-white/50 hover:border-orange-300/50 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-500/10 transition-all duration-200 cursor-pointer">
+            <div className={`flex items-center gap-2 ${vField('light')} cursor-pointer`}>
               <i className="fa-regular fa-calendar text-orange-500 text-xs shrink-0" />
               <span className="flex-1 text-sm font-medium text-slate-800 truncate">
                 {dateRange[0]
@@ -249,18 +250,18 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
         {/* Rooms & Guests */}
         <div className="lg:col-span-2 flex gap-1.5">
           <div className="flex-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{t.rooms}</label>
-            <div className="flex items-center justify-between border border-white/30 rounded-lg px-2 py-2 bg-white/50 hover:border-orange-300/50 transition-all duration-200">
+            <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${vValue('light')}`}>{t.rooms}</label>
+            <div className={`flex items-center justify-between ${vField('light')}`}>
               <button type="button" onClick={() => setRooms(Math.max(1, rooms - 1))} className="w-8 h-8 rounded-full bg-white/60 text-xs font-bold text-slate-500 hover:bg-orange-100 hover:text-orange-600 transition-colors flex items-center justify-center">-</button>
-              <span className="text-xs font-bold text-slate-800">{rooms}</span>
+              <span className={`text-xs font-bold ${vValue('light')}`}>{rooms}</span>
               <button type="button" onClick={() => setRooms(rooms + 1)} className="w-8 h-8 rounded-full bg-white/60 text-xs font-bold text-slate-500 hover:bg-orange-100 hover:text-orange-600 transition-colors flex items-center justify-center">+</button>
             </div>
           </div>
           <div className="flex-1">
-            <label className="text-[10px] font-semibold uppercase tracking-wider text-white/50 mb-0.5 block">{t.guests}</label>
-            <div className="flex items-center justify-between border border-white/30 rounded-lg px-2 py-2 bg-white/50 hover:border-orange-300/50 transition-all duration-200">
+            <label className={`mb-1.5 block text-xs font-semibold uppercase tracking-wider ${vValue('light')}`}>{t.guests}</label>
+            <div className={`flex items-center justify-between ${vField('light')}`}>
               <button type="button" onClick={() => setGuests(Math.max(1, guests - 1))} className="w-8 h-8 rounded-full bg-white/60 text-xs font-bold text-slate-500 hover:bg-orange-100 hover:text-orange-600 transition-colors flex items-center justify-center">-</button>
-              <span className="text-xs font-bold text-slate-800">{guests}</span>
+              <span className={`text-xs font-bold ${vValue('light')}`}>{guests}</span>
               <button type="button" onClick={() => setGuests(guests + 1)} className="w-8 h-8 rounded-full bg-white/60 text-xs font-bold text-slate-500 hover:bg-orange-100 hover:text-orange-600 transition-colors flex items-center justify-center">+</button>
             </div>
           </div>
@@ -268,7 +269,7 @@ function HotelForm({ onSearch, lang }: { onSearch: (payload: HotelSearchPayload)
 
         {/* Search Button */}
         <div className="lg:col-span-2">
-          <button type="button" onClick={handleSearch} className="w-full h-[42px] rounded-lg bg-gradient-to-r from-orange-500 to-orange-600 text-white text-sm font-semibold hover:from-orange-600 hover:to-orange-700 transition-all duration-200 shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 active:scale-95">
+          <button type="button" onClick={handleSearch} className={`w-full ${vBtnSearch('light')}`}>
             <i className="fa-solid fa-magnifying-glass text-xs" /> {t.searchBtn}
           </button>
         </div>

@@ -40,6 +40,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   paid:            { label: 'Dibayar',  cls: 'bg-blue-100 text-blue-700 border border-blue-200' },
   issued:          { label: 'Issued',   cls: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
   cancelled:       { label: 'Batal',    cls: 'bg-red-100 text-red-600 border border-red-200' },
+  expired:         { label: 'Kedaluwarsa', cls: 'bg-red-100 text-red-600 border border-red-200' },
 };
 
 const TYPE_ICON: Record<string, React.ReactNode> = {

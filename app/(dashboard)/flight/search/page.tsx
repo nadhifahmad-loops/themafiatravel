@@ -8,7 +8,7 @@ import { CalendarField } from '@/components/common/CalendarField';
 import { FLIGHT_PROVIDERS, CARRIER_CODE_TO_AIRLINE } from '@/lib/providers';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/contexts/ToastContext';
-import { i18n } from '@/lib/i18n';
+import { i18n, tpl } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -260,10 +260,10 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
 
   const COLORS = ['bg-orange-600', 'bg-blue-600', 'bg-emerald-600', 'bg-purple-600', 'bg-rose-600'];
   const LEG_LABELS = isRT
-    ? ['Pergi', 'Pulang']
+    ? [t.legGo, t.legReturn]
     : isMulti
-    ? (searchMeta?.routes || []).map((_: any, i: number) => `Kota ${i + 1}`)
-    : ['Penerbangan'];
+    ? (searchMeta?.routes || []).map((_: any, i: number) => `${t.legCity} ${i + 1}`)
+    : [t.legFlight];
 
   const totalPrice = selectedLegs.reduce((sum: number, leg: any) => {
     if (!leg) return sum;
@@ -293,7 +293,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
               <i className="fa-solid fa-xmark text-gray-500"></i>
             </button>
-            <h2 className="text-base font-black text-brand-ink">Review Penerbanganmu</h2>
+            <h2 className="text-base font-black text-brand-ink">{t.reviewTitle}</h2>
           </div>
           {/* Step pills */}
           {(isRT || isMulti) && (
@@ -336,11 +336,11 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
                   </div>
                   <div className="flex-1">
                     <p className={`font-black text-sm ${i === nextMissingLeg ? 'text-orange-700' : 'text-slate-500'}`}>
-                      Pilih Penerbangan {label}
+                      {tpl(t.chooseFlight, { leg: label })}
                     </p>
                     {i === nextMissingLeg && (
                       <p className="text-xs text-orange-500 font-semibold mt-0.5">
-                        Klik untuk memilih →
+                        {t.clickToSelect}
                       </p>
                     )}
                   </div>
@@ -358,13 +358,13 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
               <div>
                 <p className="text-xs text-slate-400 font-semibold">
                   {searchMeta?.adult || 1} {t.adults.toLowerCase()} · {isRT ? tf.roundTrip : isMulti ? tf.multiCity : tf.oneWay}
-                  {!allSelected && ' · estimasi'}
+                  {!allSelected && ` · ${t.estimate}`}
                 </p>
                 <p className={`text-2xl font-black ${allSelected ? 'text-orange-600' : 'text-slate-400'}`}>
                   {fmtIDR(totalPrice)}
                 </p>
                 <p className="text-xs text-slate-400">
-                  {allSelected ? 'Total sudah termasuk pajak' : 'Harga belum final, pilih semua penerbangan'}
+                  {allSelected ? t.totalInclTax : t.priceNotFinal}
                 </p>
               </div>
             </div>
@@ -379,9 +379,9 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
               className="w-full py-4 bg-orange-600 text-white font-black rounded-2xl hover:bg-orange-700 transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-lg shadow-orange-600/20"
             >
               {loading ? (
-                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Memvalidasi harga...</>
+                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>{t.validatingPrice}</>
               ) : (
-                <>Lanjutkan ke Pemesanan <i className="fa-solid fa-arrow-right"></i></>
+                <>{t.continueBooking} <i className="fa-solid fa-arrow-right"></i></>
               )}
             </button>
           ) : (
@@ -390,12 +390,12 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
               onClick={onConfirm}
               className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
             >
-              Pilih Penerbangan {nextMissingLabel} <i className="fa-solid fa-plane-departure"></i>
+              {tpl(t.chooseFlight, { leg: nextMissingLabel ?? '' })} <i className="fa-solid fa-plane-departure"></i>
             </button>
           )}
 
           <button onClick={onClose} className="text-sm text-slate-400 text-center hover:text-slate-600 transition-colors py-1 w-full">
-            {allSelected ? 'Kembali pilih penerbangan lain' : tc.close}
+            {allSelected ? t.backToOtherFlight : tc.close}
           </button>
         </div>
       </div>
@@ -405,6 +405,8 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
 
 // ─── Provider Search Progress ─────────────────────────────────────────────────
 function ProviderProgress({ done, total }: { done: number; total: number }) {
+  const { language } = useLanguage();
+  const t = i18n.flightSearch[language];
   if (total === 0) return null;
   const pct = Math.round((done / total) * 100);
   return (
@@ -415,7 +417,7 @@ function ProviderProgress({ done, total }: { done: number; total: number }) {
             <div className="w-5 h-5 border-2 border-orange-200 rounded-full"></div>
             <div className="absolute inset-0 w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
-          Sedang mencari penerbangan terbaik...
+          {t.searchingBest}
         </div>
         <span className="text-xs font-black text-orange-600 bg-orange-50 px-2.5 py-1 rounded-full">{pct}%</span>
       </div>
@@ -491,6 +493,7 @@ function FilterSkeleton() {
 function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMeta: any; onSearch: (p: any) => void; onRetry?: () => void }) {
   const { language } = useLanguage();
   const t = i18n.flightSearch[language];
+  const tc = i18n.common[language];
   const isEN = language === 'EN';
 
   const quickFlight = (dest: string) => {
@@ -519,7 +522,7 @@ function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMe
         <p className="text-slate-400 text-sm max-w-md mx-auto">{t.noResultDesc}</p>
         {onRetry && (
           <button onClick={onRetry} className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-colors">
-            <i className="fa-solid fa-rotate-right"></i> Coba Lagi
+            <i className="fa-solid fa-rotate-right"></i> {tc.retry}
           </button>
         )}
       </div>
@@ -537,7 +540,7 @@ function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMe
                 <div className="absolute bottom-0 left-0 right-0 p-2.5">
                   <p className="text-white font-black text-xs sm:text-sm leading-tight">{isEN ? d.nameEN : d.name}</p>
                   <p className="text-orange-300 text-[10px] sm:text-xs font-semibold mt-0.5">
-                    Mulai dari IDR {(d.price / 1000).toLocaleString('id-ID')}K
+                    {t.startingFrom} IDR {(d.price / 1000).toLocaleString(isEN ? 'en-US' : 'id-ID')}K
                   </p>
                 </div>
               </div>
@@ -565,8 +568,9 @@ function LegNoResults({ legIndex, totalLegs, legRoute, legDate, isRT, onRetry, o
 }) {
   const { language } = useLanguage();
   const t = i18n.flightSearch[language];
+  const isEN = language === 'EN';
 
-  const legLabel = isRT ? (legIndex === 0 ? 'Pergi' : 'Pulang') : `Kota ${legIndex + 1}`;
+  const legLabel = isRT ? (legIndex === 0 ? t.legGo : t.legReturn) : `${t.legCity} ${legIndex + 1}`;
   const base = legDate ? parseLocalDate(legDate) : new Date();
   const offsets = [-2, -1, 0, 1, 2];
 
@@ -596,7 +600,7 @@ function LegNoResults({ legIndex, totalLegs, legRoute, legDate, isRT, onRetry, o
             return (
               <button key={offset} onClick={() => onDateChange(dateStr)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${isActive ? 'bg-orange-500 border-orange-500 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-orange-300'}`}>
-                {d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                {d.toLocaleDateString(isEN ? 'en-US' : 'id-ID', { day: 'numeric', month: 'short' })}
               </button>
             );
           })}
@@ -674,7 +678,7 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
           </div>
         </div>
         <button className="px-4 py-2 bg-orange-100 text-orange-700 font-bold text-xs rounded-xl hover:bg-orange-200 transition-colors shrink-0">
-          Ubah Pencarian
+          {t.changeSearch}
         </button>
       </div>
     );
@@ -682,7 +686,7 @@ function CompactSearchBar({ searchMeta, onSearch, loading }: { searchMeta: any; 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 relative z-50">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-black text-brand-ink text-sm">Ubah Pencarian</h3>
+        <h3 className="font-black text-brand-ink text-sm">{t.changeSearch}</h3>
         <button onClick={() => setCollapsed(true)} className="text-slate-400 hover:text-brand-ink transition-colors">
           <i className="fa-solid fa-xmark"></i>
         </button>
@@ -751,14 +755,16 @@ function FlightSearchContent() {
   const { language } = useLanguage();
   const { toast } = useToast();
   const t = i18n.flightSearch[language];
-  const tf = i18n.searchForm[language].flight;
   const searchParamsHook = useSearchParams();
   const router = useRouter();
 
   usePageTitle(
     searchParamsHook.get('origin') && searchParamsHook.get('destination')
-      ? `Pencarian Pesawat: ${searchParamsHook.get('origin')} → ${searchParamsHook.get('destination')}`
-      : 'Pencarian Pesawat'
+      ? tpl(t.pageTitleWithRoute, {
+          origin: searchParamsHook.get('origin')!,
+          destination: searchParamsHook.get('destination')!,
+        })
+      : t.pageTitle
   );
 
   // ── TAMBAHAN: Ref ID Pencarian (Mencegah Bug Race Condition) ──
@@ -837,13 +843,13 @@ function FlightSearchContent() {
       })
       .catch(error => {
         console.error('[FLIGHT PROMO] Failed to load active coupons:', error);
-        if (isCurrent) setPromoError('Promo gagal dimuat. Periksa koneksi lalu coba lagi.');
+        if (isCurrent) setPromoError(t.promoLoadError);
       })
       .finally(() => {
         if (isCurrent) setPromoLoading(false);
       });
     return () => { isCurrent = false; };
-  }, [promoOpen]);
+  }, [promoOpen, t.promoLoadError]);
 
   useEffect(() => {
     if (!promoOpen) return;
@@ -864,12 +870,12 @@ function FlightSearchContent() {
     try {
       await navigator.clipboard.writeText(code);
       setCopiedPromo(code);
-      toast(language === 'EN' ? 'Promo code copied!' : 'Kode promo berhasil disalin!', { variant: 'success' });
+      toast(t.promoCopiedToast, { variant: 'success' });
       window.setTimeout(() => setCopiedPromo(current => current === code ? '' : current), 2000);
     } catch (error) {
       console.error('[FLIGHT PROMO] Failed to copy coupon:', error);
-      setPromoCopyError('Kode promo tidak dapat disalin. Silakan salin kode secara manual.');
-      toast(language === 'EN' ? 'Could not copy the promo code.' : 'Kode promo gagal disalin.', { variant: 'error' });
+      setPromoCopyError(t.promoCopyError);
+      toast(t.promoCopyFailedToast, { variant: 'error' });
     }
   };
 
@@ -999,13 +1005,13 @@ function FlightSearchContent() {
         if (networkFailures >= providers.length) {
           setError(
             typeof navigator !== 'undefined' && navigator.onLine === false
-              ? 'Koneksi internet terputus. Periksa sinyalmu lalu coba lagi.'
-              : 'Gagal terhubung ke maskapai. Cek koneksi internetmu lalu coba lagi.'
+              ? t.errorOffline
+              : t.errorProviderUnreachable
           );
         } else if (serverFailures >= providers.length) {
-          setError('Gagal mendapatkan jadwal dari maskapai. Silakan coba lagi beberapa saat lagi.');
+          setError(t.errorProviderUnavailable);
         } else {
-          setError('Tidak ada penerbangan ditemukan untuk rute ini. Coba ubah tanggal atau rute.');
+          setError(t.errorNoFlights);
         }
       }
     }
@@ -1158,17 +1164,17 @@ function FlightSearchContent() {
         if (networkFailures >= providers.length) {
           setError(
             typeof navigator !== 'undefined' && navigator.onLine === false
-              ? 'Koneksi internet terputus. Periksa sinyalmu lalu coba lagi.'
-              : 'Gagal terhubung ke maskapai. Cek koneksi internetmu lalu coba lagi.'
+              ? t.errorOffline
+              : t.errorProviderUnreachable
           );
         } else if (serverFailures >= providers.length) {
-          setError('Gagal mendapatkan jadwal dari maskapai. Silakan coba lagi beberapa saat lagi.');
+          setError(t.errorProviderUnavailable);
         } else {
-          setError('Tidak ada penerbangan ditemukan untuk rute ini. Coba ubah tanggal atau rute.');
+          setError(t.errorNoFlights);
         }
       }
     }
-  }, [searchMeta, totalLegs]);
+  }, [searchMeta, totalLegs, t.errorOffline, t.errorProviderUnreachable, t.errorProviderUnavailable, t.errorNoFlights]);
 
   // ── Auto-search on mount ──
   useEffect(() => {
@@ -1242,9 +1248,9 @@ function FlightSearchContent() {
         stops,
         count: summary.count,
         lowestPrice: summary.lowestPrice,
-        label: stops === 0 ? t.directOnly : `${stops} Transit`,
+        label: stops === 0 ? t.directOnly : tpl(t.stopsCount, { count: stops }),
       }));
-  }, [currentJourneys, t.directOnly]);
+  }, [currentJourneys, t.directOnly, t.stopsCount]);
 
   // ── Price range ──
   const priceRange = useMemo(() => {
@@ -1509,11 +1515,13 @@ function FlightSearchContent() {
   // Label step saat ini
   const stepLabel = useMemo(() => {
     if (!isRT && !isMulti) return null;
-    if (isRT) return currentLegStep === 0 ? '✈️ Pilih Penerbangan Pergi' : '✈️ Pilih Penerbangan Pulang';
+    if (isRT) return tpl(t.stepFlight, { leg: currentLegStep === 0 ? t.legGo : t.legReturn });
     const routes = searchMeta?.routes || [];
     const r = routes[currentLegStep];
-    return r ? `✈️ Pilih Penerbangan ${r.origin} → ${r.destination} (Kota ${currentLegStep + 1})` : `Kota ${currentLegStep + 1}`;
-  }, [isRT, isMulti, currentLegStep, searchMeta]);
+    return r
+      ? tpl(t.stepRoute, { origin: r.origin, destination: r.destination, city: `${t.legCity} ${currentLegStep + 1}` })
+      : `${t.legCity} ${currentLegStep + 1}`;
+  }, [isRT, isMulti, currentLegStep, searchMeta, t.stepFlight, t.stepRoute, t.legGo, t.legReturn, t.legCity]);
 
   const isSearching = loading || providersDone < providersTotal;
   const hasResults = currentJourneys.length > 0;
@@ -1544,7 +1552,7 @@ function FlightSearchContent() {
                 const isDone    = !!selectedLegs[i];
                 const isLocked  = i > currentLegStep;
                 const routes    = searchMeta?.routes || [];
-                const legLabel  = isRT ? (i === 0 ? 'Pergi' : 'Pulang') : `Kota ${i + 1}`;
+                const legLabel  = isRT ? (i === 0 ? t.legGo : t.legReturn) : `${t.legCity} ${i + 1}`;
                 const subLabel  = isRT
                   ? (i === 0 ? `${searchMeta.origin}→${searchMeta.destination}` : `${searchMeta.destination}→${searchMeta.origin}`)
                   : routes[i] ? `${routes[i].origin}→${routes[i].destination}` : '';
@@ -1625,12 +1633,12 @@ function FlightSearchContent() {
                 {/* Price Range */}
                 {priceRange.max > 0 && (
                   <FilterSection
-                    title={language === 'EN' ? 'Price per passenger' : 'Harga per penumpang'}
+                    title={t.pricePerPassenger}
                     activeCount={filterMaxPrice !== null ? 1 : 0}
                   >
                     <div className="mb-3 flex items-center justify-between">
                       <p className="text-[10px] text-slate-500">
-                        {language === 'EN' ? 'Show fares up to' : 'Tampilkan tarif hingga'}
+                        {t.showFaresUpTo}
                       </p>
                       <button
                         type="button"
@@ -1643,12 +1651,12 @@ function FlightSearchContent() {
                     </div>
                     <div className="mb-3 grid grid-cols-2 gap-2">
                       <div className="min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-2">
-                        <p className="block text-[10px] font-medium text-slate-500">{language === 'EN' ? 'From' : 'Mulai dari'}</p>
+                        <p className="block text-[10px] font-medium text-slate-500">{t.minFrom}</p>
                         <p className="mt-0.5 truncate text-xs font-bold text-slate-700">{fmtIDR(priceRange.min)}</p>
                       </div>
                       <div className="min-w-0 rounded-lg border border-sky-200 bg-sky-50/60 px-2.5 py-2">
                         <label htmlFor="flight-filter-price-max" className="block text-[10px] font-medium text-slate-500">
-                          {language === 'EN' ? 'Maximum' : 'Maksimum'}
+                          {t.maximum}
                         </label>
                         <input
                           id="flight-filter-price-max"
@@ -1662,7 +1670,7 @@ function FlightSearchContent() {
                             if (Number.isFinite(value)) setFilterMaxPrice(Math.min(priceRange.max, Math.max(priceRange.min, value)));
                           }}
                           className="mt-0.5 w-full min-w-0 bg-transparent text-xs font-bold text-sky-800 outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-                          aria-label={language === 'EN' ? 'Maximum price per passenger' : 'Harga maksimum per penumpang'}
+                          aria-label={t.maxPriceAria}
                         />
                       </div>
                     </div>
@@ -1673,7 +1681,7 @@ function FlightSearchContent() {
                       step={Math.max(100000, Math.round((priceRange.max - priceRange.min) / 20))}
                       value={filterMaxPrice ?? priceRange.max}
                       onChange={e => setFilterMaxPrice(parseInt(e.target.value))}
-                      aria-label={language === 'EN' ? 'Maximum price per passenger' : 'Rentang harga maksimum per penumpang'}
+                      aria-label={t.maxPriceAria}
                       className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2"
                     />
                     <div className="flex justify-between mt-1">
@@ -1715,12 +1723,12 @@ function FlightSearchContent() {
                           type="search"
                           value={airlineSearch}
                           onChange={event => setAirlineSearch(event.target.value)}
-                          placeholder={language === 'EN' ? 'Search airlines' : 'Cari maskapai'}
-                          aria-label={language === 'EN' ? 'Search airlines' : 'Cari maskapai'}
+                          placeholder={t.searchAirlines}
+                          aria-label={t.searchAirlines}
                           className="w-full bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400"
                         />
                         {airlineSearch && (
-                          <button type="button" onClick={() => setAirlineSearch('')} aria-label="Hapus pencarian maskapai" className="text-slate-400 hover:text-slate-700">
+                          <button type="button" onClick={() => setAirlineSearch('')} aria-label={t.clearAirlineSearch} className="text-slate-400 hover:text-slate-700">
                             <i className="fa-solid fa-xmark text-xs" aria-hidden="true" />
                           </button>
                         )}
@@ -1750,7 +1758,7 @@ function FlightSearchContent() {
                       ))}
                       {airlineList.every(airline => !airline.name.toLowerCase().includes(airlineSearch.trim().toLowerCase())) && (
                         <p className="px-2 py-3 text-xs text-slate-500">
-                          {language === 'EN' ? 'No airlines found.' : 'Maskapai tidak ditemukan.'}
+                          {t.noAirlinesFound}
                         </p>
                       )}
                     </div>
@@ -1758,19 +1766,19 @@ function FlightSearchContent() {
                 )}
 
                 {/* Waktu */}
-                <FilterSection title={language === 'EN' ? 'Time' : 'Waktu'} activeCount={filterDepartureTime.length + filterArrivalTime.length}>
+                <FilterSection title={t.timeFilter} activeCount={filterDepartureTime.length + filterArrivalTime.length}>
                   {[
-                    { title: language === 'EN' ? 'Departure from' : 'Berangkat dari', filters: filterDepartureTime, setter: setFilterDepartureTime },
-                    { title: language === 'EN' ? 'Arrival at destination' : 'Tiba di tujuan', filters: filterArrivalTime, setter: setFilterArrivalTime },
+                    { title: t.departureFrom, filters: filterDepartureTime, setter: setFilterDepartureTime },
+                    { title: t.arrivalAtDestination, filters: filterArrivalTime, setter: setFilterArrivalTime },
                   ].map(group => (
                     <div key={group.title} className="mb-3 last:mb-0">
                       <p className="mb-1.5 text-[10px] font-semibold text-slate-500">{group.title}</p>
                       <div className="grid grid-cols-2 gap-1.5">
                         {[
-                          { id: 'early', label: language === 'EN' ? 'Early morning' : 'Dini hari', range: '00:00–06:00', icon: 'fa-moon' },
-                          { id: 'morning', label: language === 'EN' ? 'Morning' : 'Pagi', range: '06:00–12:00', icon: 'fa-sun' },
-                          { id: 'afternoon', label: language === 'EN' ? 'Afternoon' : 'Siang–sore', range: '12:00–18:00', icon: 'fa-cloud-sun' },
-                          { id: 'evening', label: language === 'EN' ? 'Evening' : 'Malam', range: '18:00–00:00', icon: 'fa-moon' },
+                          { id: 'early', label: t.earlyMorning, range: '00:00–06:00', icon: 'fa-moon' },
+                          { id: 'morning', label: t.morningSlot, range: '06:00–12:00', icon: 'fa-sun' },
+                          { id: 'afternoon', label: t.afternoonSlot, range: '12:00–18:00', icon: 'fa-cloud-sun' },
+                          { id: 'evening', label: t.eveningSlot, range: '18:00–00:00', icon: 'fa-moon' },
                         ].map(option => {
                           const selected = group.filters.includes(option.id);
                           return (
@@ -1800,8 +1808,8 @@ function FlightSearchContent() {
                     {[
                       { id: 'price_asc',  label: t.sortBy.price },
                       { id: 'earliest',   label: t.sortBy.departure },
-                      { id: 'latest',     label: 'Berangkat Paling Akhir' },
-                      { id: 'price_desc', label: 'Harga Tertinggi' },
+                      { id: 'latest',     label: t.latestDeparture },
+                      { id: 'price_desc', label: t.highestPrice },
                     ].map(opt => (
                       <label key={opt.id} className="group flex min-h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 transition-colors hover:bg-slate-50">
                         <input type="radio" name="sortBy" checked={sortBy === opt.id} onChange={() => setSortBy(opt.id as any)}
@@ -1831,7 +1839,7 @@ function FlightSearchContent() {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-brand-neutral">
                   <span className="font-black text-brand-ink">{filtered.length}</span> {t.flightsFound}
-                  {(isRT || isMulti) && <span className="ml-2 text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full">Leg {currentLegStep + 1}/{totalLegs}</span>}
+                  {(isRT || isMulti) && <span className="ml-2 text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full">{tpl(t.legCounter, { current: currentLegStep + 1, total: totalLegs })}</span>}
                 </p>
                 <div className="flex shrink-0 items-center gap-2">
                   <CalendarField
@@ -1854,7 +1862,7 @@ function FlightSearchContent() {
                       className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <i className="fa-regular fa-calendar text-sky-600" aria-hidden="true"></i>
-                      <span className="hidden sm:inline">{language === 'EN' ? 'Calendar' : 'Kalender'}</span>
+                      <span className="hidden sm:inline">{t.calendar}</span>
                       <span className="sm:hidden">{formatLocalDate(parseLocalDate(currentLegDate || searchMeta.departure_date || todayDefault)).slice(5)}</span>
                     </button>
                   </CalendarField>
@@ -1864,7 +1872,7 @@ function FlightSearchContent() {
                     className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:text-sky-700"
                   >
                     <i className="fa-solid fa-ticket text-sky-600" aria-hidden="true"></i>
-                    {language === 'EN' ? 'Promo' : 'Promo'}
+                    {t.promo}
                   </button>
                 </div>
               </div>
@@ -1876,7 +1884,7 @@ function FlightSearchContent() {
             {isSearching && currentJourneys.length > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2 text-xs text-blue-700 font-semibold flex items-center gap-2 mb-2">
                 <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
-                Menampilkan {currentJourneys.length} hasil... masih mencari penerbangan lainnya
+                {tpl(t.showingResultsStillSearching, { count: currentJourneys.length })}
               </div>
             )}
 
@@ -1913,8 +1921,8 @@ function FlightSearchContent() {
                 <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <i className="fa-solid fa-plane-slash text-3xl text-slate-300"></i>
                 </div>
-                <h3 className="text-lg font-black text-brand-ink mb-2">Tidak Ada Hasil Filter</h3>
-                <p className="text-slate-500 text-sm">Coba ubah filter atau reset pilihan.</p>
+                <h3 className="text-lg font-black text-brand-ink mb-2">{t.noFilterResult}</h3>
+                <p className="text-slate-500 text-sm">{t.changeFilter}</p>
                 <button onClick={resetFilters}
                   className="mt-4 px-6 py-2.5 bg-orange-600 text-white font-bold rounded-xl text-sm hover:bg-orange-700 transition-all">
                   {t.resetFilter}
@@ -1957,16 +1965,16 @@ function FlightSearchContent() {
             <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
               <div>
                 <h2 id="flight-promo-title" className="text-base font-bold text-slate-800">
-                  {language === 'EN' ? 'Flight promos' : 'Promo Penerbangan'}
+                  {t.promoTitle}
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {language === 'EN' ? 'Copy an available coupon code' : 'Salin kode promo yang tersedia'}
+                  {t.promoSubtitle}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setPromoOpen(false)}
-                aria-label={language === 'EN' ? 'Close promos' : 'Tutup promo'}
+                aria-label={t.closePromo}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
               >
                 <i className="fa-solid fa-xmark" aria-hidden="true"></i>
@@ -1976,7 +1984,7 @@ function FlightSearchContent() {
               {promoLoading ? (
                 <div className="flex min-h-40 items-center justify-center gap-3 text-sm font-medium text-slate-500">
                   <span className="h-5 w-5 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600"></span>
-                  {language === 'EN' ? 'Loading promos...' : 'Memuat promo...'}
+                  {t.loadingPromos}
                 </div>
               ) : promoError ? (
                 <div className="py-10 text-center">
@@ -1986,14 +1994,14 @@ function FlightSearchContent() {
                     onClick={() => { setFlightCoupons([]); setPromoOpen(false); window.setTimeout(() => setPromoOpen(true), 0); }}
                     className="mt-3 text-xs font-bold text-sky-700 hover:underline"
                   >
-                    {language === 'EN' ? 'Try again' : 'Coba lagi'}
+                    {t.tryAgain}
                   </button>
                 </div>
               ) : flightCoupons.length === 0 ? (
                 <div className="py-12 text-center">
                   <i className="fa-solid fa-ticket text-3xl text-slate-300" aria-hidden="true"></i>
                   <p className="mt-3 text-sm font-semibold text-slate-700">
-                    {language === 'EN' ? 'No active flight promos' : 'Belum ada promo penerbangan aktif'}
+                    {t.noActivePromos}
                   </p>
                 </div>
               ) : (
@@ -2016,14 +2024,12 @@ function FlightSearchContent() {
                           onClick={() => void copyFlightCoupon(coupon.code)}
                           className="shrink-0 text-xs font-bold text-sky-700 hover:text-sky-900"
                         >
-                          {copiedPromo === coupon.code
-                            ? (language === 'EN' ? 'Copied' : 'Tersalin')
-                            : (language === 'EN' ? 'Copy' : 'Salin')}
+                          {copiedPromo === coupon.code ? t.copied : t.copy}
                         </button>
                       </div>
                       {coupon.minOrderAmount > 0 && (
                         <p className="mt-2 text-[11px] text-slate-500">
-                          {language === 'EN' ? 'Minimum transaction' : 'Min. transaksi'} {fmtIDR(coupon.minOrderAmount)}
+                          {t.minTransaction} {fmtIDR(coupon.minOrderAmount)}
                         </p>
                       )}
                     </article>
