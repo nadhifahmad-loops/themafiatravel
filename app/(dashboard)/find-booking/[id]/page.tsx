@@ -9,7 +9,7 @@ import { GUEST_BOOKING_CREDS_KEY, getBookingStatusMeta } from '@/lib/booking-met
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 import Footer from '@/components/layout/Footer';
 import TrainSeatPicker from '@/components/train/TrainSeatPicker';
-import { PdfTemplate } from '@/components/ticket/PdfTemplate';
+import { downloadTicketPdf } from '@/lib/download-ticket';
 
 const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
@@ -61,6 +61,7 @@ function GuestBookingDetailContent() {
   const [, setCountdownTick] = useState(0); // pemaksa re-render tiap detik (countdown diturunkan saat render)
   const [paying, setPaying] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
 
   // Ambil kredensial dari sessionStorage bila tidak ada di URL — jalur normal
   // dari halaman cari. Ditunda lewat timer agar tidak ada setState sinkron di
@@ -213,13 +214,10 @@ function GuestBookingDetailContent() {
 
   const isTrainPaid = booking?.bookingType === 'train' && (booking?.status === 'paid' || booking?.status === 'issued');
 
-  // ── Props untuk template PDF (disamakan dengan halaman pesanan login) ──
   const bType = booking?.bookingType || 'flight';
-  const isFlight = bType === 'flight';
   const isTrain = bType === 'train';
   const isHotel = bType === 'hotel';
   const isInsurance = bType === 'insurance';
-  const isTransport = isFlight || isTrain;
   const canDownload = booking?.status === 'paid' || booking?.status === 'issued';
 
   // Jumlah malam (hotel) — dihitung dari tanggal check-in/out yang tersedia.
@@ -238,85 +236,38 @@ function GuestBookingDetailContent() {
     };
   })();
 
-  // Booking "mentah" untuk template: field yang dipakai PdfTemplate.
-  const pdfBooking = booking ? {
-    id: booking.id,
-    orderNumber: booking.orderNumber,
-    bookingType: booking.bookingType,
-    status: booking.status,
-    pnr: booking.pnr,
-    provider: booking.provider,
-    airlineName: booking.airlineName,
-    hotelName: booking.hotelName || null,
-    totalAmount: booking.totalAmount,
-    origin: booking.origin,
-    destination: booking.destination,
-    departureDate: booking.departureDate,
-    arrivalDate: booking.arrivalDate || null,
-    checkinDate: booking.checkinDate || null,
-    checkoutDate: booking.checkoutDate || null,
-  } : null;
-
-  const flightSegments = Array.isArray(booking?.flightSegments) ? booking.flightSegments : [];
-  const firstSeg = flightSegments[0] || {};
-  const lastSeg = flightSegments[flightSegments.length - 1] || {};
-
-  // bookingDataRaw tiruan untuk kebutuhan template (bagasi, cabin, coverage).
-  const bookingDataRaw = booking ? {
-    provider_bookings: flightSegments.length > 0 ? [{ segments: flightSegments }] : [],
-    selectedBaggage: booking.selectedBaggage || null,
-    cabin_class: booking.cabinClass || '',
-    coverage: booking.coverage || null,
-  } : null;
-
-  const pdfStartDate = booking?.departureDate || booking?.checkinDate || null;
-  const pdfEndDate = booking?.arrivalDate || booking?.checkoutDate || pdfStartDate;
-  const originDisplayName = firstSeg.origin_name || '';
-  const destDisplayName = lastSeg.destination_name || '';
-  const pdfOriginName = originDisplayName || booking?.origin || '';
-  const pdfDestName = destDisplayName || booking?.destination || '';
-  const baggageAllowance = firstSeg.baggage_allowance || '';
-  const segmentCount = flightSegments.length || 1;
-  const pdfItemName = isTrain
-    ? (airlineName || (isEN ? 'Train' : 'Kereta Api'))
-    : isHotel
-      ? (booking?.hotelName || (isEN ? 'Hotel' : 'Hotel'))
-      : isInsurance
-        ? (booking?.hotelName || (isEN ? 'Insurance' : 'Asuransi'))
-        : (airlineName || (isEN ? 'Airline' : 'Maskapai'));
-  const pdfSubclass = booking?.cabinClass || '';
-  const pdfRefundable = booking?.refundable === true;
-
   const handleDownloadPDF = async () => {
-    const el = document.getElementById('ticket-print');
-    if (!el) return;
+    if (!booking || downloading) return;
     setDownloading(true);
+    setDownloadError('');
     try {
-      const html2pdf = (await import('html2pdf.js')).default;
-      await html2pdf().set({
-        margin: [0, 0, 0, 0],
-        filename: `TMT_${booking.orderNumber || booking.id}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 4, useCORS: true, backgroundColor: '#ffffff', letterRendering: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      }).from(el).save();
-    } finally { setDownloading(false); }
+      await downloadTicketPdf({ id: booking.id, phone });
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error
+          ? err.message
+          : (isEN ? 'Failed to create document. Please try again.' : 'Gagal membuat dokumen. Silakan coba lagi.')
+      );
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#f4f6fb] flex flex-col">
-      <div className="bg-gradient-to-br from-orange-600 via-orange-500 to-amber-500 pt-28 pb-12 px-4">
-        <div className="max-w-xl mx-auto text-center">
-          <h1 className="text-2xl font-black text-white mb-1">
+      <div className="bg-white border-b border-slate-200 pt-24 md:pt-28 pb-7 px-4">
+        <div className="max-w-xl mx-auto">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-brand-orange">The Mafia Travel</p>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-brand-ink tracking-tight mt-1.5">
             {isEN ? 'Booking Details' : 'Detail Pesanan'}
           </h1>
-          <p className="text-orange-100 text-sm">
+          <p className="text-sm text-slate-500 mt-1">
             {isEN ? 'Here are your booking details' : 'Berikut rincian pesananmu'}
           </p>
         </div>
       </div>
 
-      <div className="max-w-xl mx-auto px-4 -mt-6 flex-1 w-full mb-16">
+      <div className="max-w-xl mx-auto px-4 mt-5 flex-1 w-full mb-16">
         {loading && (
           <div className="bg-white rounded-2xl shadow-lg p-8 text-center">
             <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-4" />
@@ -810,37 +761,11 @@ function GuestBookingDetailContent() {
                   {isEN ? 'Home' : 'Beranda'}
                 </Link>
               </div>
+              {downloadError && (
+                <p className="text-[11px] text-red-600 leading-relaxed px-1">{downloadError}</p>
+              )}
             </div>
           </>
-        )}
-
-        {/* PDF template (hidden) — dirender off-screen lalu di-capture html2pdf.js */}
-        {booking && pdfBooking && (
-          <PdfTemplate
-            booking={pdfBooking}
-            bType={bType}
-            passengers={displayPassengers}
-            enrichedPassengers={displayPassengers}
-            savedBaggage={booking.selectedBaggage || null}
-            isTransport={isTransport}
-            isFlight={isFlight}
-            isTrain={isTrain}
-            isHotel={isHotel}
-            isInsurance={isInsurance}
-            startDate={pdfStartDate}
-            endDate={pdfEndDate}
-            originCode={booking.origin || ''}
-            destCode={booking.destination || ''}
-            originName={pdfOriginName}
-            destName={pdfDestName}
-            itemName={pdfItemName}
-            itemCode={booking.flightNumber || ''}
-            subclass={pdfSubclass}
-            baggageAllowance={baggageAllowance}
-            segmentCount={segmentCount}
-            bookingDataRaw={bookingDataRaw}
-            refundable={pdfRefundable}
-          />
         )}
       </div>
       <Footer />

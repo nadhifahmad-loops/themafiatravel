@@ -450,6 +450,37 @@ model Banner {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PROMO ROUTE — Kartu promo dinamis di halaman utama (pesawat / hotel / kereta)
+// Diisi admin; tampil di homepage hanya jika isActive & belum lewat validUntil.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PromoRoute {
+  id            Int      @id @default(autoincrement())
+  service       String                               // 'flight' | 'hotel' | 'train'
+  titleId       String                               // Judul kartu (Bahasa Indonesia)
+  titleEn       String?                              // Judul kartu (EN) — fallback ke titleId
+  badgeId       String?                              // Badge/kategori (ID) mis. "Sekali Jalan"
+  badgeEn       String?                              // Badge (EN) — fallback ke badgeId
+  image         String                               // Path gambar (/images/... atau /uploads/...)
+  priceFrom     Int                                  // Angka rupiah; diformat di UI (tanpa label "mulai dari")
+  validUntil    DateTime?                            // Batas berlaku (null = tidak dibatasi)
+  origin        String?                              // flight & train: kode asal (mis. "CGK", "GMR")
+  destination   String?                              // flight & train: kode tujuan (mis. "JOG", "SGU")
+  airline       String?                              // flight: nama maskapai
+  airlineImg    String?                              // flight: path logo maskapai
+  destinationId String?                              // hotel: kode destinasi provider (wajib utk pencarian hotel)
+  q             String?                              // hotel: kata kunci pencarian
+  city          String?                              // hotel: label kota yang tampil di kartu
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([service, isActive, sortOrder])
+  @@index([validUntil])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CAREER — Lowongan pekerjaan
 // ─────────────────────────────────────────────────────────────────────────────
 

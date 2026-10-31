@@ -9,7 +9,24 @@ import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 import { getVendorLogo } from '@/lib/vendor-logo';
-import { Plane, BedDouble, TrainFront, ShieldCheck, HelpCircle, type LucideIcon } from 'lucide-react';
+import AccountSidebar from '@/components/account/AccountSidebar';
+import {
+  Plane,
+  BedDouble,
+  TrainFront,
+  ShieldCheck,
+  Search,
+  X,
+  CalendarDays,
+  Users,
+  Ticket,
+  Clock,
+  ChevronRight,
+  ArrowRight,
+  Inbox,
+  Loader2,
+  type LucideIcon,
+} from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Booking {
@@ -32,17 +49,32 @@ interface Booking {
   pnr?: string | null;
   passengerData?: unknown;
   createdAt: string;
+  paidAt?: string | null;
+  discountAmount?: number | null;
+  couponCode?: string | null;
+  roomCount?: number | null;
+  adultCount?: number | null;
+  childCount?: number | null;
+  nights?: number | null;
+  roomDescription?: string | null;
+  mealType?: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const PAGE_SIZE = 8;
+
+const TYPE_META: Record<string, { icon: LucideIcon; tile: string; labelKey: 'flight' | 'hotel' | 'train' | 'insurance' }> = {
+  flight: { icon: Plane, tile: 'bg-blue-50 text-brand-blue', labelKey: 'flight' },
+  hotel: { icon: BedDouble, tile: 'bg-violet-50 text-violet-600', labelKey: 'hotel' },
+  train: { icon: TrainFront, tile: 'bg-emerald-50 text-emerald-600', labelKey: 'train' },
+  insurance: { icon: ShieldCheck, tile: 'bg-orange-50 text-brand-orange', labelKey: 'insurance' },
+};
 
 function getCountdown(createdAt: string) {
-  if (!createdAt) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
-  const created = typeof createdAt === 'string' ? new Date(createdAt).getTime() : new Date(String(createdAt)).getTime();
+  const created = createdAt ? new Date(createdAt).getTime() : NaN;
   if (isNaN(created)) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
-  const deadline = created + PAYMENT_TIMEOUT_MS;
-  const remaining = deadline - Date.now();
+  const remaining = created + PAYMENT_TIMEOUT_MS - Date.now();
   if (remaining <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
   return {
     expired: false,
@@ -64,11 +96,8 @@ function resolveAirlineName(name: string): string {
   if (CARRIER_CODE_TO_AIRLINE[upper]) return CARRIER_CODE_TO_AIRLINE[upper];
   const lower = trimmed.toLowerCase();
   if (PROVIDER_ID_TO_LABEL[lower]) return PROVIDER_ID_TO_LABEL[lower];
-  const parts = trimmed.split(/\s+/);
-  if (parts.length > 1) {
-    const upperFirst = (parts[0] || '').toUpperCase();
-    if (CARRIER_CODE_TO_AIRLINE[upperFirst]) return CARRIER_CODE_TO_AIRLINE[upperFirst];
-  }
+  const first = trimmed.split(/\s+/)[0]?.toUpperCase();
+  if (first && CARRIER_CODE_TO_AIRLINE[first]) return CARRIER_CODE_TO_AIRLINE[first];
   for (const len of [3, 2]) {
     if (trimmed.length > len) {
       const code = trimmed.substring(0, len).toUpperCase();
@@ -78,511 +107,556 @@ function resolveAirlineName(name: string): string {
   return trimmed;
 }
 
-function formatDate(dateString: string) {
+function formatDate(dateString: string | null | undefined, language: string) {
   if (!dateString) return '-';
-  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateString));
+  return new Intl.DateTimeFormat(language === 'ID' ? 'id-ID' : 'en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(dateString));
 }
 
-function formatShortDate(dateString: string) {
-  if (!dateString) return '-';
-  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short' }).format(new Date(dateString));
+function formatDateRange(start?: string | null, end?: string | null, language = 'ID') {
+  if (!start) return '-';
+  if (!end) return formatDate(start, language);
+  return `${formatDate(start, language)} — ${formatDate(end, language)}`;
 }
 
-function getNights(checkin: string, checkout: string) {
+function getNights(checkin?: string | null, checkout?: string | null, fallback?: number | null) {
+  if (fallback) return fallback;
+  if (!checkin || !checkout) return 1;
   const diff = new Date(checkout).getTime() - new Date(checkin).getTime();
-  return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  if (diff <= 0) return 1;
+  return Math.max(1, Math.round(diff / 86400000));
 }
 
 function getPassengerCount(data: unknown): number {
-  if (Array.isArray(data)) return data.length;
-  return 0;
+  return Array.isArray(data) ? data.length : 0;
 }
 
-function getTimeGroup(dateString: string): string {
-  const now = new Date();
-  const date = new Date(dateString);
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const diffMs = startOfToday.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays <= 0) return 'Hari ini';
-  if (diffDays === 1) return 'Kemarin';
-  if (diffDays <= 6) return 'Minggu ini';
-  if (diffDays <= 30) return 'Bulan ini';
-  return 'Lebih lama';
+function passengerSearchText(data: unknown): string {
+  if (!Array.isArray(data)) return '';
+  return data
+    .map((p: Record<string, unknown>) => `${p?.title || ''} ${p?.first_name || ''} ${p?.last_name || ''}`)
+    .join(' ');
 }
 
-const TIME_GROUP_ORDER = ['Hari ini', 'Kemarin', 'Minggu ini', 'Bulan ini', 'Lebih lama'];
+function bookingEndDate(b: Booking): Date | null {
+  const raw = b.bookingType === 'hotel' ? b.checkoutDate || b.checkinDate : b.departureDate;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
 
-const STATUS_CONFIG: Record<string, { label: string; dot: string; text: string; bg: string; border: string }> = {
-  pending_payment: { label: 'Menunggu Pembayaran', dot: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-  paid:            { label: 'Terkonfirmasi', dot: 'bg-emerald-400', text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  issued:          { label: 'Selesai', dot: 'bg-emerald-400', text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  payment_failed:  { label: 'Pembayaran Gagal', dot: 'bg-red-400', text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
-  cancelled:       { label: 'Dibatalkan', dot: 'bg-slate-400', text: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200' },
-  expired:         { label: 'Kedaluwarsa', dot: 'bg-red-400', text: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
-  refund_requested:{ label: 'Refund Diproses', dot: 'bg-orange-400', text: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200' },
-  refund:          { label: 'Berhasil Direfund', dot: 'bg-purple-400', text: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
+function isPastBooking(b: Booking): boolean {
+  const end = bookingEndDate(b);
+  if (!end) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return end.getTime() < today.getTime();
+}
+
+function isActiveBooking(b: Booking): boolean {
+  if (b.status === 'pending_payment' || b.status === 'paid') return true;
+  if (b.status === 'issued') return !isPastBooking(b);
+  return false;
+}
+
+function monthLabel(dateString: string | null | undefined, language: string) {
+  const d = dateString ? new Date(dateString) : new Date();
+  const safe = isNaN(d.getTime()) ? new Date() : d;
+  return new Intl.DateTimeFormat(language === 'ID' ? 'id-ID' : 'en-GB', {
+    month: 'long',
+    year: 'numeric',
+  }).format(safe);
+}
+
+const STATUS_STYLE: Record<string, { text: string; bg: string; dot: string }> = {
+  pending_payment: { text: 'text-amber-700', bg: 'bg-amber-50', dot: 'bg-amber-500' },
+  paid: { text: 'text-emerald-700', bg: 'bg-emerald-50', dot: 'bg-emerald-500' },
+  issued: { text: 'text-emerald-700', bg: 'bg-emerald-50', dot: 'bg-emerald-500' },
+  payment_failed: { text: 'text-red-700', bg: 'bg-red-50', dot: 'bg-red-500' },
+  expired: { text: 'text-red-700', bg: 'bg-red-50', dot: 'bg-red-500' },
+  cancelled: { text: 'text-slate-600', bg: 'bg-slate-100', dot: 'bg-slate-400' },
+  refund_requested: { text: 'text-orange-700', bg: 'bg-orange-50', dot: 'bg-orange-500' },
+  refund: { text: 'text-violet-700', bg: 'bg-violet-50', dot: 'bg-violet-500' },
 };
 
-const TYPE_CONFIG: Record<string, { icon: LucideIcon; gradient: string }> = {
-  flight:    { icon: Plane, gradient: 'from-blue-500 to-blue-600' },
-  hotel:     { icon: BedDouble, gradient: 'from-purple-500 to-purple-600' },
-  train:     { icon: TrainFront, gradient: 'from-emerald-500 to-emerald-600' },
-  insurance: { icon: ShieldCheck, gradient: 'from-orange-500 to-orange-600' },
-};
-
-const ITEMS_PER_PAGE = 6;
-
-// ─── Countdown Component ──────────────────────────────────────────────────────
-function PaymentCountdownBar({ createdAt }: { createdAt: string }) {
-  const [cd, setCd] = useState({ expired: true, hours: 0, minutes: 0, seconds: 0 });
-  const [mounted, setMounted] = useState(false);
+// ─── Countdown bar ────────────────────────────────────────────────────────────
+function PaymentBar({ createdAt, labels }: { createdAt: string; labels: { payWithin: string; payNow: string } }) {
+  const [cd, setCd] = useState(() => getCountdown(createdAt));
 
   useEffect(() => {
-    setMounted(true);
-    setCd(getCountdown(createdAt));
-    const timer = setInterval(() => {
-      const next = getCountdown(createdAt);
-      setCd(next);
-      if (next.expired) clearInterval(timer);
-    }, 1000);
+    const timer = setInterval(() => setCd(getCountdown(createdAt)), 1000);
     return () => clearInterval(timer);
   }, [createdAt]);
 
-  if (!mounted) return null;
+  if (cd.expired) {
+    return (
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-red-50 border-t border-red-100">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-red-700">
+          <Clock className="w-3.5 h-3.5" />
+          {labels.payWithin}: 00:00:00
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-red-600 px-2.5 py-1 rounded-md">
+          {labels.payNow}
+          <ArrowRight className="w-3 h-3" />
+        </span>
+      </div>
+    );
+  }
 
   const urgency = cd.hours < 2;
+  const tone = urgency ? 'bg-red-50 border-red-100 text-red-700' : 'bg-amber-50 border-amber-100 text-amber-800';
+  const btn = urgency ? 'bg-red-600' : 'bg-brand-orange';
 
   return (
-    <div className={`px-3 sm:px-4 py-2.5 sm:py-3 border-t flex items-center justify-between gap-2 sm:gap-3 flex-wrap xs:flex-nowrap ${urgency ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
-      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-        <i className={`fa-solid fa-clock ${urgency ? 'text-red-500' : 'text-amber-500'} text-[11px] sm:text-xs shrink-0`}></i>
-        <span className={`text-[11px] sm:text-xs font-medium ${urgency ? 'text-red-700' : 'text-amber-700'} shrink-0`}>
-          Sisa waktu:
+    <div className={`flex items-center justify-between gap-3 px-4 py-2.5 border-t ${tone}`}>
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold">
+        <Clock className="w-3.5 h-3.5" />
+        {labels.payWithin}
+        <span className="font-mono tabular-nums">
+          {String(cd.hours).padStart(2, '0')}:{String(cd.minutes).padStart(2, '0')}:{String(cd.seconds).padStart(2, '0')}
         </span>
-        <div className="flex items-center gap-1">
-          <span className={`text-[11px] sm:text-xs font-bold tabular-nums px-1.5 py-0.5 rounded ${urgency ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-            {String(cd.hours).padStart(2, '0')}j
-          </span>
-          <span className={`text-[11px] sm:text-xs ${urgency ? 'text-red-400' : 'text-amber-400'}`}>:</span>
-          <span className={`text-[11px] sm:text-xs font-bold tabular-nums px-1.5 py-0.5 rounded ${urgency ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-            {String(cd.minutes).padStart(2, '0')}m
-          </span>
-          <span className={`text-[11px] sm:text-xs ${urgency ? 'text-red-400' : 'text-amber-400'}`}>:</span>
-          <span className={`text-[11px] sm:text-xs font-bold tabular-nums px-1.5 py-0.5 rounded ${urgency ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-            {String(cd.seconds).padStart(2, '0')}d
-          </span>
-        </div>
-      </div>
-      <span className={`text-[11px] sm:text-xs font-bold flex items-center gap-1 sm:gap-1.5 shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg transition-all ml-auto ${
-        urgency ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'
-      }`}>
-        Bayar Sekarang
-        <i className="fa-solid fa-arrow-right text-[9px] sm:text-[10px]"></i>
+      </span>
+      <span className={`inline-flex items-center gap-1 text-[11px] font-bold text-white ${btn} px-2.5 py-1 rounded-md`}>
+        {labels.payNow}
+        <ArrowRight className="w-3 h-3" />
       </span>
     </div>
   );
 }
 
-const TABS = [
-  { id: 'all', icon: 'fa-ticket' },
-  { id: 'flight', icon: 'fa-plane' },
-  { id: 'hotel', icon: 'fa-bed' },
-  { id: 'train', icon: 'fa-train' },
-  { id: 'insurance', icon: 'fa-shield-halved' },
-];
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function BookingSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 animate-pulse">
+      <div className="flex gap-3">
+        <div className="w-11 h-11 rounded-xl bg-slate-100 shrink-0" />
+        <div className="flex-1 space-y-2.5 py-0.5">
+          <div className="h-2.5 w-28 rounded bg-slate-100" />
+          <div className="h-3.5 w-2/3 rounded bg-slate-100" />
+          <div className="h-2.5 w-1/2 rounded bg-slate-100" />
+        </div>
+        <div className="hidden sm:block w-20 space-y-2 py-1">
+          <div className="h-2.5 w-full rounded bg-slate-100" />
+          <div className="h-3.5 w-full rounded bg-slate-100" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function BookingsPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const { language } = useLanguage();
   const t = i18n.bookings[language];
-  const tc = i18n.common[language];
-
-  const tabLabel = (id: string) => (id === 'all' ? t.tabs.all : t[id as 'flight' | 'hotel' | 'train' | 'insurance']);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [tab, setTab] = useState<'active' | 'history'>('active');
+  const [service, setService] = useState<'all' | 'flight' | 'hotel' | 'train' | 'insurance'>('all');
+  const [query, setQuery] = useState('');
+  const [visible, setVisible] = useState(PAGE_SIZE);
 
-  usePageTitle(
-    activeTab === 'all' ? 'Pesanan Saya' : `Pesanan ${tabLabel(activeTab)}`
-  );
+  usePageTitle(t.title);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.replace('/login');
-    }
+    if (status === 'unauthenticated') router.replace('/login');
   }, [status, router]);
+
+  const resetVisible = () => setVisible(PAGE_SIZE);
 
   useEffect(() => {
     if (status !== 'authenticated') return;
-
-    async function fetchBookings() {
+    let cancelled = false;
+    async function load(silent = false) {
+      if (!silent) setLoading(true);
       try {
         const res = await fetch('/api/user/bookings');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Gagal memuat pesanan');
-        setBookings(data.bookings || []);
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Gagal memuat pesanan';
-        setError(message);
+        if (!cancelled) {
+          setBookings(Array.isArray(data.bookings) ? data.bookings : []);
+          setError('');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Gagal memuat pesanan');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
-    fetchBookings();
-    const interval = setInterval(fetchBookings, 30000);
-    return () => clearInterval(interval);
+    load();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') load(true);
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [status]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab]);
+  const activeBookings = useMemo(() => {
+    return bookings
+      .filter(isActiveBooking)
+      .sort((a, b) => {
+        const aPending = a.status === 'pending_payment' ? 0 : 1;
+        const bPending = b.status === 'pending_payment' ? 0 : 1;
+        if (aPending !== bPending) return aPending - bPending;
+        const aDate = bookingEndDate(a)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const bDate = bookingEndDate(b)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return aDate - bDate;
+      });
+  }, [bookings]);
 
-  const filtered = useMemo(
-    () => bookings.filter(b => activeTab === 'all' || b.bookingType === activeTab),
-    [bookings, activeTab]
-  );
+  const historyBookings = useMemo(() => {
+    return bookings
+      .filter((b) => !isActiveBooking(b))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [bookings]);
 
-  if (status === 'loading' || loading) {
+  const source = tab === 'active' ? activeBookings : historyBookings;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return source.filter((b) => {
+      if (service !== 'all' && b.bookingType !== service) return false;
+      if (!q) return true;
+      const haystack = [
+        b.orderNumber,
+        b.id,
+        b.routeLabel,
+        b.hotelName,
+        b.airlineName,
+        b.origin,
+        b.destination,
+        b.flightNumber,
+        b.pnr,
+        passengerSearchText(b.passengerData),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [source, service, query]);
+
+  const shown = filtered.slice(0, visible);
+
+  const statusLabel = (key: string) => (t.statusMap as Record<string, string | undefined>)[key] || key;
+
+  const renderCard = (b: Booking) => {
+    const meta = TYPE_META[b.bookingType] || TYPE_META.flight;
+    const Icon = meta.icon;
+    const statusStyle = STATUS_STYLE[b.status] || STATUS_STYLE.cancelled;
+    const isHotel = b.bookingType === 'hotel';
+    const isTransport = b.bookingType === 'flight' || b.bookingType === 'train';
+    const logo = getVendorLogo(b.bookingType, b.provider || '', b.airlineName || '');
+    const pax = b.adultCount || b.childCount ? (b.adultCount || 0) + (b.childCount || 0) : getPassengerCount(b.passengerData);
+
+    const title = isHotel
+      ? b.hotelName || '-'
+      : b.bookingType === 'insurance'
+        ? t.services.insurance
+        : b.routeLabel || `${b.origin || ''}${b.origin && b.destination ? ' → ' : ''}${b.destination || ''}`;
+
+    const subtitle = isHotel
+      ? [
+          `${getNights(b.checkinDate, b.checkoutDate, b.nights)} ${t.night}`,
+          b.roomCount ? `${b.roomCount} ${t.room}` : null,
+          b.roomDescription,
+        ].filter(Boolean).join(' · ')
+      : isTransport
+        ? [b.airlineName ? (b.bookingType === 'flight' ? resolveAirlineName(b.airlineName) : b.airlineName) : null, b.flightNumber]
+            .filter(Boolean)
+            .join(' · ')
+        : 'Perlindungan perjalanan';
+
+    const dateText = isHotel
+      ? formatDateRange(b.checkinDate, b.checkoutDate, language)
+      : formatDate(b.departureDate || b.createdAt, language);
+
     return (
-      <div className="min-h-screen bg-brand-bgLight flex items-center justify-center pt-24">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-9 h-9 border-[3px] border-brand-orange border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-400 text-sm">{tc.loading}</p>
-        </div>
-      </div>
+      <article
+        key={b.id}
+        className="bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden hover:border-slate-300 transition-colors"
+      >
+        <Link href={`/bookings/${b.id}`} className="block p-4 sm:p-5">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <div className="shrink-0 flex flex-col gap-2">
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${meta.tile}`}>
+                <Icon className="w-5 h-5" strokeWidth={2} />
+              </div>
+              {logo ? (
+                <div className="w-11 h-11 rounded-lg border border-slate-100 bg-white flex items-center justify-center p-1.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={logo}
+                    alt=""
+                    className="max-w-full max-h-full object-contain"
+                    onError={(e) => {
+                      const el = e.currentTarget.parentElement;
+                      if (el) el.style.display = 'none';
+                    }}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-[11px] text-slate-400">{b.orderNumber || b.id}</span>
+                <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyle.bg} ${statusStyle.text}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
+                  {statusLabel(b.status)}
+                </span>
+              </div>
+
+              <h3 className="mt-1 text-sm sm:text-[15px] font-bold text-brand-ink truncate">{title}</h3>
+              {subtitle ? <p className="text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p> : null}
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
+                  {dateText}
+                </span>
+                {pax > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    {pax} {t.pax}
+                  </span>
+                )}
+                {b.pnr && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Ticket className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="font-mono">{t.pnr} {b.pnr}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="hidden sm:flex flex-col items-end justify-between self-stretch shrink-0 text-right">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-slate-400">{t.total}</p>
+                <p className="text-sm font-extrabold text-brand-ink whitespace-nowrap">{formatCurrency(b.totalAmount)}</p>
+              </div>
+              <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-brand-blue">
+                {t.viewDetails}
+                <ChevronRight className="w-3.5 h-3.5" />
+              </span>
+            </div>
+          </div>
+
+          <div className="sm:hidden mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">{t.total}</p>
+              <p className="text-sm font-extrabold text-brand-ink">{formatCurrency(b.totalAmount)}</p>
+            </div>
+            <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-brand-blue">
+              {t.viewDetails}
+              <ChevronRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+        </Link>
+
+        {b.status === 'pending_payment' && (
+          <Link href={`/payment/${b.id}`} aria-label={`${t.payNow} ${b.orderNumber || b.id}`}>
+            <PaymentBar createdAt={b.createdAt} labels={{ payWithin: t.payWithin, payNow: t.payNow }} />
+          </Link>
+        )}
+      </article>
     );
-  }
-
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginatedBookings = filtered.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
-
-  const stats = {
-    total: bookings.length,
-    active: bookings.filter(b => ['paid', 'issued'].includes(b.status)).length,
-    pending: bookings.filter(b => b.status === 'pending_payment').length,
-    cancelled: bookings.filter(b => ['cancelled', 'payment_failed'].includes(b.status)).length,
-    flight: bookings.filter(b => b.bookingType === 'flight').length,
-    hotel: bookings.filter(b => b.bookingType === 'hotel').length,
-    train: bookings.filter(b => b.bookingType === 'train').length,
-    insurance: bookings.filter(b => b.bookingType === 'insurance').length,
   };
 
+  // Group riwayat per bulan; pesanan aktif tetap urut jadwal.
+  const grouped = useMemo(() => {
+    if (tab === 'active') return [{ label: '', items: shown }];
+    const map = new Map<string, Booking[]>();
+    for (const b of shown) {
+      const label = monthLabel(b.departureDate || b.checkinDate || b.createdAt, language);
+      const list = map.get(label) || [];
+      list.push(b);
+      map.set(label, list);
+    }
+    return Array.from(map.entries()).map(([label, items]) => ({ label, items }));
+  }, [shown, tab, language]);
+
+  const isLoading = status === 'loading' || loading;
+
   return (
-    <div className="min-h-screen bg-brand-bgLight">
-      {/* ── Header Hero ── */}
-      <div className="bg-brand-bgLight pt-[64px] md:pt-20 pb-4 sm:pb-6 px-3 sm:px-4">
-        <div className="max-w-5xl mx-auto">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <button
-              onClick={() => router.push('/')}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 active:bg-slate-100 flex items-center justify-center text-brand-ink transition-all shadow-card shrink-0"
-            >
-              <i className="fa-solid fa-arrow-left text-xs sm:text-sm"></i>
-            </button>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-brand-ink tracking-tight truncate">{t.title}</h1>
-              <p className="text-brand-neutral text-xs sm:text-sm mt-1 sm:mt-1.5 line-clamp-2 sm:truncate">{t.subtitle}</p>
+    <div className="min-h-screen bg-brand-bgLight pt-[64px] md:pt-20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+          <AccountSidebar />
+
+          <div className="flex-1 min-w-0">
+            {/* Header */}
+            <div className="mb-5 sm:mb-6">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-brand-ink tracking-tight">{t.title}</h1>
+              <p className="text-sm text-brand-neutral mt-1">{t.subtitle}</p>
+            </div>
+
+            {/* Tabs + search */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-card">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-4 sm:px-5 pt-1.5 sm:pt-0">
+                <div className="flex items-center gap-6">
+                  {(['active', 'history'] as const).map((key) => {
+                    const count = key === 'active' ? activeBookings.length : historyBookings.length;
+                    const isOn = tab === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => { setTab(key); resetVisible(); }}
+                        className={`relative py-3.5 text-sm font-bold transition-colors ${
+                          isOn ? 'text-brand-ink' : 'text-slate-400 hover:text-slate-600'
+                        }`}
+                      >
+                        {t.tabs[key]}
+                        <span
+                          className={`ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold ${
+                            isOn ? 'bg-orange-50 text-brand-orange' : 'bg-slate-100 text-slate-400'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                        {isOn && <span className="absolute left-0 right-0 -bottom-px h-0.5 bg-brand-orange rounded-full" />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="relative w-full sm:w-64 pb-3 sm:pb-0">
+                  <Search className="absolute left-3 top-[calc(50%-6px)] -translate-y-1/2 w-4 h-4 text-slate-400 sm:top-1/2" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => { setQuery(e.target.value); resetVisible(); }}
+                    placeholder={t.searchPlaceholder}
+                    aria-label={t.searchAria}
+                    className="w-full h-10 pl-9 pr-9 rounded-xl border border-slate-200 bg-slate-50/60 text-[13px] text-brand-ink placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-orange/20 focus:border-brand-orange/40 transition"
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => { setQuery(''); resetVisible(); }}
+                      aria-label="Clear"
+                      className="absolute right-2.5 top-[calc(50%-6px)] -translate-y-1/2 sm:top-1/2 w-5 h-5 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-200"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Filter chips */}
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 sm:px-5 py-3 border-t border-slate-100">
+                {(['all', 'flight', 'hotel', 'train', 'insurance'] as const).map((key) => {
+                  const isOn = service === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => { setService(key); resetVisible(); }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-semibold whitespace-nowrap transition-colors ${
+                        isOn
+                          ? 'bg-brand-ink border-brand-ink text-white'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {t.filters[key]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="mt-4 sm:mt-5">
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[0, 1, 2].map((i) => <BookingSkeleton key={i} />)}
+                </div>
+              ) : error ? (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-8 text-center">
+                  <p className="text-sm font-semibold text-brand-ink">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-ink text-white text-sm font-semibold hover:bg-slate-800 transition-colors"
+                  >
+                    <Loader2 className="w-4 h-4" />
+                    {language === 'ID' ? 'Coba lagi' : 'Try again'}
+                  </button>
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-10 sm:p-12 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto mb-4">
+                    <Inbox className="w-5 h-5 text-slate-400" strokeWidth={1.8} />
+                  </div>
+                  <p className="text-sm font-bold text-brand-ink">
+                    {query || service !== 'all'
+                      ? t.noResult
+                      : tab === 'active'
+                        ? t.emptyActive
+                        : t.emptyHistory}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1.5 max-w-sm mx-auto leading-relaxed">
+                    {query || service !== 'all'
+                      ? t.noResultSub
+                      : tab === 'active'
+                        ? t.emptyActiveSub
+                        : t.emptyHistorySub}
+                  </p>
+                  {tab === 'active' && !query && service === 'all' && (
+                    <Link
+                      href="/"
+                      className="mt-5 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-orange text-white text-sm font-semibold hover:bg-orange-dark transition-colors"
+                    >
+                      {language === 'ID' ? 'Cari Perjalanan' : 'Find a Trip'}
+                      <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {grouped.map((group) => (
+                    <section key={group.label || 'active'}>
+                      {group.label && (
+                        <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2 px-1">
+                          {group.label}
+                        </h2>
+                      )}
+                      <div className="space-y-3">
+                        {group.items.map(renderCard)}
+                      </div>
+                    </section>
+                  ))}
+
+                  {filtered.length > visible && (
+                    <div className="pt-1 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setVisible((v) => v + PAGE_SIZE)}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-brand-ink hover:border-slate-300 transition-colors"
+                      >
+                        {t.loadMore}
+                        <ChevronRight className="w-4 h-4 rotate-90" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </div>
-
-      {/* ── Content ── */}
-      <div className="max-w-5xl mx-auto px-3 sm:px-4 pt-3 sm:pt-4 pb-16 space-y-3 sm:space-y-4">
-        {/* Stat cards */}
-        {bookings.length > 0 && (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-floating p-3 sm:p-4 grid grid-cols-3 gap-2 sm:gap-3">
-            {[
-              { label: 'Total Pesanan', value: stats.total, icon: 'fa-ticket', cls: 'text-brand-blue bg-brand-blue/10' },
-              { label: 'Aktif', value: stats.active, icon: 'fa-circle-check', cls: 'text-emerald-600 bg-emerald-50' },
-              { label: 'Menunggu Bayar', value: stats.pending, icon: 'fa-clock', cls: 'text-amber-600 bg-amber-50' },
-            ].map(s => (
-              <div key={s.label} className="flex flex-col items-center text-center sm:flex-row sm:items-center sm:text-left gap-1.5 sm:gap-3 px-1 sm:px-3 py-1.5 sm:py-2 rounded-xl">
-                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${s.cls} flex items-center justify-center shrink-0`}>
-                  <i className={`fa-solid ${s.icon} text-sm sm:text-base`}></i>
-                </div>
-                <div className="min-w-0 w-full">
-                  <p className="text-base sm:text-xl font-extrabold text-brand-ink leading-none">{s.value}</p>
-                  <p className="text-[9px] sm:text-[11px] text-slate-400 font-semibold mt-1 truncate">{s.label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Tabs */}
-        {bookings.length > 0 && (
-          <div className="relative bg-white rounded-2xl border border-slate-200 shadow-card">
-            <div className="flex gap-1 p-1.5 pr-6 overflow-x-auto scrollbar-hide scroll-smooth snap-x">
-              {TABS.map(tab => {
-                const count = tab.id === 'all' ? stats.total : stats[tab.id as keyof typeof stats] || 0;
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-sm font-semibold whitespace-nowrap transition-all shrink-0 snap-start ${
-                      isActive
-                        ? 'bg-gradient-to-r from-brand-orange to-orange-dark text-white shadow-glow-orange'
-                        : 'text-slate-500 hover:bg-slate-50 active:bg-slate-100'
-                    }`}
-                  >
-                    {tab.id !== 'all' && <i className={`fa-solid ${tab.icon} text-[10px] sm:text-xs ${isActive ? 'text-white/90' : 'text-slate-400'}`}></i>}
-                    {tabLabel(tab.id)}
-                    <span className={`text-[10px] sm:text-xs px-1.5 py-0.5 rounded-md font-bold ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'
-                    }`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {/* Fade hint so the last tab doesn't look clipped when it overflows on mobile */}
-            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 rounded-r-2xl bg-gradient-to-l from-white to-transparent sm:hidden"></div>
-          </div>
-        )}
-
-        {/* Error State */}
-        {error && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-6 sm:p-8 text-center">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-3 sm:mb-4">
-              <i className="fa-solid fa-circle-exclamation text-red-400 text-lg sm:text-xl"></i>
-            </div>
-            <p className="text-slate-700 font-semibold text-sm sm:text-base">{error}</p>
-            <button
-              onClick={() => {
-                setError('');
-                setLoading(true);
-                fetch('/api/user/bookings')
-                  .then(r => r.json())
-                  .then(data => {
-                    if (data.bookings) setBookings(data.bookings);
-                    else throw new Error(data.error);
-                  })
-                  .catch(err => setError(err instanceof Error ? err.message : 'Gagal memuat'))
-                  .finally(() => setLoading(false));
-              }}
-              className="mt-4 w-full sm:w-auto px-5 py-3 sm:py-2.5 bg-gradient-to-r from-brand-orange to-orange-dark hover:opacity-90 active:opacity-100 text-white text-sm font-semibold rounded-xl transition-colors inline-flex items-center justify-center gap-2 shadow-glow-orange"
-            >
-              <i className="fa-solid fa-arrow-rotate-right"></i>
-              {tc.retry}
-            </button>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!error && filtered.length === 0 && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-8 sm:p-12 text-center">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-brand-blue/10 rounded-2xl flex items-center justify-center mx-auto mb-3 sm:mb-4">
-              <i className="fa-solid fa-ticket text-brand-blue text-xl sm:text-2xl"></i>
-            </div>
-            <p className="text-slate-700 font-semibold text-base sm:text-lg">{t.empty}</p>
-            <p className="text-slate-400 text-sm mt-1 mb-5 sm:mb-6">{t.emptySub}</p>
-            <Link
-              href="/"
-              className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-orange to-orange-dark hover:opacity-90 active:opacity-100 text-white text-sm font-semibold rounded-xl transition-opacity shadow-glow-orange"
-            >
-              <i className="fa-solid fa-magnifying-glass"></i>
-              {t.searchBtn}
-            </Link>
-          </div>
-        )}
-
-        {/* Booking Cards */}
-        {!error && paginatedBookings.length > 0 && (
-          <div className="space-y-4 sm:space-y-5">
-            {(() => {
-              const groups: Record<string, typeof paginatedBookings> = {};
-              for (const b of paginatedBookings) {
-                const g = getTimeGroup(b.createdAt);
-                if (!groups[g]) groups[g] = [];
-                groups[g].push(b);
-              }
-              return TIME_GROUP_ORDER.filter(g => groups[g]?.length).map(group => (
-                <div key={group}>
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 sm:mb-2.5 px-1">{group}</h3>
-                  <div className="space-y-3 sm:space-y-3.5">
-                    {groups[group].map(booking => {
-                      const statusCfg = STATUS_CONFIG[booking.status] || { dot: 'bg-slate-400', text: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200', label: booking.status };
-                      const typeCfg = TYPE_CONFIG[booking.bookingType] || { icon: HelpCircle, gradient: 'from-slate-400 to-slate-500' };
-                      const TypeIcon = typeCfg.icon;
-                      const vendorLogo = getVendorLogo(booking.bookingType, booking.provider || '', booking.airlineName || '');
-                      const isHotel = booking.bookingType === 'hotel';
-                      const isFlight = booking.bookingType === 'flight';
-                      const isTrain = booking.bookingType === 'train';
-
-                      const mainInfo = isHotel
-                        ? booking.hotelName || '-'
-                        : booking.routeLabel || `${booking.origin || ''} → ${booking.destination || ''}`;
-
-                      const dateInfo = isHotel && booking.checkinDate && booking.checkoutDate
-                        ? `${formatShortDate(booking.checkinDate)} — ${formatShortDate(booking.checkoutDate)}`
-                        : booking.departureDate
-                          ? formatDate(booking.departureDate)
-                          : formatDate(booking.createdAt);
-
-                      const subtitleInfo = isHotel
-                        ? booking.checkinDate && booking.checkoutDate
-                          ? `${getNights(booking.checkinDate, booking.checkoutDate)} ${t.night}`
-                          : null
-                        : (isFlight || isTrain) && booking.airlineName
-                          ? resolveAirlineName(booking.airlineName)
-                          : null;
-
-                      const paxCount = getPassengerCount(booking.passengerData);
-                      const hasPnr = !!booking.pnr;
-                      const hasFlightNo = !!booking.flightNumber;
-
-                      return (
-                        <div
-                          key={booking.id}
-                          className="group bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden hover:shadow-floating hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300"
-                        >
-                          <div className={`h-1 bg-gradient-to-r ${typeCfg.gradient}`}></div>
-                          <Link href={`/bookings/${booking.id}`} className="block">
-                            <div className="p-3.5 sm:p-4 md:p-5">
-                              <div className="flex items-start gap-2.5 sm:gap-3.5">
-                                {/* Type Icon */}
-                                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl shrink-0 shadow-card overflow-hidden relative bg-gradient-to-br ${typeCfg.gradient}`}>
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <TypeIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2.2} />
-                                  </div>
-                                  {vendorLogo && (
-                                    <img
-                                      src={vendorLogo}
-                                      alt={booking.airlineName || ''}
-                                      className="relative w-full h-full object-contain bg-white p-2 sm:p-2.5"
-                                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                                    />
-                                  )}
-                                </div>
-
-                                {/* Main Info */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                    <span className="font-extrabold text-brand-ink text-xs sm:text-sm">{booking.orderNumber || booking.id}</span>
-                                    <span className={`inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border ${statusCfg.bg} ${statusCfg.border} ${statusCfg.text}`}>
-                                      <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot} ${booking.status === 'pending_payment' ? 'animate-pulse' : ''}`}></span>
-                                      {statusCfg.label}
-                                    </span>
-                                  </div>
-                                  <p className="text-slate-700 font-semibold text-xs sm:text-sm mt-1 truncate">{mainInfo}</p>
-                                  {subtitleInfo && (
-                                    <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 flex items-center gap-1">
-                                      <i className={`fa-solid ${isHotel ? 'fa-moon' : 'fa-plane'} text-[10px]`}></i>
-                                      {subtitleInfo}
-                                    </p>
-                                  )}
-                                </div>
-
-                                {/* Price + CTA */}
-                                <div className="text-right shrink-0">
-                                  <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t.startsFrom}</p>
-                                  <p className="mt-0.5 font-extrabold text-brand-ink text-sm sm:text-base whitespace-nowrap">{formatCurrency(booking.totalAmount)}</p>
-                                  <span className="hidden sm:inline-flex items-center gap-1 text-xs font-bold text-brand-blue group-hover:text-brand-orange transition-colors">
-                                    {t.viewDetails}
-                                    <i className="fa-solid fa-chevron-right text-[10px] group-hover:translate-x-0.5 transition-transform"></i>
-                                  </span>
-                                  <i className="fa-solid fa-chevron-right text-[10px] text-brand-blue sm:hidden"></i>
-                                </div>
-                              </div>
-
-                              {/* Card Footer - Details */}
-                              <div className="mt-3 sm:mt-3.5 pt-3 sm:pt-3.5 border-t border-dashed border-slate-100 flex flex-wrap items-center gap-x-3 sm:gap-x-5 gap-y-1.5 sm:gap-y-2 text-[11px] sm:text-xs text-slate-400">
-                                <span className="flex items-center gap-1.5">
-                                  <i className="fa-regular fa-calendar text-[11px] text-brand-blue"></i>
-                                  {dateInfo}
-                                </span>
-
-                                {paxCount > 0 && (
-                                  <span className="flex items-center gap-1.5">
-                                    <i className="fa-solid fa-users text-[11px] text-brand-blue"></i>
-                                    <span className="font-medium text-slate-500">{paxCount} {t.pax}</span>
-                                  </span>
-                                )}
-
-                                {hasFlightNo && (
-                                  <span className="flex items-center gap-1.5">
-                                    <i className="fa-solid fa-plane text-[10px] text-brand-blue"></i>
-                                    <span className="font-medium text-slate-500">{booking.flightNumber}</span>
-                                  </span>
-                                )}
-
-                                {hasPnr && (
-                                  <span className="inline-flex items-center gap-1.5 font-semibold text-brand-orange bg-orange-light px-2 py-0.5 rounded-md">
-                                    <i className="fa-solid fa-qrcode text-[10px]"></i>
-                                    PNR {booking.pnr}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </Link>
-
-                          {/* Payment Action - only for pending */}
-                          {booking.status === 'pending_payment' && (
-                            <Link href={`/payment/${booking.id}`} className="block">
-                              <PaymentCountdownBar createdAt={booking.createdAt} />
-                            </Link>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ));
-            })()}
-          </div>
-        )}
-
-        {/* Pagination */}
-        {!error && totalPages > 1 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 mt-2 pt-2 px-1">
-            <p className="text-xs sm:text-sm text-slate-400 text-center sm:text-left">
-              {(currentPage - 1) * ITEMS_PER_PAGE + 1}—{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} {language === 'ID' ? 'dari' : 'of'} {filtered.length}
-            </p>
-            <div className="flex items-center justify-center gap-1.5 overflow-x-auto scrollbar-hide">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="w-9 h-9 sm:w-9 sm:h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-400 hover:bg-brand-orange/5 hover:text-brand-orange hover:border-brand-orange/30 active:bg-brand-orange/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
-              >
-                <i className="fa-solid fa-chevron-left text-xs"></i>
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`w-9 h-9 rounded-xl text-sm font-semibold transition-all shrink-0 ${
-                    currentPage === page
-                      ? 'bg-gradient-to-r from-brand-orange to-orange-dark text-white shadow-glow-orange'
-                      : 'border border-slate-200 bg-white text-slate-500 hover:border-brand-orange/30 hover:text-brand-orange active:bg-brand-orange/10'
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-400 hover:bg-brand-orange/5 hover:text-brand-orange hover:border-brand-orange/30 active:bg-brand-orange/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
-              >
-                <i className="fa-solid fa-chevron-right text-xs"></i>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

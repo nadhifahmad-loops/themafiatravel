@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ClipboardList, Users, CreditCard, SlidersHorizontal, X, PieChart, ArrowRightLeft, ScrollText, Ticket, Briefcase, Pen } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Users, CreditCard, SlidersHorizontal, X, PieChart, ArrowRightLeft, ScrollText, Ticket, Briefcase, Pen, Megaphone } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
@@ -31,6 +31,7 @@ const NAV_GROUPS = [
   {
     label: 'Promosi & Konten',
     items: [
+      { label: 'Manajemen Promo', href: '/admin/promos', icon: Megaphone },
       { label: 'Manajemen Kupon', href: '/admin/coupons', icon: Ticket },
       { label: 'Manajemen Karier', href: '/admin/careers', icon: Briefcase },
       { label: 'Manajemen Blog', href: '/admin/blog', icon: Pen },

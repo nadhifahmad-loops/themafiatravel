@@ -58,8 +58,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const token = await getToken({ req: reqLike, secret: process.env.NEXTAUTH_SECRET, secureCookie: process.env.NODE_ENV === 'production' });
   const session = token ? { user: { id: token.sub || '', name: token.name || '', email: token.email || '', image: token.picture || null } } : null;
 
+  // Bahasa dari cookie `app_lang` (ditulis LanguageProvider saat user ganti
+  // bahasa) → memastikan `<html lang>` dan render awal sesuai preferensi.
+  const lang: 'ID' | 'EN' = cookieStore.get('app_lang')?.value === 'EN' ? 'EN' : 'ID';
+
   return (
-    <html lang="id" data-scroll-behavior="smooth">
+    <html lang={lang === 'ID' ? 'id' : 'en'} data-scroll-behavior="smooth">
       <head>
         <meta httpEquiv="Content-Security-Policy" content={csp} />
         <link
@@ -76,7 +80,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         />
       </head>
       <body suppressHydrationWarning>
-        <Providers session={session}>{children}</Providers>
+        <Providers session={session} lang={lang}>{children}</Providers>
         <div id="datepicker-root"></div>
       </body>
     </html>

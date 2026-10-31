@@ -7,6 +7,7 @@ import { CalendarField, CalendarRangeField } from '@/components/common/CalendarF
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { loadAirportGeo, GeoAirport } from '@/lib/geo';
+import NearMeRow, { type NearMePick } from '@/components/search/NearMeRow';
 import { i18n } from '@/lib/i18n';
 import { type FormVariant, vFormField, vFormHeading, vFormLabel, vValue, vPanel, vInput, vItem, vItemBg, vSub, vMuted, vCode, vDiv, vSection, vToggle, vToggleIdle, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vBtnSearch, vFieldError } from '@/lib/formVariants';
 
@@ -127,9 +128,9 @@ const CABIN_CLASSES: { value: CabinClassValue; label: string }[] = [
   { value: 'C', label: 'Bisnis' }, { value: 'F', label: 'First Class' },
 ];
 
-function AirportInput({ label, value, onChange, icon, dropUp = false, variant = 'dark', error = false, showLabel = true, id }: {
+function AirportInput({ label, value, onChange, icon, dropUp = false, variant = 'dark', error = false, showLabel = true, id, showNearMe = false }: {
   label: string; value: string; onChange: (v: string) => void; icon: string;
-  dropUp?: boolean; variant?: FormVariant; error?: boolean; showLabel?: boolean; id?: string;
+  dropUp?: boolean; variant?: FormVariant; error?: boolean; showLabel?: boolean; id?: string; showNearMe?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -165,11 +166,28 @@ function AirportInput({ label, value, onChange, icon, dropUp = false, variant = 
   const handleSelect = (item: Airport) => {
     onChange(item.code); setOpen(false); setSearch('');
     const n = [item, ...recent.filter(r => r.code !== item.code)].slice(0, 3);
-    setRecent(n); localStorage.setItem('mafia_recent_airports', JSON.stringify(n));
+    setRecent(n);
+    try { localStorage.setItem('mafia_recent_airports', JSON.stringify(n)); } catch {}
   };
-  const selected = airports.find(a => a.code === value) || POPULAR_AIRPORTS.find(a => a.code === value) || geoAirports.find(a => a.code === value);
+  // Hasil "Dekat Saya": daftarkan ke list supaya label/penampilannya benar.
+  const handleNearMe = (item: NearMePick) => {
+    const airport: Airport = { code: item.code, city: item.city || item.name || item.code, label: `${item.name} (${item.code})` };
+    setAirports(prev => (prev.some(a => a.code === airport.code) ? prev : [airport, ...prev]));
+    handleSelect(airport);
+  };
+  const selected =
+    airports.find(a => a.code === value) ||
+    POPULAR_AIRPORTS.find(a => a.code === value) ||
+    recent.find(a => a.code === value) ||
+    geoAirports.find(a => a.code === value);
   const filtered = airports.filter(a => a.city.toLowerCase().includes(search.toLowerCase()) || a.code.toLowerCase().includes(search.toLowerCase()) || a.label.toLowerCase().includes(search.toLowerCase())).slice(0, 20);
-  const displayValue = selected ? ('city' in selected ? `${selected.city} (${selected.code})` : (selected.name || selected.code)) : value;
+  const displayValue = selected
+    ? selected.city
+      ? `${selected.city} (${selected.code})`
+      : 'name' in selected && selected.name
+        ? selected.name
+        : selected.code
+    : value;
 
   return (
     <div className="relative flex min-w-0 flex-1 flex-col" ref={ref}>
@@ -199,6 +217,7 @@ function AirportInput({ label, value, onChange, icon, dropUp = false, variant = 
           <div className="max-h-[320px] overflow-y-auto scrollbar-hide">
             {search.length === 0 ? (
               <div className={`divide-y ${vDiv(variant)}`}>
+                {showNearMe && <NearMeRow target="airport" variant={variant} onPick={handleNearMe} />}
                 {recent.length > 0 && (
                   <div className="py-1.5">
                     <div className={`px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>Terakhir</div>
@@ -479,7 +498,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
                         <span className={vFormLabel(variant)}>{tf.to}</span>
                       </div>
                       <div className="relative flex flex-1 items-stretch gap-2">
-                        <AirportInput showLabel={false} label={tf.from} value={leg.origin} onChange={(v) => { clearError(`origin_${i}`); clearError(`same_${i}`); const n=[...legs]; n[i].origin=v; setLegs(n); }} icon="fa-plane-departure" variant={variant} error={!!originErr} />
+                        <AirportInput showLabel={false} showNearMe label={tf.from} value={leg.origin} onChange={(v) => { clearError(`origin_${i}`); clearError(`same_${i}`); const n=[...legs]; n[i].origin=v; setLegs(n); }} icon="fa-plane-departure" variant={variant} error={!!originErr} />
                         <button type="button" aria-label={tf.swapBtn} onClick={() => { clearError(`origin_${i}`); clearError(`dest_${i}`); clearError(`same_${i}`); const n=[...legs]; const t=n[i].origin; n[i].origin=n[i].destination; n[i].destination=t; setLegs(n); }}
                           className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-sky-700 rounded-full z-10 flex items-center justify-center hover:scale-110 transition-all duration-300 ${variant === 'light' ? 'bg-white border border-slate-200 shadow-sm' : 'bg-slate-900 border border-white/20 shadow-xl'}`}>
                           <i className="fa-solid fa-right-left text-[10px]" aria-hidden="true"></i>
@@ -525,7 +544,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
             <span className={vFormLabel(variant)}>{tf.to}</span>
           </div>
           <div className="relative flex flex-1 items-stretch gap-2">
-            <AirportInput showLabel={false} label={tf.from} value={origin} onChange={(v) => { clearError('origin'); clearError('same'); setOriginOverride(v); }} icon="fa-plane-departure" variant={variant} error={!!errors.origin || !!errors.same} />
+            <AirportInput showLabel={false} showNearMe label={tf.from} value={origin} onChange={(v) => { clearError('origin'); clearError('same'); setOriginOverride(v); }} icon="fa-plane-departure" variant={variant} error={!!errors.origin || !!errors.same} />
             <button type="button" aria-label={tf.swapBtn} onClick={() => { clearError('origin'); clearError('destination'); clearError('same'); const t=origin; setOriginOverride(destination); setDestination(t); setSwapRotation(r => r + 180); }}
               className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-sky-700 rounded-full z-10 flex items-center justify-center hover:scale-110 transition-all duration-300 ${variant === 'light' ? 'bg-white border border-slate-200 shadow-sm' : 'bg-slate-900 border border-white/20 shadow-xl'}`}>
               <i className="fa-solid fa-right-left text-[10px]" aria-hidden="true" style={{ transition: 'transform 0.3s ease', transform: `rotate(${swapRotation}deg)` }}></i>

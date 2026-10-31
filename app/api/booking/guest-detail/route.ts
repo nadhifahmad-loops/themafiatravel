@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { safeTrainProviderBookings } from '@/lib/train-seat-data';
 import { matchGuestContact } from '@/lib/booking-contact-match';
+import { normalizeBookingSegments } from '@/lib/booking-segments';
 
 /** Bentuk mentah passenger di passengerData (JSON) — untuk pemetaan respons. */
 type GuestPassengerRow = {
@@ -54,22 +55,20 @@ export async function GET(req: NextRequest) {
     const passengers = (Array.isArray(booking.passengerData) ? booking.passengerData : []) as GuestPassengerRow[];
 
     // Subset aman dari segmen penerbangan provider (tanpa data harga/tarif).
-    const rawSegments =
-      Array.isArray(bd.provider_bookings) && bd.provider_bookings[0] && Array.isArray(bd.provider_bookings[0].segments)
-        ? bd.provider_bookings[0].segments
-        : [];
-    const flightSegments = rawSegments.map((s: Record<string, unknown>) => ({
+    // Bentuk vendor berbeda-beda; lib/booking-segments menyatukannya.
+    const normalizedSegments = normalizeBookingSegments(bd.provider_bookings);
+    const flightSegments = normalizedSegments.map((s) => ({
       origin: s.origin || null,
       destination: s.destination || null,
-      origin_name: s.origin_name || null,
-      destination_name: s.destination_name || null,
-      departure_date: s.departure_date || null,
-      arrival_date: s.arrival_date || null,
-      origin_terminal: s.origin_terminal || s.terminal || null,
-      destination_terminal: s.destination_terminal || null,
-      carrier_code: s.carrier_code || null,
-      carrier_name: s.carrier_name || null,
-      baggage_allowance: s.baggage_allowance || null,
+      origin_name: s.originName || null,
+      destination_name: s.destinationName || null,
+      departure_date: s.departureDate || null,
+      arrival_date: s.arrivalDate || null,
+      origin_terminal: s.originTerminal || null,
+      destination_terminal: s.destinationTerminal || null,
+      carrier_code: null,
+      carrier_name: s.carrierName || null,
+      baggage_allowance: s.baggage || null,
     }));
 
     // Refundable flag (konsisten dengan halaman pesanan login).
@@ -95,7 +94,10 @@ export async function GET(req: NextRequest) {
         origin: booking.origin,
         destination: booking.destination,
         departureDate: booking.departureDate,
-        arrivalDate: bd.arrival_date_from_search || null,
+        arrivalDate:
+          normalizedSegments[normalizedSegments.length - 1]?.arrivalDate ||
+          bd.arrival_date_from_search ||
+          null,
         flightNumber: booking.flightNumber,
         airlineName: booking.airlineName,
         pnr: booking.pnr,

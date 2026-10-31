@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { recordAudit, auditIpFromRequest } from '@/lib/audit';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 import { safeTrainProviderBookings } from '@/lib/train-seat-data';
+import { normalizeBookingSegments } from '@/lib/booking-segments';
 
 const VALID_STATUSES = ['pending_payment', 'paid', 'issued', 'payment_failed', 'cancelled', 'refund_requested', 'refund'];
 
@@ -92,24 +93,33 @@ export async function GET(
       selectedBaggage: bd.selectedBaggage ?? null,
       coverage: bd.coverage ?? null,
       roomType: bd.roomType ?? null,
-      // Segments hanya untuk display nama kota & arrival time (flight),
-      // journeys hanya untuk kursi train (ubah kursi KAI / tampilkan kursi).
+      // Segmen ternormalisasi untuk tampilan (rute, nama kota, jadwal).
+      // Menyatukan format vendor (segments[] vs journeys[].segments[].legs[]).
+      segments: normalizeBookingSegments(bd.provider_bookings).map((s) => ({
+        origin: s.origin ?? null,
+        destination: s.destination ?? null,
+        origin_name: s.originName ?? null,
+        destination_name: s.destinationName ?? null,
+        origin_terminal: s.originTerminal ?? null,
+        destination_terminal: s.destinationTerminal ?? null,
+        departure_date: s.departureDate ?? null,
+        arrival_date: s.arrivalDate ?? null,
+        carrier_name: s.carrierName ?? null,
+        flight_number: s.flightNumber ?? null,
+        cabin_baggage: s.baggage ?? null,
+        // Hanya field kursi yang aman ditampilkan (tanpa data identitas).
+        passengers: (s.passengers ?? []).map((sp) => ({
+          passenger_number: sp?.passenger_number ?? null,
+          number: sp?.number ?? null,
+          seat: sp?.seat ?? null,
+          seat_code: sp?.seat_code ?? null,
+          seat_assignment: sp?.seat_assignment ?? null,
+        })),
+      })),
+      // provider_bookings dipertahankan untuk alur pilih kursi train
+      // (hanya journeys yang aman dikirim ke client).
       provider_bookings: Array.isArray(bd.provider_bookings)
-        ? (bd.provider_bookings as any[]).map((pb: any, idx: number) => ({
-            segments: Array.isArray(pb?.segments)
-              ? pb.segments.map((s: any) => ({
-                  origin: s.origin,
-                  destination: s.destination,
-                  origin_name: s.origin_name,
-                  destination_name: s.destination_name,
-                  departure_date: s.departure_date,
-                  arrival_date: s.arrival_date,
-                  carrier_code: s.carrier_code,
-                  carrier_name: s.carrier_name,
-                  cabin_baggage: s.cabin_baggage,
-                  baggage_allowance: s.baggage_allowance,
-                }))
-              : [],
+        ? (bd.provider_bookings as unknown[]).map((_pb, idx) => ({
             journeys: safeTrainPbs[idx]?.journeys ?? [],
           }))
         : [],

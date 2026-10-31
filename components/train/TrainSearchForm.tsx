@@ -7,6 +7,7 @@ import { CalendarField, CalendarRangeField } from '@/components/common/CalendarF
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { i18n } from '@/lib/i18n';
+import NearMeRow, { type NearMePick } from '@/components/search/NearMeRow';
 import { type FormVariant, vFormField, vFormHeading, vFormLabel, vValue, vPanel, vInput, vItem, vSub, vMuted, vCode, vDiv, vSection, vToggle, vToggleIdle, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vFieldError, vBtnSearch } from '@/lib/formVariants';
 
 /** Lihat catatan di FlightSearchForm: nilai klien hanya dipakai setelah hidrasi. */
@@ -121,9 +122,9 @@ function FloatingPanel({ triggerRef, open, onClose, children, className, align =
   );
 }
 
-function StationInput({ label, value, onChange, stations, icon, variant = 'dark', showLabel = true, id, error = false }: {
+function StationInput({ label, value, onChange, stations, icon, variant = 'dark', showLabel = true, id, error = false, showNearMe = false }: {
   label: string; value: string; onChange: (v: string) => void; stations: Station[]; icon: string;
-  variant?: FormVariant; showLabel?: boolean; id?: string; error?: boolean;
+  variant?: FormVariant; showLabel?: boolean; id?: string; error?: boolean; showNearMe?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -156,9 +157,18 @@ function StationInput({ label, value, onChange, stations, icon, variant = 'dark'
   const handleSelect = (item: Station) => {
     onChange(item.code); setOpen(false); setSearch('');
     const n = [item, ...recent.filter(r => r.code !== item.code)].slice(0, 3);
-    setRecent(n); localStorage.setItem('mafia_recent_stations', JSON.stringify(n));
+    setRecent(n);
+    try { localStorage.setItem('mafia_recent_stations', JSON.stringify(n)); } catch {}
   };
-  const selected = stations.find(s => s.code === value) || POPULAR_STATIONS.find(s => s.code === value);
+  // Hasil "Dekat Saya": cocokkan dulu ke daftar stasiun yang tersedia.
+  const handleNearMe = (item: NearMePick) => {
+    const known = stations.find(s => s.code === item.code) || POPULAR_STATIONS.find(s => s.code === item.code);
+    handleSelect(known || { code: item.code, name: item.name, city: item.city || item.name, label: `${item.name} (${item.code})` });
+  };
+  const selected =
+    stations.find(s => s.code === value) ||
+    POPULAR_STATIONS.find(s => s.code === value) ||
+    recent.find(s => s.code === value);
   const filtered = stations.filter(s => s.city.toLowerCase().includes(search.toLowerCase()) || s.code.toLowerCase().includes(search.toLowerCase()) || s.name.toLowerCase().includes(search.toLowerCase())).slice(0, 20);
 
   return (
@@ -187,6 +197,7 @@ function StationInput({ label, value, onChange, stations, icon, variant = 'dark'
         <div className="max-h-[320px] overflow-y-auto scrollbar-hide">
           {search.length === 0 ? (
             <div className={`divide-y ${vDiv(variant)}`}>
+              {showNearMe && <NearMeRow target="station" variant={variant} onPick={handleNearMe} />}
               {recent.length > 0 && (
                 <div className="py-1.5">
                   <div className={`px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>{t.recent}</div>
@@ -361,7 +372,7 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
             <span className={vFormLabel(variant)}>{t.to}</span>
           </div>
           <div className="relative flex flex-1 items-stretch gap-2">
-            <StationInput showLabel={false} label={t.from} value={origin} onChange={(v) => { setOriginOverride(v); setFormError(''); }} stations={stations} icon="fa-train" variant={variant} error={origin === destination} />
+            <StationInput showLabel={false} showNearMe label={t.from} value={origin} onChange={(v) => { setOriginOverride(v); setFormError(''); }} stations={stations} icon="fa-train" variant={variant} error={origin === destination} />
             <button type="button" aria-label={t.swapBtn} onClick={() => { const tmp=origin; setOriginOverride(destination); setDestination(tmp); setSwapRotation(r => r + 180); setFormError(''); }}
               className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 text-sky-700 rounded-full z-10 flex items-center justify-center hover:scale-110 transition-all duration-300 ${variant === 'light' ? 'bg-white border border-slate-200 shadow-sm' : 'bg-slate-900 border border-white/20 shadow-xl'}`}>
               <i className="fa-solid fa-right-left text-[10px]" aria-hidden="true" style={{ transition: 'transform 0.3s ease', transform: `rotate(${swapRotation}deg)` }}></i>

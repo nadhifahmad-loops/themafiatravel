@@ -14,6 +14,16 @@ const nextConfig: NextConfig = {
 
   poweredByHeader: false,
 
+  // Aset logo dibaca langsung dari disk saat membuat PDF tiket (unduhan,
+  // lampiran email, dan verifikasi). Pastikan file ikut ter-trace di build
+  // standalone/serverless.
+  outputFileTracingIncludes: {
+    '/api/bookings/*/pdf': ['./public/images/logo.png'],
+    '/api/bookings/*/check-payment': ['./public/images/logo.png'],
+    '/api/booking/guest-check-payment': ['./public/images/logo.png'],
+    '/api/payment/notification': ['./public/images/logo.png'],
+  },
+
   headers: async () => [
     {
       source: '/(.*)',

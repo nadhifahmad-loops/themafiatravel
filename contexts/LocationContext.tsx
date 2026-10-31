@@ -6,12 +6,16 @@ type LocationStatus = 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailabl
 
 type Nearest = { code: string; name: string; city?: string; country?: string } | null;
 
+/** Hasil satu kali `requestLocation()`: null kalau gagal/ditolak. */
+export type LocationResult = { airport: Nearest; station: Nearest } | null;
+
 type LocationContextValue = {
   status: LocationStatus;
   nearestAirport: Nearest;
   nearestStation: Nearest;
   error: string | null;
-  requestLocation: () => void;
+  /** Memanggil GPS sekali. Resolve dengan hasil deteksi (atau null bila gagal). */
+  requestLocation: () => Promise<LocationResult>;
 };
 
 const LocationContext = createContext<LocationContextValue | undefined>(undefined);
@@ -41,47 +45,54 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [nearestStation, setNearestStation] = useState<Nearest>(initial.nearestStation);
   const [error, setError] = useState<string | null>(null);
 
-  const requestLocation = useCallback(() => {
+  const requestLocation = useCallback((): Promise<LocationResult> => {
     if (typeof window === 'undefined' || !navigator.geolocation) {
       setStatus('unavailable');
       setError('Browser tidak mendukung geolokasi.');
-      return;
+      return Promise.resolve(null);
     }
 
     setStatus('requesting');
     setError(null);
 
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const point = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const point = { lat: pos.coords.latitude, lon: pos.coords.longitude };
 
-        const airports = await loadAirportGeo();
-        const nearAirport = findNearest(airports, point);
-        const nearStation = findNearest(Object.values(STATION_COORDS), point);
+          const airports = await loadAirportGeo();
+          const nearAirport = findNearest(airports, point);
+          const nearStation = findNearest(Object.values(STATION_COORDS), point);
 
-        const a = nearAirport ? { code: nearAirport.code, name: nearAirport.name, city: nearAirport.city, country: nearAirport.country } : null;
-        const s = nearStation ? { code: nearStation.code, name: nearStation.name } : null;
+          const a = nearAirport ? { code: nearAirport.code, name: nearAirport.name, city: nearAirport.city, country: nearAirport.country } : null;
+          const s = nearStation ? { code: nearStation.code, name: nearStation.name } : null;
 
-        setNearestAirport(a);
-        setNearestStation(s);
-        setStatus('granted');
+          setNearestAirport(a);
+          setNearestStation(s);
+          setStatus('granted');
+          setError(null);
 
-        try {
-          localStorage.setItem(LS_KEY, JSON.stringify({ nearestAirport: a, nearestStation: s }));
-        } catch {}
-      },
-      (err) => {
-        setStatus('denied');
-        setError(
-          err.code === 1
-            ? 'Izin lokasi ditolak.'
-            : err.code === 3
-              ? 'Waktu deteksi lokasi habis.'
-              : 'Lokasi tidak dapat dideteksi.',
-        );
-      },
-      { timeout: 10000, maximumAge: 600000 },
-    );
+          try {
+            localStorage.setItem(LS_KEY, JSON.stringify({ nearestAirport: a, nearestStation: s }));
+          } catch {}
+
+          resolve({ airport: a, station: s });
+        },
+        (err) => {
+          // 1 = izin ditolak; selain itu lokasi tidak tersedia / waktu habis.
+          setStatus(err.code === 1 ? 'denied' : 'unavailable');
+          setError(
+            err.code === 1
+              ? 'Izin lokasi ditolak.'
+              : err.code === 3
+                ? 'Waktu deteksi lokasi habis.'
+                : 'Lokasi tidak dapat dideteksi.',
+          );
+          resolve(null);
+        },
+        { timeout: 10000, maximumAge: 600000 },
+      );
+    });
   }, []);
 
   return (

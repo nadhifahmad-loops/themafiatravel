@@ -66,6 +66,15 @@ export async function GET() {
         pnr: true,
         passengerData: true,
         createdAt: true,
+        paidAt: true,
+        discountAmount: true,
+        couponCode: true,
+        roomCount: true,
+        adultCount: true,
+        childCount: true,
+        nights: true,
+        roomDescription: true,
+        mealType: true,
       },
     });
 
