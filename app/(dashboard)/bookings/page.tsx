@@ -27,6 +27,7 @@ import {
   Loader2,
   type LucideIcon,
 } from 'lucide-react';
+import { getPaymentCountdown as getCountdown, PAYMENT_URGENCY_MS } from '@/lib/payment-window';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Booking {
@@ -61,7 +62,6 @@ interface Booking {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const PAGE_SIZE = 8;
 
 const TYPE_META: Record<string, { icon: LucideIcon; tile: string; labelKey: 'flight' | 'hotel' | 'train' | 'insurance' }> = {
@@ -70,19 +70,6 @@ const TYPE_META: Record<string, { icon: LucideIcon; tile: string; labelKey: 'fli
   train: { icon: TrainFront, tile: 'bg-emerald-50 text-emerald-600', labelKey: 'train' },
   insurance: { icon: ShieldCheck, tile: 'bg-orange-50 text-brand-orange', labelKey: 'insurance' },
 };
-
-function getCountdown(createdAt: string) {
-  const created = createdAt ? new Date(createdAt).getTime() : NaN;
-  if (isNaN(created)) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
-  const remaining = created + PAYMENT_TIMEOUT_MS - Date.now();
-  if (remaining <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
-  return {
-    expired: false,
-    hours: Math.floor(remaining / 3600000),
-    minutes: Math.floor((remaining % 3600000) / 60000),
-    seconds: Math.floor((remaining % 60000) / 1000),
-  };
-}
 
 function formatCurrency(amount: number) {
   if (!amount || isNaN(amount)) return 'Rp 0';
@@ -206,7 +193,9 @@ function PaymentBar({ createdAt, labels }: { createdAt: string; labels: { payWit
     );
   }
 
-  const urgency = cd.hours < 2;
+  // Merah hanya di 15 menit terakhir (window pembayaran 1 jam; ambang lama
+  // "hours < 2" selalu bernilai true sehingga semua kartu merah sejak awal).
+  const urgency = cd.total < PAYMENT_URGENCY_MS;
   const tone = urgency ? 'bg-red-50 border-red-100 text-red-700' : 'bg-amber-50 border-amber-100 text-amber-800';
   const btn = urgency ? 'bg-red-600' : 'bg-brand-orange';
 

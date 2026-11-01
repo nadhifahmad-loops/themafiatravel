@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-
-const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 jam
+import { PAYMENT_TIMEOUT_MS } from '@/lib/payment-window';
 
 export async function GET() {
   try {
@@ -20,7 +19,7 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Auto-expire pending bookings yang sudah lewat 24 jam
+    // Auto-expire pending bookings yang sudah lewat window (1 jam)
     const cutoff = new Date(Date.now() - PAYMENT_TIMEOUT_MS);
     const expiredBookings = await prisma.booking.findMany({
       where: {

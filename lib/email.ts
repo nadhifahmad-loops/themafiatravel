@@ -183,7 +183,7 @@ export async function sendBookingCheckoutEmail({
               <div style="margin-top:6px;color:#b45309;font-size:13px;font-weight:700;">Status: Menunggu Pembayaran</div>
             </div>
             <p style="margin:0 0 12px;color:#64748b;font-size:14px;line-height:1.6;">
-              Selesaikan pembayaran dalam 24 jam agar pesananmu tidak kedaluwarsa. Setelah pembayaran berhasil, kami akan mengirimkan email konfirmasi beserta e-tiket/voucher ke email ini.
+              Selesaikan pembayaran dalam 1 jam agar pesananmu tidak kedaluwarsa. Setelah pembayaran berhasil, kami akan mengirimkan email konfirmasi beserta e-tiket/voucher ke email ini.
             </p>
             <a href="${payUrl}" style="display:inline-block;padding:12px 24px;background:#ea580c;color:white;font-weight:700;font-size:14px;text-decoration:none;border-radius:12px;">
               Bayar Sekarang

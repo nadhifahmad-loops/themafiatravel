@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plane, Hotel, Train, Shield, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Plane, Hotel, Train, Shield, CheckCircle, XCircle, Clock, RefreshCw, Banknote } from 'lucide-react';
 
 interface Passenger {
   first_name?: string;
@@ -28,6 +28,11 @@ interface Booking {
   hotelName?: string | null;
   bookingData?: any;
   passengerData?: unknown;
+  /** 'settlement' | 'pending' | 'expire' | 'late_settlement' | ... */
+  paymentStatus?: string | null;
+  paymentId?: string | null;
+  paymentType?: string | null;
+  paidAt?: string | Date | null;
   createdAt: string | Date;
   updatedAt: string | Date;
   user?: { name?: string | null; email?: string | null; phone?: string | null } | null;
@@ -37,6 +42,7 @@ const STATUS_OPTIONS = [
   { value: 'pending_payment', label: 'Menunggu Pembayaran', color: 'bg-amber-100 text-amber-700', icon: Clock },
   { value: 'paid',            label: 'Dibayar',             color: 'bg-blue-100 text-blue-700',   icon: CheckCircle },
   { value: 'issued',          label: 'Issued',              color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
+  { value: 'payment_failed',  label: 'Pembayaran Gagal',    color: 'bg-red-100 text-red-600',      icon: XCircle },
   { value: 'cancelled',       label: 'Dibatalkan',          color: 'bg-red-100 text-red-600',      icon: XCircle },
   { value: 'refund_requested', label: 'Refund Diminta',     color: 'bg-orange-100 text-orange-700', icon: RefreshCw },
   { value: 'refund',          label: 'Refund Diproses',     color: 'bg-purple-100 text-purple-700', icon: RefreshCw },
@@ -132,6 +138,27 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
       {message && (
         <div className={`rounded-2xl px-4 py-3 text-sm font-medium ${messageType === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-red-50 text-red-800 border border-red-100'}`}>
           {message}
+        </div>
+      )}
+
+      {/* Pembayaran telat — uang sudah masuk ke Midtrans tapi di luar window 1 jam,
+          jadi booking sengaja TIDAK diterbitkan. Perlu tindakan kasir (refund manual). */}
+      {booking.paymentStatus === 'late_settlement' && (
+        <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50 p-5 space-y-2">
+          <div className="flex items-center gap-2">
+            <Banknote className="w-5 h-5 text-fuchsia-600" />
+            <p className="font-bold text-fuchsia-900">Pembayaran telat — perlu tindakan kasir</p>
+          </div>
+          <p className="text-sm text-fuchsia-800">
+            Dana untuk pesanan ini diterima Midtrans <strong>setelah batas pembayaran 1 jam</strong>, sehingga
+            booking sengaja <strong>tidak diterbitkan</strong> dan statusnya tetap gagal. Uangnya sudah masuk —
+            silakan direfund manual ke kanal pembayaran asal, atau hubungi pemilik pesanan bila ingin diproses ulang.
+          </p>
+          <ul className="text-xs text-fuchsia-800/90 space-y-0.5 pt-1">
+            <li>ID Transaksi Midtrans: <span className="font-mono font-bold">{booking.paymentId || '-'}</span></li>
+            <li>Metode bayar: <span className="font-bold">{booking.paymentType || '-'}</span></li>
+            <li>Jumlah diterima: <span className="font-bold">{formatCurrency(booking.totalAmount, booking.currency)}</span></li>
+          </ul>
         </div>
       )}
 

@@ -2,8 +2,10 @@ import { prisma } from '@/lib/prisma';
 import { bookingStore } from '@/lib/store';
 import { releaseVendorHold } from '@/lib/payment-cleanup';
 import { cleanupIdempotencyKeys } from '@/lib/idempotency';
+import { PAYMENT_TIMEOUT_MS } from '@/lib/payment-window';
 
-const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+// Window pembayaran 1 jam sejak booking dibuat — konstanta tunggal di
+// lib/payment-window.ts (dipakai juga oleh halaman countdown & route API).
 
 export function getExpiryWindow(createdAt: Date, now: Date): boolean {
   return createdAt.getTime() + PAYMENT_TIMEOUT_MS <= now.getTime();

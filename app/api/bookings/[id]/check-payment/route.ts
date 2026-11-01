@@ -5,6 +5,7 @@ import { sendBookingConfirmationEmail } from '@/lib/email';
 import { buildBookingTicketAttachment } from '@/lib/email-ticket-pdf';
 import { getBookingContact } from '@/lib/notify';
 import { getSession } from '@/lib/auth';
+import { handleLateSettlement } from '@/lib/late-settlement';
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === 'true';
@@ -74,6 +75,27 @@ export async function GET(
       newStatus = 'paid';
     } else if (['cancel', 'deny', 'expire'].includes(txn)) {
       newStatus = 'payment_failed';
+    }
+
+    // Pembayaran telat (lewat window 1 jam) → tidak diubah jadi paid.
+    if (newStatus === 'paid') {
+      const handled = await handleLateSettlement({
+        booking,
+        transactionStatus: txn,
+        transactionId: data.transaction_id,
+        paymentType: data.payment_type,
+        midtransResponse: data,
+      });
+      if (handled) {
+        const current = await prisma.booking.findUnique({
+          where: { id: booking.id },
+          select: { status: true },
+        });
+        return NextResponse.json({
+          success: true,
+          data: { status: current?.status ?? booking.status, updated: true, lateSettlement: true },
+        });
+      }
     }
 
     let updated = false;

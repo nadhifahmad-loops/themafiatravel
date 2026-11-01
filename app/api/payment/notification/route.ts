@@ -8,6 +8,7 @@ import { buildBookingTicketAttachment } from '@/lib/email-ticket-pdf';
 import { sendWhatsApp, formatBookingConfirmationMessage } from '@/lib/whatsapp';
 import { getBookingContact } from '@/lib/notify';
 import { trainAPI } from '@/lib/orbis';
+import { handleLateSettlement } from '@/lib/late-settlement';
 
 /**
  * Midtrans Webhook — POST /api/payment/notification
@@ -84,6 +85,23 @@ export async function POST(req: NextRequest) {
     if (!booking) {
       console.error('[Payment Webhook] Booking tidak ditemukan untuk order_id:', order_id);
       return NextResponse.json({ error: 'booking not found' }, { status: 404 });
+    }
+
+    // ── Guard: pembayaran TELAT (lewat window 1 jam) ────────────────────────
+    // Booking sudah dianggap hangus dan hold vendor sudah dirilis, jadi uang
+    // yang masuk tidak mengubah status ke `paid` — dicatat `late_settlement`
+    // untuk ditindaklanjuti manual (refund).
+    if (newStatus === 'paid') {
+      const handled = await handleLateSettlement({
+        booking,
+        transactionStatus: transaction_status,
+        transactionId: transaction_id,
+        paymentType: payment_type,
+        midtransResponse: notification,
+      });
+      if (handled) {
+        return NextResponse.json({ success: true, note: 'late settlement recorded' });
+      }
     }
 
     // FIX (Bug #6 — race condition): sebelumnya alurnya "baca status lalu tulis"

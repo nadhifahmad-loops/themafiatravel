@@ -10,8 +10,7 @@ import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 import Footer from '@/components/layout/Footer';
 import TrainSeatPicker from '@/components/train/TrainSeatPicker';
 import { downloadTicketPdf } from '@/lib/download-ticket';
-
-const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+import { getPaymentCountdown as getCountdown } from '@/lib/payment-window';
 
 function resolveAirlineName(airlineName: string, provider: string): string {
   const name = (airlineName || '').trim().toUpperCase();
@@ -19,20 +18,6 @@ function resolveAirlineName(airlineName: string, provider: string): string {
   const prov = (provider || '').trim().toLowerCase();
   if (PROVIDER_ID_TO_LABEL[prov]) return PROVIDER_ID_TO_LABEL[prov];
   return airlineName || provider || '';
-}
-
-function getCountdown(createdAt: string) {
-  if (!createdAt) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
-  const created = new Date(createdAt).getTime();
-  const deadline = created + PAYMENT_TIMEOUT_MS;
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0 };
-  return {
-    expired: false,
-    hours: Math.floor(remaining / 3600000),
-    minutes: Math.floor((remaining % 3600000) / 60000),
-    seconds: Math.floor((remaining % 60000) / 1000),
-  };
 }
 
 function GuestBookingDetailContent() {

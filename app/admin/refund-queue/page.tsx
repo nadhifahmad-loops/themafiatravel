@@ -24,6 +24,9 @@ function mapBooking(booking: any) {
     provider: booking.provider,
     cancelReason: booking.cancelReason,
     cancelType: booking.cancelType,
+    paymentStatus: booking.paymentStatus,
+    paymentId: booking.paymentId,
+    paymentType: booking.paymentType,
     refundRequest: data.refundRequest ?? null,
     refundResult: data.refundResult ?? null,
     createdAt: booking.createdAt,
@@ -47,12 +50,23 @@ export default async function RefundQueuePage() {
     redirect('/login?callbackUrl=/admin/refund-queue&error=Unauthorized');
   }
 
-  const [reviewBookings, historyBookings] = await Promise.all([
+  // Pembayaran telat (lib/late-settlement.ts): status booking `payment_failed`
+  // tapi dana sudah diterima Midtrans — tidak kena filter antrian review di atas,
+  // jadi diambil terpisah supaya kasir tetap bisa melihat & refund manual.
+  const [reviewBookings, lateBookings, historyBookings] = await Promise.all([
     prisma.booking.findMany({
       where: {
         status: { in: ['refund_requested', 'refund'] },
       },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 50,
+      include: {
+        user: { select: { name: true, email: true } },
+      },
+    }),
+    prisma.booking.findMany({
+      where: { paymentStatus: 'late_settlement' },
+      orderBy: { updatedAt: 'desc' },
       take: 50,
       include: {
         user: { select: { name: true, email: true } },
@@ -74,6 +88,7 @@ export default async function RefundQueuePage() {
   return (
     <RefundQueueClient
       initialReview={reviewBookings.map(mapBooking)}
+      initialLate={lateBookings.map(mapBooking)}
       initialHistory={historyBookings.map(mapBooking)}
     />
   );

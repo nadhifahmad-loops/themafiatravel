@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
-import { Search, Plane, Hotel, Train, Shield, CheckCircle, XCircle, Clock, AlertTriangle, type LucideIcon } from 'lucide-react';
+import { Search, Plane, Hotel, Train, Shield, CheckCircle, XCircle, Clock, AlertTriangle, Banknote, type LucideIcon } from 'lucide-react';
 import Pagination from '@/components/admin/Pagination';
 
 const PAGE_SIZE = 10;
@@ -18,6 +18,8 @@ interface AdminBooking {
   pnr?: string | null;
   routeLabel?: string | null;
   hotelName?: string | null;
+  /** 'settlement' | 'pending' | 'expire' | 'late_settlement' | ... */
+  paymentStatus?: string | null;
   user?: { name?: string | null; email?: string | null } | null;
   createdAt: string | Date;
 }
@@ -38,11 +40,17 @@ const STATUS_BADGE: Record<string, { label: string; cls: string; icon: LucideIco
   pending_payment: { label: 'Menunggu',       cls: 'bg-amber-100 text-amber-700', icon: Clock },
   paid:            { label: 'Dibayar',        cls: 'bg-blue-100 text-blue-700',   icon: CheckCircle },
   issued:          { label: 'Issued',         cls: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
+  payment_failed:  { label: 'Pembayaran Gagal', cls: 'bg-red-100 text-red-600',   icon: AlertTriangle },
   cancelled:       { label: 'Batal',          cls: 'bg-red-100 text-red-600',      icon: XCircle },
   expired:         { label: 'Kedaluwarsa',    cls: 'bg-red-100 text-red-600',      icon: AlertTriangle },
   refund_requested:{ label: 'Refund Diminta', cls: 'bg-orange-100 text-orange-700', icon: Clock },
   refund:          { label: 'Refund Proses',  cls: 'bg-purple-100 text-purple-700', icon: Clock },
 };
+
+// Pembayaran yang masuk SETELAT setelah window 1 jam (lib/late-settlement.ts):
+// status booking tidak diubah ke paid, tapi uangnya sudah diterima Midtrans —
+// wajib ketahuan kasir untuk ditindaklanjuti (refund manual).
+export const LATE_SETTLEMENT_LABEL = 'Dana Telat — Refund';
 
 const TYPE_ICON: Record<string, LucideIcon> = { flight: Plane, hotel: Hotel, train: Train, insurance: Shield };
 
@@ -199,6 +207,15 @@ export default function BookingsClient({
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide ${badge.cls}`}>
                           <badge.icon className="w-3.5 h-3.5" />{badge.label}
                         </span>
+                        {b.paymentStatus === 'late_settlement' && (
+                          <a
+                            href={`/admin/bookings/${b.id}`}
+                            title="Pembayaran masuk lewat dari batas 1 jam — booking tidak diterbitkan, dana perlu direfund manual."
+                            className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 transition-colors"
+                          >
+                            <Banknote className="w-3.5 h-3.5" />{LATE_SETTLEMENT_LABEL}
+                          </a>
+                        )}
                       </td>
                       <td className="px-5 py-4 text-center">
                         <div className="flex items-center justify-center gap-2">

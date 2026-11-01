@@ -35,8 +35,7 @@ import {
   MapPin,
   type LucideIcon,
 } from 'lucide-react';
-
-const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+import { getPaymentCountdown as getCountdown, PAYMENT_URGENCY_MS } from '@/lib/payment-window';
 
 function fmtIDR(n: number) { if (!n || isNaN(n)) return 'Rp 0'; return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
 function fmtDate(d: string) { if (!d) return '-'; return new Date(d).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
@@ -73,21 +72,6 @@ function resolveAirlineName(name: string): string {
   return trimmed;
 }
 
-function getCountdown(createdAt: string) {
-  if (!createdAt) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
-  const created = new Date(createdAt).getTime();
-  if (isNaN(created)) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
-  const remaining = created + PAYMENT_TIMEOUT_MS - Date.now();
-  if (remaining <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
-  return {
-    expired: false,
-    hours: Math.floor(remaining / 3600000),
-    minutes: Math.floor((remaining % 3600000) / 60000),
-    seconds: Math.floor((remaining % 60000) / 1000),
-    total: remaining,
-  };
-}
-
 function PaymentCountdown({ createdAt }: { createdAt: string }) {
   // Komponen ini hanya dirender setelah data booking diambil di client,
   // jadi Date.now() aman dipakai untuk nilai awal (tanpa hydration mismatch).
@@ -104,7 +88,9 @@ function PaymentCountdown({ createdAt }: { createdAt: string }) {
     );
   }
 
-  const urgency = cd.total < 3600000;
+  // Merah hanya di 15 menit terakhir — window pembayaran 1 jam (ambang lama
+  // "total < 1 jam" membuat countdown merah sejak detik pertama).
+  const urgency = cd.total < PAYMENT_URGENCY_MS;
   const box = urgency ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800';
 
   return (

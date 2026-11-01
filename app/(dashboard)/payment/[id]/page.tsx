@@ -8,25 +8,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { loadSnap, getSnapRedirectUrl } from '@/lib/snap-pay';
-
-const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+import { getPaymentCountdown as getCountdown, PAYMENT_URGENCY_MS } from '@/lib/payment-window';
 
 function fmtIDR(n: number) {
   if (!n || isNaN(n)) return 'Rp 0';
   return 'Rp ' + Math.round(n).toLocaleString('id-ID');
-}
-
-function getCountdown(createdAt: string) {
-  if (!createdAt) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
-  const created = typeof createdAt === 'string' ? new Date(createdAt).getTime() : new Date(String(createdAt)).getTime();
-  if (isNaN(created)) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
-  const deadline = created + PAYMENT_TIMEOUT_MS;
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) return { expired: true, hours: 0, minutes: 0, seconds: 0, total: 0 };
-  const hours = Math.floor(remaining / 3600000);
-  const minutes = Math.floor((remaining % 3600000) / 60000);
-  const seconds = Math.floor((remaining % 60000) / 1000);
-  return { expired: false, hours, minutes, seconds, total: remaining };
 }
 
 function PaymentCountdown({ createdAt }: { createdAt: string }) {
@@ -44,7 +30,9 @@ function PaymentCountdown({ createdAt }: { createdAt: string }) {
 
   if (!mounted) return null;
 
-  const urgency = cd.total < 3600000;
+  // Merah hanya di 15 menit terakhir (window pembayaran cuma 1 jam —
+  // ambang lama "total < 1 jam" akan membuat semua countdown merah dari awal).
+  const urgency = cd.total < PAYMENT_URGENCY_MS;
 
   return (
     <div className={`rounded-xl p-4 ${urgency ? 'bg-red-50 border border-red-200' : 'bg-amber-50 border border-amber-200'}`}>

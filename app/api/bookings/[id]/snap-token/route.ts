@@ -4,11 +4,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { createSnapTransaction } from '@/lib/midtrans';
 import { bookingStore } from '@/lib/store';
-
-const PAYMENT_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+import { PAYMENT_TIMEOUT_MS } from '@/lib/payment-window';
 
 // Refresh token Snap Midtrans untuk booking yang masih pending_payment.
-// Token Snap hanya berlaku ±5 menit, sedangkan window pembayaran 24 jam —
+// Token Snap hanya berlaku ±5 menit, sedangkan window pembayaran 1 jam —
 // jadi token perlu dibuat ulang saat embed gagal / token kedaluwarsa.
 export async function POST(
   request: Request,
@@ -95,6 +94,9 @@ export async function POST(
       customerName,
       customerEmail,
       customerPhone: customerPhone || undefined,
+      // Expiry Snap dihitung dari pembuatan booking, bukan saat token dibuat —
+      // agar batas bayar Midtrans selalu sama dengan window internal 1 jam.
+      createdAt: booking.createdAt,
       itemDetails: [{
         id: booking.id,
         price: Math.round(booking.totalAmount),

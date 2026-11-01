@@ -1,10 +1,21 @@
 import crypto from 'crypto';
+import { PAYMENT_WINDOW_HOURS } from '@/lib/payment-window';
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === 'true';
 const BASE_URL = IS_PRODUCTION
   ? 'https://app.midtrans.com/snap/v1'
   : 'https://app.sandbox.midtrans.com/snap/v1';
+
+/** Format waktu pembuatan booking ke `YYYY-MM-DD HH:MM:SS +0700` (WIB)
+ *  sesuai format `expiry.start_time` Snap Midtrans. */
+function formatStart(date: Date): string {
+  const WIT = 7 * 60 * 60 * 1000;
+  const t = new Date(date.getTime() + WIT);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${t.getUTCFullYear()}-${p(t.getUTCMonth() + 1)}-${p(t.getUTCDate())} ` +
+    `${p(t.getUTCHours())}:${p(t.getUTCMinutes())}:${p(t.getUTCSeconds())} +0700`;
+}
 
 export async function createSnapTransaction(params: {
   orderId: string;
@@ -13,6 +24,8 @@ export async function createSnapTransaction(params: {
   customerEmail: string;
   customerPhone?: string;
   itemDetails?: Array<{ id: string; price: number; quantity: number; name: string }>;
+  /** Waktu booking dibuat — dasar hitung expiry Snap (default: saat ini). */
+  createdAt?: Date;
 }) {
   const authString = Buffer.from(`${MIDTRANS_SERVER_KEY}:`).toString('base64');
   
@@ -37,6 +50,14 @@ export async function createSnapTransaction(params: {
       error: `${process.env.NEXT_PUBLIC_APP_URL}/payment/error`,
       pending: `${process.env.NEXT_PUBLIC_APP_URL}/payment/pending`,
     },
+    // Batas bayar ikut window internal (1 jam sejak booking dibuat), tanpa ini
+    // Snap default-nya 24 jam → orang masih bisa bayar setelah booking hangus.
+    // `start_time` eksplisit karena default Midtrans dihitung dari waktu lain.
+    expiry: {
+      start_time: formatStart(params.createdAt ?? new Date()),
+      unit: 'hour',
+      duration: PAYMENT_WINDOW_HOURS,
+    },
   };
 
   const res = await fetch(`${BASE_URL}/transactions`, {
@@ -49,7 +70,12 @@ export async function createSnapTransaction(params: {
   });
 
   const data = await res.json();
-  if (!data.token) throw new Error('Gagal membuat transaksi Midtrans');
+  if (!data.token) {
+    const detail = [data.message, data.error_messages?.join?.('; ')]
+      .filter(Boolean)
+      .join(' | ');
+    throw new Error(`Gagal membuat transaksi Midtrans${detail ? `: ${detail}` : ''}`);
+  }
   return data as { token: string; redirect_url: string };
 }
 
