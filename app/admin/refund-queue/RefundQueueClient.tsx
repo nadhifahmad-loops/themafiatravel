@@ -23,8 +23,9 @@ interface AdminRefundBooking {
   paymentStatus?: string | null;
   paymentId?: string | null;
   paymentType?: string | null;
-  refundRequest?: { amount?: number; reason?: string; requestedAt?: string; mode?: string } | null;
+  refundRequest?: { amount?: number | null; reason?: string; requestedAt?: string; mode?: string } | null;
   refundResult?: { amount?: number; refundedAt?: string; processedBy?: string } | null;
+  flightRefundEstimate?: { amount?: number | null; capturedAt?: string } | null;
   createdAt: string | Date;
   updatedAt: string | Date;
   user?: { name?: string | null; email?: string | null } | null;
@@ -45,7 +46,7 @@ function formatRupiah(n: number) {
 }
 
 function RefundAmountBadge({ amount }: { amount?: number | null }) {
-  if (!amount) return null;
+  if (amount === null || amount === undefined) return null;
   return <div className="text-[11px] font-bold text-emerald-700 mt-0.5">Refund: {formatRupiah(amount)}</div>;
 }
 
@@ -78,6 +79,7 @@ export default function RefundQueueClient({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [statusType, setStatusType] = useState<'success' | 'error' | ''>('');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [refundAmounts, setRefundAmounts] = useState<Record<string, string>>({});
 
   const matches = useMemo(() => {
     const term = searchQuery.toLowerCase();
@@ -99,14 +101,28 @@ export default function RefundQueueClient({
   const visible = filteredReview.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   async function processRefund(id: string) {
+    const row = review.find((booking) => booking.id === id);
+    const rawAmount = refundAmounts[id] ?? (
+      typeof row?.refundRequest?.amount === 'number' ? String(row.refundRequest.amount) : ''
+    );
+    const amount = Number(rawAmount);
+    if (!rawAmount.trim() || !Number.isFinite(amount) || amount < 0) {
+      setStatusType('error');
+      setStatusMessage('Masukkan nominal refund nol atau lebih yang sudah diverifikasi sebelum memproses dana.');
+      return;
+    }
+
     try {
       setProcessingId(id);
       setStatusMessage('');
-      const res = await fetch(`/api/bookings/${id}/refund-execute`, { method: 'POST' });
+      const res = await fetch(`/api/bookings/${id}/refund-execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      });
       const json = await res.json();
       if (json.success) {
-        const amount = json.data?.amount;
-        const row = review.find((booking) => booking.id === id);
+        const processedAmount = json.data?.amount;
         setReview((prev) => prev.filter((booking) => booking.id !== id));
         if (row) {
           setHistory((prev) =>
@@ -115,7 +131,7 @@ export default function RefundQueueClient({
                 ...row,
                 status: 'cancelled',
                 refundResult: {
-                  amount: amount ?? row.refundRequest?.amount ?? row.totalAmount,
+                  amount: processedAmount ?? amount,
                   refundedAt: new Date().toISOString(),
                   processedBy: 'admin',
                 },
@@ -125,7 +141,9 @@ export default function RefundQueueClient({
           );
         }
         setStatusType('success');
-        setStatusMessage('Refund berhasil diproses. Dana dikembalikan ke pelanggan.');
+        setStatusMessage(json.data?.noRefund
+          ? 'Nominal refund terverifikasi Rp0. Booking ditutup tanpa pengembalian dana.'
+          : 'Refund berhasil diproses. Dana dikembalikan ke pelanggan.');
       } else {
         setStatusType('error');
         setStatusMessage(json.message || 'Gagal memproses refund.');
@@ -199,6 +217,13 @@ export default function RefundQueueClient({
                 visible.map((booking) => {
                   const badge = STATUS_BADGE[booking.status] || { label: booking.status, cls: 'bg-slate-100 text-slate-700', icon: Clock3 };
                   const TypeIcon = TYPE_ICON[booking.bookingType] || Plane;
+                  const refundAmountInput = refundAmounts[booking.id] ?? (
+                    typeof booking.refundRequest?.amount === 'number' ? String(booking.refundRequest.amount) : ''
+                  );
+                  const numericRefundAmount = Number(refundAmountInput);
+                  const canProcessRefund = refundAmountInput.trim() !== ''
+                    && Number.isFinite(numericRefundAmount)
+                    && numericRefundAmount >= 0;
                   return (
                     <tr key={booking.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-5 py-4">
@@ -220,6 +245,28 @@ export default function RefundQueueClient({
                       <td className="px-5 py-4">
                         <div className="font-bold text-slate-800">{formatRupiah(booking.totalAmount)}</div>
                         <RefundAmountBadge amount={booking.refundRequest?.amount} />
+                        {booking.refundRequest?.amount == null ? (
+                          <label className="mt-2 block text-left text-[10px] font-semibold text-slate-500">
+                            Nominal terverifikasi admin
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={refundAmountInput}
+                              onChange={(event) => setRefundAmounts((current) => ({
+                                ...current,
+                                [booking.id]: event.target.value,
+                              }))}
+                              placeholder="Masukkan nominal"
+                              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+                            />
+                          </label>
+                        ) : null}
+                        {typeof booking.flightRefundEstimate?.amount === 'number' ? (
+                          <div className="mt-1 text-[10px] text-sky-700">
+                            Estimasi vendor: {formatRupiah(booking.flightRefundEstimate.amount)}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-5 py-4 text-center">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide ${badge.cls}`}>
@@ -231,10 +278,10 @@ export default function RefundQueueClient({
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => processRefund(booking.id)}
-                            disabled={processingId === booking.id}
-                            className={`px-3 py-1 text-xs rounded-md ${processingId === booking.id ? 'bg-purple-200 text-white/70 cursor-not-allowed' : 'bg-purple-600 text-white hover:bg-purple-700'}`}
+                            disabled={processingId === booking.id || !canProcessRefund}
+                            className={`px-3 py-1 text-xs rounded-md ${processingId === booking.id ? 'bg-purple-200 text-white/70 cursor-not-allowed' : 'bg-purple-600 text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300'}`}
                           >
-                            {processingId === booking.id ? 'Memproses...' : 'Proses Refund'}
+                            {processingId === booking.id ? 'Memproses...' : numericRefundAmount === 0 && canProcessRefund ? 'Tutup tanpa refund' : 'Proses Refund'}
                           </button>
                           <a href={`/admin/bookings/${booking.id}`} className="px-3 py-1 text-xs bg-slate-100 text-slate-700 rounded-md">Detail</a>
                         </div>
@@ -375,7 +422,13 @@ export default function RefundQueueClient({
                         </div>
                         <div className="text-[11px] font-semibold text-slate-600">{booking.routeLabel || booking.hotelName || booking.flightNumber || '-'}</div>
                       </td>
-                      <td className="px-5 py-4 font-bold text-emerald-700">{formatRupiah(booking.refundResult?.amount ?? booking.refundRequest?.amount ?? booking.totalAmount)}</td>
+                      <td className="px-5 py-4 font-bold text-emerald-700">
+                        {typeof booking.refundResult?.amount === 'number'
+                          ? formatRupiah(booking.refundResult.amount)
+                          : typeof booking.refundRequest?.amount === 'number'
+                            ? formatRupiah(booking.refundRequest.amount)
+                            : 'Belum tercatat'}
+                      </td>
                       <td className="px-5 py-4 text-center">
                         <ProcessedBadge processedBy={booking.refundResult?.processedBy} />
                       </td>

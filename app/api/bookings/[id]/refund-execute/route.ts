@@ -23,9 +23,23 @@ export async function POST(
       return NextResponse.json({ success: false, message: 'Akses ditolak: bukan admin' }, { status: 403 });
     }
 
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ success: false, message: 'Request body tidak valid.' }, { status: 400 });
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ success: false, message: 'Request body tidak valid.' }, { status: 400 });
+    }
+    const amount = (body as Record<string, unknown>).amount;
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) {
+      return NextResponse.json({ success: false, message: 'Nominal refund positif atau nol wajib dikonfirmasi admin.' }, { status: 400 });
+    }
+
     const { id } = await params;
 
-    const result = await executeBookingRefund(id, admin.email);
+    const result = await executeBookingRefund(id, admin.email, amount);
 
     await recordAudit({
       adminId: admin.id,
@@ -33,13 +47,13 @@ export async function POST(
       action: 'booking.refund.executed',
       entityType: 'booking',
       entityId: id,
-      metadata: { amount: result.amount },
+      metadata: { amount: result.amount, noRefund: result.noRefund },
       ip: auditIpFromRequest(request),
     });
 
     return NextResponse.json({
       success: true,
-      data: { bookingId: id, amount: result.amount, mode: 'manual' },
+      data: { bookingId: id, amount: result.amount, mode: 'manual', noRefund: result.noRefund },
     });
 
   } catch (e: unknown) {
@@ -47,8 +61,9 @@ export async function POST(
       return NextResponse.json({ success: false, message: e.message }, { status: e.status });
     }
     console.error('[Refund Execute] Error:', e);
+    const message = e instanceof Error ? e.message : 'Terjadi kesalahan pada server';
     return NextResponse.json(
-      { success: false, message: (e as Error)?.message || 'Terjadi kesalahan pada server' },
+      { success: false, message },
       { status: 500 }
     );
   }

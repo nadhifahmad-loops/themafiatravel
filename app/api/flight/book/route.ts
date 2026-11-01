@@ -597,6 +597,7 @@ async function POSTHandler(
         ...bookingData,
         booker,
         contacts: contacts || [booker],
+        cabin_class,
         arrival_date_from_search: arrival_date || null,
         selectedBaggage: baggagePayload || undefined,
       },

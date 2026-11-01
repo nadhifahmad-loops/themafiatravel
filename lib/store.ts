@@ -147,6 +147,69 @@ export const bookingStore = {
     });
   },
 
+  recordFlightReschedule: async (id: string, change: {
+    pnr: string;
+    provider?: string;
+    originalDepartureDate?: string | null;
+    departureDate?: string | null;
+    origin?: string | null;
+    destination?: string | null;
+    flightNumber?: string | null;
+    amount?: number | null;
+    adminFee?: number | null;
+    providerBookings?: unknown[];
+    journeys: Array<{
+      pnr: string;
+      origin: string;
+      destination: string;
+      departureDate: string;
+      flightNumber?: string;
+    }>;
+  }) => {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.booking.findUnique({ where: { id } });
+      if (!existing) return null;
+
+      const currentData = existing.bookingData && typeof existing.bookingData === 'object'
+        ? existing.bookingData as Record<string, unknown>
+        : {};
+      const previousHistory = Array.isArray(currentData.rescheduleHistory)
+        ? currentData.rescheduleHistory
+        : [];
+      const event = {
+        pnr: change.pnr,
+        provider: change.provider ?? null,
+        originalDepartureDate: change.originalDepartureDate ?? null,
+        departureDate: change.departureDate ?? null,
+        origin: change.origin ?? null,
+        destination: change.destination ?? null,
+        flightNumber: change.flightNumber ?? null,
+        amount: change.amount ?? null,
+        adminFee: change.adminFee ?? null,
+        journeys: change.journeys,
+        changedAt: new Date().toISOString(),
+      };
+
+      return await tx.booking.update({
+        where: { id },
+        data: {
+          ...(change.departureDate ? { departureDate: new Date(change.departureDate) } : {}),
+          ...(change.origin ? { origin: change.origin } : {}),
+          ...(change.destination ? { destination: change.destination } : {}),
+          ...(change.origin && change.destination
+            ? { routeLabel: `${change.origin} → ${change.destination}` }
+            : {}),
+          ...(change.flightNumber ? { flightNumber: change.flightNumber } : {}),
+          bookingData: {
+            ...currentData,
+            ...(change.providerBookings ? { provider_bookings: change.providerBookings } : {}),
+            rescheduleHistory: [...previousHistory, event].slice(-20),
+          } as Prisma.InputJsonValue,
+        },
+      });
+    });
+  },
+
   // ── UPDATE STATUS ──────────────────────────────────────────────────────────
   // Dipanggil oleh Midtrans webhook saat status pembayaran berubah.
   updateStatus: async (
@@ -195,7 +258,7 @@ export const bookingStore = {
   // Booking dibatalkan di vendor, tapi dana belum dikembalikan — menunggu
   // review admin di /admin/refund-queue. Guard status memastikan booking yang
   // sudah diproses refund tidak bisa dimasukkan antrian dua kali.
-  requestRefund: async (id: string, opts: { amount: number; reason?: string }) => {
+  requestRefund: async (id: string, opts: { amount: number | null; reason?: string }) => {
     const eligible = ['paid', 'issued', 'pending_payment'];
     return await prisma.$transaction(async (tx) => {
       const existing = await tx.booking.findUnique({ where: { id } });
@@ -215,7 +278,7 @@ export const bookingStore = {
           bookingData: {
             ...currentData,
             refundRequest: {
-              amount: Math.round(opts.amount),
+              amount: opts.amount === null ? null : Math.round(opts.amount),
               reason: opts.reason || '',
               requestedAt: new Date().toISOString(),
               mode: 'manual',
@@ -280,6 +343,10 @@ export const bookingStore = {
         return null;
       }
       const currentData = (existing.bookingData as Record<string, unknown>) || {};
+      const currentRefundRequest = currentData.refundRequest && typeof currentData.refundRequest === 'object'
+        && !Array.isArray(currentData.refundRequest)
+        ? currentData.refundRequest as Record<string, unknown>
+        : {};
       const updated = await tx.booking.updateMany({
         where: { id, status: 'refund_requested' },
         data: {
@@ -288,6 +355,12 @@ export const bookingStore = {
           ...(opts.reason ? { cancelReason: opts.reason } : {}),
           bookingData: {
             ...currentData,
+            refundRequest: {
+              ...currentRefundRequest,
+              amount: Math.round(opts.amount),
+              verifiedAt: new Date().toISOString(),
+              verifiedBy: opts.processedBy,
+            },
             refundResult: {
               amount: Math.round(opts.amount),
               refundedAt: new Date().toISOString(),

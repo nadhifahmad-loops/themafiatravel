@@ -755,7 +755,7 @@ function FlightCheckoutContent() {
       sessionStorage.removeItem('flight_priced_data');
       setCheckoutDone(true);
       const bookingId = data.orderId || '';
-      if (bookingId) router.push(`/payment/${bookingId}`);
+      if (bookingId) router.push(`/bookings/${bookingId}/review`);
       else router.push('/bookings');
     } catch (e: any) { setBookingError(e.message||`${tc.error}.`); }
     finally { setSubmitting(false); isSubmittingRef.current=false; }

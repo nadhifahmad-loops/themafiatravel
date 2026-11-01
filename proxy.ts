@@ -18,9 +18,10 @@ export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   const isAdminRoute = pathname.startsWith('/admin');
+  const isGuestBookingReview = /^\/bookings\/[^/]+\/review\/?$/.test(pathname);
   const isMemberRoute = MEMBER_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
-  );
+  ) && !isGuestBookingReview;
 
   if (isAdminRoute || isMemberRoute) {
     const callbackUrl = encodeURIComponent(pathname + req.nextUrl.search);

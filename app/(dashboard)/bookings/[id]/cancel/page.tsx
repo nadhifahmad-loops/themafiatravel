@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { i18n } from '@/lib/i18n';
 import TermsModal from '@/components/checkout/TermsModal';
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
+import { hasFlightDeparted } from '@/lib/orbis-post-booking';
 
 // ─────────────────────────────────────────────────────────────
 // TYPES
@@ -17,9 +18,10 @@ type RefundData = {
   order_number: string;
   issued_name: string;
   provider: string;
-  refund_amount: number;
+  refund_amount: number | null;
+  estimate_source?: 'vendor' | 'manual';
   cancellation_policy: string[];
-  refund_fee: {
+  refund_fee?: {
     pnr: string;
     received_amount: number;
     charge_rate: number;
@@ -30,10 +32,13 @@ type RefundData = {
   }[];
 };
 
+type RefundCaptcha = { pnr: string; image: string };
+
 type CancelResult = {
   pnr?: string;
-  refund_code: string;
-  received_amount: number;
+  refund_code?: string;
+  received_amount: number | null;
+  refund_mode?: 'auto' | 'manual' | 'void';
   status: string;
 };
 
@@ -133,6 +138,8 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
   const [refundData, setRefundData]     = useState<RefundData | null>(null);
   const [loadingRefund, setLoadingRefund] = useState(false);
   const [refundError, setRefundError]   = useState('');
+  const [refundCaptcha, setRefundCaptcha] = useState<RefundCaptcha[]>([]);
+  const [captchaValues, setCaptchaValues] = useState<Record<string, string>>({});
 
   // Step 2
   const [reason, setReason]             = useState('');
@@ -162,11 +169,73 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
 
   const callCheckRefund = async () => {
     if (!booking) return;
+    if (booking.bookingType === 'flight' && hasFlightDeparted(booking)) {
+      setRefundError('Waktu keberangkatan sudah lewat. Refund mandiri tidak tersedia; hubungi customer service untuk memeriksa apakah aturan maskapai menyediakan pengecualian.');
+      return;
+    }
     setLoadingRefund(true);
     setRefundError('');
+    setRefundCaptcha([]);
+    setCaptchaValues({});
 
     const sType = booking.bookingType;
     try {
+      if (sType === 'flight') {
+        const loginResponse = await fetch('/api/flight/refund/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: id }),
+        });
+        const loginJson = await loginResponse.json();
+        if (!loginResponse.ok || !loginJson.success) {
+          const loginError = loginJson.error || 'Gagal memuat verifikasi refund maskapai.';
+          if (loginResponse.status < 500) {
+            throw new Error(loginError);
+          }
+          throw new Error(
+            'Maskapai gagal menyiapkan captcha refund. Estimasi refund belum dapat diperiksa karena verifikasi captcha diwajibkan oleh vendor. Coba lagi nanti atau hubungi customer service dengan nomor pesanan ini.'
+          );
+        }
+
+        const rawChallenges = loginJson.data?.pre_refund_login;
+        const challengeList = Array.isArray(rawChallenges)
+          ? rawChallenges
+          : rawChallenges && typeof rawChallenges === 'object'
+            ? [rawChallenges]
+            : [];
+        const challenges = challengeList.flatMap((item: unknown) => {
+          if (!item || typeof item !== 'object') return [];
+          const value = item as Record<string, unknown>;
+          if (typeof value.pnr !== 'string' || typeof value.img !== 'string' || !value.img) return [];
+          return [{ pnr: value.pnr, image: value.img }];
+        });
+
+        if (challenges.length) {
+          setRefundCaptcha(challenges);
+          setRefundData(null);
+          return;
+        }
+
+        throw new Error(
+          'Maskapai tidak mengirim captcha refund. Estimasi tidak dapat diproses tanpa verifikasi tersebut. Coba lagi nanti atau hubungi customer service.'
+        );
+      }
+
+      if (sType === 'train' || sType === 'insurance') {
+        setRefundData({
+          order_number: booking.orderNumber,
+          issued_name: booking.pnr || booking.orderNumber,
+          provider: booking.provider || sType,
+          refund_amount: null,
+          estimate_source: 'manual',
+          cancellation_policy: sType === 'train'
+            ? ['Dokumentasi API KAI mendukung pembatalan booking, tetapi tidak mencantumkan nominal atau kebijakan nilai refund. Nominal akan diverifikasi admin setelah pembatalan vendor.']
+            : ['Dokumentasi API asuransi mendukung pembatalan polis, tetapi tidak mencantumkan nominal refund atau masa free-look. Nominal akan diverifikasi admin setelah pembatalan vendor.'],
+          refund_fee: [],
+        });
+        return;
+      }
+
       let res: Response;
       if (sType === 'hotel') {
         res = await fetch('/api/hotel/cancel', {
@@ -174,17 +243,11 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             order_number: booking.orderNumber,
-            issued_name: booking.pnr || booking.orderNumber,
-            provider: booking.provider || 'hotelbeds',
             check_only: true,
           }),
         });
-      } else if (sType === 'flight') {
-        res = await fetch(`/api/bookings/${id}/refund-estimate`, { method: 'POST' });
-      } else if (sType === 'train') {
-        res = await fetch(`/api/bookings/${id}/refund-estimate`, { method: 'POST' });
       } else {
-        res = await fetch(`/api/bookings/${id}/refund-estimate`, { method: 'POST' });
+        throw new Error('Jenis booking tidak mendukung pemeriksaan refund mandiri.');
       }
 
       const data = await res!.json();
@@ -193,27 +256,48 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
         throw new Error(data.error || 'Gagal memuat estimasi refund');
       }
 
-      if (sType === 'hotel' && data.data?.refund_fee) {
-        setRefundData(data.data);
-      } else {
-        const est = data.data;
-        setRefundData({
-          order_number:        booking.orderNumber,
-          issued_name:         booking.pnr || booking.orderNumber,
-          provider:            booking.provider || sType,
-          refund_amount:       est.estimated_refund_amount,
-          cancellation_policy: [`Biaya penalti: ${fmtRp(est.penalty_fee)}, Biaya admin: ${fmtRp(est.admin_fee)}`],
-          refund_fee: [{
-            pnr:             booking.pnr || booking.orderNumber,
-            received_amount: est.estimated_refund_amount,
-            charge_rate:     est.penalty_fee + est.admin_fee,
-            charge_type:     'amount',
-            currency_code:   'IDR',
-            status:          booking.status,
-            refund_code:     '',
-          }],
-        });
+      const quote = data.data && typeof data.data === 'object'
+        ? data.data as Record<string, unknown>
+        : {};
+      const quoteAmount = typeof data.refundAmount === 'number' && Number.isFinite(data.refundAmount)
+        ? data.refundAmount
+        : null;
+      if (quoteAmount === null) {
+        throw new Error('Vendor tidak mengembalikan nominal refund yang valid.');
       }
+      const policies = Array.isArray(quote.cancellation_policy)
+        ? quote.cancellation_policy.filter((item): item is string => typeof item === 'string')
+        : typeof quote.cancellation_policy === 'string'
+          ? [quote.cancellation_policy]
+          : ['Nominal refund berdasarkan check_refund_amount dan dapat berubah sesuai hasil pembatalan vendor.'];
+      const rawFees = Array.isArray(quote.refund_fee)
+        ? quote.refund_fee
+        : quote.refund_fee && typeof quote.refund_fee === 'object'
+          ? [quote.refund_fee]
+          : [];
+
+      setRefundData({
+        order_number: booking.orderNumber,
+        issued_name: booking.pnr || booking.orderNumber,
+        provider: booking.provider || 'hotel',
+        refund_amount: quoteAmount,
+        estimate_source: 'vendor',
+        cancellation_policy: policies,
+        refund_fee: rawFees.map((value) => {
+          const row = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+          return {
+            pnr: typeof row.pnr === 'string' ? row.pnr : booking.pnr || booking.orderNumber,
+            received_amount: typeof row.received_amount === 'number' ? row.received_amount : quoteAmount,
+            charge_rate: typeof row.charge_rate === 'number'
+              ? row.charge_rate
+              : Math.max(0, Number(booking.totalAmount || 0) - quoteAmount),
+            charge_type: typeof row.charge_type === 'string' ? row.charge_type : 'amount',
+            currency_code: typeof row.currency_code === 'string' ? row.currency_code : 'IDR',
+            status: typeof row.status === 'string' ? row.status : booking.status,
+            refund_code: typeof row.refund_code === 'string' ? row.refund_code : '',
+          };
+        }),
+      });
     } catch (e: unknown) {
       setRefundError(e instanceof Error ? e.message : 'Gagal memuat data refund');
     } finally {
@@ -221,12 +305,63 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
     }
   };
 
-  // ── Immediately call check_refund_amount when booking loaded ─
-  useEffect(() => {
-    if (!booking) return;
-    callCheckRefund();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking]);
+  const loadFlightRefundQuote = async (captcha: Record<string, string>) => {
+    if (!Object.keys(captcha).length || Object.values(captcha).some((value) => !value.trim())) {
+      throw new Error('Captcha refund wajib diisi sebelum meminta estimasi dari maskapai.');
+    }
+
+    const response = await fetch('/api/flight/refund/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: id, ...(Object.keys(captcha).length ? { captcha } : {}) }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Gagal mengambil estimasi refund dari maskapai.');
+    }
+
+    const vendorAmount = typeof result.refundableAmount === 'number' && Number.isFinite(result.refundableAmount)
+      ? result.refundableAmount
+      : null;
+    const amount = vendorAmount;
+    const fee = amount === null ? 0 : Math.max(0, Number(booking.totalAmount || 0) - amount);
+    setRefundData({
+      order_number: booking.orderNumber,
+      issued_name: booking.pnr || booking.orderNumber,
+      provider: booking.provider || 'flight',
+      refund_amount: amount,
+      estimate_source: vendorAmount === null ? 'manual' : 'vendor',
+      cancellation_policy: vendorAmount === null
+        ? ['Maskapai tidak mengembalikan nominal refund yang dapat dibaca. Pembatalan tetap akan meminta review admin; nominal diverifikasi dari respons vendor sebelum dana diproses.']
+        : ['Estimasi nominal berasal dari get_refund_booking maskapai dan dapat berubah sesuai hasil cancel vendor.'],
+      refund_fee: amount === null ? [] : [{
+        pnr: booking.pnr || booking.orderNumber,
+        received_amount: amount,
+        charge_rate: fee,
+        charge_type: 'amount',
+        currency_code: 'IDR',
+        status: booking.status,
+        refund_code: '',
+      }],
+    });
+    setRefundCaptcha([]);
+    setCaptchaValues({});
+  };
+
+  const submitRefundCaptcha = async () => {
+    if (!refundCaptcha.length || refundCaptcha.some(({ pnr }) => !captchaValues[pnr]?.trim())) return;
+    setLoadingRefund(true);
+    setRefundError('');
+    try {
+      await loadFlightRefundQuote(
+        Object.fromEntries(refundCaptcha.map(({ pnr }) => [pnr, captchaValues[pnr].trim()]))
+      );
+    } catch (error: unknown) {
+      setRefundError(error instanceof Error ? error.message : 'Gagal memverifikasi captcha refund.');
+    } finally {
+      setLoadingRefund(false);
+    }
+  };
 
   // ── Cleanup interval on unmount ──
   const ivRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -266,9 +401,8 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             order_number: booking.orderNumber,
-            issued_name: booking.pnr || booking.orderNumber,
-            provider: booking.provider || 'hotelbeds',
-            refundAmount: refundData?.refund_amount,
+            expected_refund_amount: refundData?.refund_amount,
+            reason: reasonText,
           }),
         });
       } else if (sType === 'flight') {
@@ -279,7 +413,6 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
             order_id: id,
             cancel_type: 'refund',
             reason: reasonText,
-            refundAmount: refundData?.refund_amount,
           }),
         });
       } else if (sType === 'train') {
@@ -289,7 +422,6 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
           body: JSON.stringify({
             orderId: id,
             reason: reasonText,
-            refundAmount: refundData?.refund_amount,
           }),
         });
       } else {
@@ -299,7 +431,6 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
           body: JSON.stringify({
             orderId: id,
             reason: reasonText,
-            refundAmount: refundData?.refund_amount,
           }),
         });
       }
@@ -313,12 +444,17 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
       }
 
       const raw = data.data || {};
-      const refundAmt = raw.received_amount || refundData?.refund_amount || 0;
+      const refundAmt = typeof data.refund_amount === 'number'
+        ? data.refund_amount
+        : typeof raw.received_amount === 'number'
+          ? raw.received_amount
+          : null;
 
       setCancelResult({
         pnr:             raw.pnr || booking.pnr || booking.orderNumber,
-        refund_code:     raw.refund_code || `REF-${Date.now().toString(36).toUpperCase()}`,
+        refund_code:     typeof raw.refund_code === 'string' ? raw.refund_code : undefined,
         received_amount: refundAmt,
+        refund_mode: data.refund_mode,
         status:          raw.status || 'CANCELLED',
       });
 
@@ -381,7 +517,8 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
   );
 
   // Guard: jangan bisa akses halaman ini kalau status bukan cancellable
-  const nonCancellable = !['paid', 'issued'].includes(booking.status);
+  const flightDeparted = booking.bookingType === 'flight' && hasFlightDeparted(booking);
+  const nonCancellable = !['paid', 'issued'].includes(booking.status) || flightDeparted;
   if (nonCancellable) return (
     <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
       <nav style={{ position: 'sticky', top: 0, zIndex: 50, background: 'white', borderBottom: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
@@ -398,9 +535,13 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
         <div style={{ maxWidth: '420px', textAlign: 'center', padding: '40px', background: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)' }}>
           <p style={{ fontSize: '48px', margin: '0 0 16px' }}>&#128683;</p>
-          <h2 style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 900, fontSize: '20px', color: '#0f172a', margin: '0 0 8px' }}>Pesanan Tidak Dapat Dibatalkan</h2>
+          <h2 style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 900, fontSize: '20px', color: '#0f172a', margin: '0 0 8px' }}>
+            {flightDeparted ? 'Waktu Keberangkatan Sudah Lewat' : 'Pesanan Tidak Dapat Dibatalkan'}
+          </h2>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '0 0 24px', lineHeight: 1.6 }}>
-            Pesanan dengan status <span style={{ fontWeight: 700, color: '#ea580c' }}>{booking.status}</span> tidak memenuhi syarat untuk pembatalan/refund.
+            {flightDeparted
+              ? 'Refund mandiri tidak tersedia setelah waktu keberangkatan. Hubungi customer service untuk memeriksa apakah aturan maskapai menyediakan pengecualian.'
+              : <>Pesanan dengan status <span style={{ fontWeight: 700, color: '#ea580c' }}>{booking.status}</span> tidak memenuhi syarat untuk pembatalan/refund.</>}
           </p>
           <Link href={`/bookings/${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '14px 28px', background: '#ea580c', color: 'white', fontWeight: 700, borderRadius: '16px', textDecoration: 'none', fontSize: '14px', boxShadow: '0 4px 14px rgba(234, 88, 12, 0.25)' }}>
             <i className="fa-solid fa-arrow-left text-xs"></i> Kembali ke Detail
@@ -425,10 +566,11 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
 
   const productIcon = isFlight ? 'fa-plane' : isTrain ? 'fa-train' : isIns ? 'fa-shield-halved' : 'fa-hotel';
 
-  const cancellationFee = refundData
-    ? (refundData.refund_fee?.[0]?.charge_rate || 0)
-    : 0;
-  const refundAmount    = refundData?.refund_amount || 0;
+  const refundAmount = refundData?.refund_amount ?? null;
+  const cancellationFee = refundAmount === null
+    ? null
+    : refundData?.refund_fee?.[0]?.charge_rate
+      ?? Math.max(0, Number(booking.totalAmount || 0) - refundAmount);
 
   const reasonLabel = REASONS.find(r => r.key === reason)?.title || reason;
 
@@ -568,6 +710,56 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
               </div>
             )}
 
+            {!loadingRefund && !refundData && refundCaptcha.length === 0 && !refundError && (
+              <button
+                type="button"
+                onClick={callCheckRefund}
+                className="w-full rounded-2xl border border-orange-200 bg-white px-5 py-4 text-sm font-bold text-orange-700 shadow-sm transition hover:bg-orange-50"
+              >
+                <i className="fa-solid fa-magnifying-glass-dollar mr-2"></i>
+                Cek estimasi refund dari vendor
+              </button>
+            )}
+
+            {refundCaptcha.length > 0 && !refundData && (
+              <div className="card-hover" style={{ background: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', padding: '24px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)' }}>
+                <p style={{ fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>Verifikasi maskapai</p>
+                <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 18px' }}>Masukkan captcha untuk mengambil estimasi refund resmi dari vendor.</p>
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  {refundCaptcha.map(({ pnr, image }) => (
+                    <label key={pnr} style={{ display: 'grid', gap: '8px', maxWidth: '360px' }}>
+                      <span style={{ fontSize: '12px', color: '#475569', fontWeight: 700 }}>PNR {pnr}</span>
+                      <Image
+                        src={image.startsWith('data:') ? image : `data:image/png;base64,${image}`}
+                        alt={`Captcha refund untuk PNR ${pnr}`}
+                        width={190}
+                        height={72}
+                        unoptimized
+                        className="rounded-lg border border-slate-200 bg-white object-contain"
+                      />
+                      <input
+                        value={captchaValues[pnr] || ''}
+                        onChange={(event) => setCaptchaValues((previous) => ({ ...previous, [pnr]: event.target.value }))}
+                        autoComplete="off"
+                        aria-label={`Captcha PNR ${pnr}`}
+                        placeholder="Ketik captcha"
+                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                      />
+                    </label>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={submitRefundCaptcha}
+                  disabled={loadingRefund || refundCaptcha.some(({ pnr }) => !captchaValues[pnr]?.trim())}
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loadingRefund ? 'Memverifikasi...' : 'Cek estimasi refund'}
+                  <i className="fa-solid fa-arrow-right text-xs"></i>
+                </button>
+              </div>
+            )}
+
             {/* Error */}
             {refundError && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '20px', padding: '20px 24px', display: 'flex', gap: '14px' }}>
@@ -609,9 +801,9 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                       </div>
                       <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '15px' }}>Estimasi Refund</span>
                     </div>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 12px', borderRadius: '999px', background: '#ecfdf5', color: '#065f46', fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
-                      Live dari API
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 12px', borderRadius: '999px', background: refundData.estimate_source === 'manual' ? '#fff7ed' : '#ecfdf5', color: refundData.estimate_source === 'manual' ? '#c2410c' : '#065f46', fontSize: '11px', fontWeight: 700, letterSpacing: '0.03em' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: refundData.estimate_source === 'manual' ? '#f97316' : '#10b981', display: 'inline-block' }}></span>
+                      {refundData.estimate_source === 'manual' ? 'Menunggu verifikasi nominal' : 'Live dari API vendor'}
                     </span>
                   </div>
                   <div style={{ padding: '24px 28px' }}>
@@ -620,33 +812,22 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                         <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 600 }}>Total Dibayar</span>
                         <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '14px' }}>{fmtRp(booking.totalAmount)}</span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-                        <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 600 }}>Biaya Pembatalan</span>
-                        <span style={{ fontWeight: 700, color: '#ef4444', fontSize: '14px' }}>&#8722; {fmtRp(cancellationFee)}</span>
-                      </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 20px', background: '#ecfdf5' }}>
-                        <span style={{ fontWeight: 900, fontSize: '15px', color: '#0f172a' }}>Estimasi Refund</span>
-                        <span style={{ fontSize: '26px', fontWeight: 900, color: '#059669' }}>{fmtRp(refundAmount)}</span>
+                        <span style={{ fontWeight: 900, fontSize: '15px', color: '#0f172a' }}>
+                          {refundData.refund_amount === null ? 'Nominal refund' : 'Estimasi Refund'}
+                        </span>
+                        <span style={{ fontSize: refundData.refund_amount === null ? '14px' : '26px', fontWeight: 900, color: refundData.refund_amount === null ? '#c2410c' : '#059669' }}>
+                          {refundData.refund_amount === null ? 'Menunggu verifikasi' : fmtRp(refundData.refund_amount)}
+                        </span>
                       </div>
                     </div>
                     <p style={{ fontSize: '12px', color: '#94a3b8', margin: '14px 0 0', lineHeight: 1.5 }}>
-                      * Kode refund akan dihasilkan setelah konfirmasi. Nomor pesanan: <strong style={{ color: '#475569' }}>{booking.orderNumber}</strong>
+                      Nomor pesanan: <strong style={{ color: '#475569' }}>{booking.orderNumber}</strong>. Nominal final mengikuti respons vendor dan verifikasi admin.
                     </p>
                   </div>
                 </div>
 
                 {/* Product-specific note */}
-                {sType === 'train' && (
-                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '20px', padding: '20px 24px', display: 'flex', gap: '14px' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <i className="fa-solid fa-train" style={{ color: '#3b82f6', fontSize: '16px' }}></i>
-                    </div>
-                    <div style={{ fontSize: '13px', color: '#1e40af', lineHeight: 1.6 }}>
-                      <p style={{ fontWeight: 700, margin: '0 0 4px' }}>Kebijakan Pembatalan KAI</p>
-                      <p style={{ margin: 0 }}>Biaya administrasi KAI: 10% dari harga tiket per penumpang. Refund dikirim ke metode pembayaran asal dalam 14 hari kerja.</p>
-                    </div>
-                  </div>
-                )}
                 {sType === 'flight' && (
                   <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '20px', padding: '20px 24px', display: 'flex', gap: '14px' }}>
                     <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -655,17 +836,6 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                     <div style={{ fontSize: '13px', color: '#92400e', lineHeight: 1.6 }}>
                       <p style={{ fontWeight: 700, margin: '0 0 4px' }}>Perhatian: Aturan Fare Maskapai</p>
                       <p style={{ margin: 0 }}>Biaya pembatalan ditentukan oleh fare rule maskapai. Tiket promo mungkin tidak dapat di-refund. Proses pengembalian dana biasanya membutuhkan 30&#8211;90 hari kerja.</p>
-                    </div>
-                  </div>
-                )}
-                {sType === 'insurance' && (
-                  <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '20px', padding: '20px 24px', display: 'flex', gap: '14px' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <i className="fa-solid fa-shield-halved" style={{ color: '#059669', fontSize: '16px' }}></i>
-                    </div>
-                    <div style={{ fontSize: '13px', color: '#065f46', lineHeight: 1.6 }}>
-                      <p style={{ fontWeight: 700, margin: '0 0 4px' }}>Informasi Pembatalan Asuransi</p>
-                      <p style={{ margin: 0 }}>Jika masih dalam masa free-look period (14 hari sejak pembelian), refund penuh dapat diproses tanpa biaya.</p>
                     </div>
                   </div>
                 )}
@@ -814,16 +984,20 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                     { lbl: 'Produk',           val: productName },
                     { lbl: 'Alasan',           val: reasonLabel },
                     { lbl: 'Total Dibayar',    val: fmtRp(booking.totalAmount) },
-                    { lbl: 'Biaya Pembatalan', val: `\u2212 ${fmtRp(cancellationFee)}`, color: '#ef4444' },
-                  ].map((row, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: i < 4 ? '1px solid #f1f5f9' : 'none' }}>
+                    ...(cancellationFee !== null
+                      ? [{ lbl: 'Biaya Pembatalan', val: `\u2212 ${fmtRp(cancellationFee)}`, color: '#ef4444' }]
+                      : []),
+                  ].map((row) => (
+                    <div key={row.lbl} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid #f1f5f9' }}>
                       <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>{row.lbl}</span>
                       <span style={{ fontWeight: 700, fontSize: '13px', color: row.color || '#0f172a', textAlign: 'right', maxWidth: '55%' }}>{row.val}</span>
                     </div>
                   ))}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px', background: '#ecfdf5', borderTop: '2px dashed #a7f3d0' }}>
-                    <span style={{ fontWeight: 900, fontSize: '15px', color: '#0f172a' }}>Total Refund</span>
-                    <span style={{ fontSize: '26px', fontWeight: 900, color: '#059669' }}>{fmtRp(refundAmount)}</span>
+                    <span style={{ fontWeight: 900, fontSize: '15px', color: '#0f172a' }}>Nominal Refund</span>
+                    <span style={{ fontSize: refundAmount === null ? '14px' : '26px', fontWeight: 900, color: refundAmount === null ? '#c2410c' : '#059669' }}>
+                      {refundAmount === null ? 'Menunggu verifikasi' : fmtRp(refundAmount)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -836,7 +1010,7 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
               </div>
               <div style={{ fontSize: '13px', color: '#991b1b', lineHeight: 1.6 }}>
                 <p style={{ fontWeight: 700, margin: '0 0 6px' }}>Tindakan Ini Tidak Dapat Diurungkan</p>
-                <p style={{ margin: 0 }}>Setelah kamu klik <strong>&quot;Batalkan Pesanan Sekarang&quot;</strong>, sistem akan memanggil API <code style={{ background: '#fee2e2', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>cancel_booking</code> ke vendor dan tidak bisa dibatalkan. Pastikan kamu sudah membaca kebijakan refund.</p>
+                <p style={{ margin: 0 }}>Setelah kamu klik <strong>&quot;Batalkan Pesanan Sekarang&quot;</strong>, sistem akan meminta pembatalan ke vendor. Tindakan ini tidak dapat dibatalkan; nominal refund mengikuti hasil vendor dan verifikasi admin.</p>
               </div>
             </div>
 
@@ -909,21 +1083,29 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                 </div>
                 <h2 style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 900, fontSize: '24px', color: '#0f172a', margin: '0 0 8px' }}>Pembatalan Berhasil Diproses!</h2>
                 <p style={{ color: '#64748b', fontSize: '14px', maxWidth: '440px', margin: '0 auto 28px', lineHeight: 1.6 }}>
-                  Permintaan refund kamu sedang diproses. Dana akan dikembalikan ke metode pembayaran asal sesuai estimasi vendor.
+                  {cancelResult.refund_mode === 'auto'
+                    ? 'Refund telah dikirim untuk diproses otomatis.'
+                    : 'Pembatalan vendor berhasil. Permintaan refund menunggu verifikasi nominal dan review admin sebelum dana dikembalikan.'}
                 </p>
 
                 {/* Refund code */}
-                <div style={{ display: 'inline-block', background: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '14px', padding: '14px 28px', marginBottom: '24px' }}>
-                  <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px' }}>Kode Refund</p>
-                  <p style={{ fontFamily: 'monospace', fontSize: '16px', fontWeight: 900, color: '#0f172a', letterSpacing: '2px', margin: 0 }}>{cancelResult.refund_code}</p>
-                </div>
+                {cancelResult.refund_code ? (
+                  <div style={{ display: 'inline-block', background: '#f8fafc', border: '2px dashed #cbd5e1', borderRadius: '14px', padding: '14px 28px', marginBottom: '24px' }}>
+                    <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 4px' }}>Kode Refund</p>
+                    <p style={{ fontFamily: 'monospace', fontSize: '16px', fontWeight: 900, color: '#0f172a', letterSpacing: '2px', margin: 0 }}>{cancelResult.refund_code}</p>
+                  </div>
+                ) : null}
 
                 {/* Refund amount */}
                 <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '20px', padding: '24px 40px', display: 'inline-block' }}>
-                  <p style={{ fontSize: '11px', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>Total Refund Kamu</p>
-                  <p style={{ fontSize: '36px', fontWeight: 900, color: '#059669', margin: '0 0 4px' }}>{fmtRp(cancelResult.received_amount)}</p>
+                  <p style={{ fontSize: '11px', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 8px' }}>
+                    {cancelResult.received_amount === null ? 'Nominal refund' : cancelResult.refund_mode === 'auto' ? 'Refund diproses' : 'Nominal dari vendor'}
+                  </p>
+                  <p style={{ fontSize: cancelResult.received_amount === null ? '16px' : '36px', fontWeight: 900, color: cancelResult.received_amount === null ? '#c2410c' : '#059669', margin: '0 0 4px' }}>
+                    {cancelResult.received_amount === null ? 'Menunggu verifikasi admin' : fmtRp(cancelResult.received_amount)}
+                  </p>
                   <p style={{ fontSize: '13px', color: '#10b981', margin: 0 }}>
-                    Dikirim ke metode pembayaran asal
+                    {cancelResult.refund_mode === 'auto' ? 'Dikirim ke metode pembayaran asal' : 'Belum dikirim; menunggu review admin'}
                   </p>
                 </div>
               </div>
@@ -943,10 +1125,20 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                   <div style={{ position: 'absolute', left: '9px', top: '8px', bottom: '8px', width: '2px', background: '#e2e8f0', borderRadius: '1px' }} />
 
                   {[
-                    { dot: '#10b981', bg: '#ecfdf5', date: `Hari ini, ${todayStr}`,        title: 'Pembatalan dikonfirmasi',              desc: `Pesanan ${booking.orderNumber} berhasil dibatalkan.`, done: true },
-                    { dot: '#ea580c', bg: '#fff7ed', date: '1\u20132 hari kerja',              title: 'Verifikasi refund oleh tim Orbisway',   desc: 'Tim memverifikasi dan meneruskan ke vendor',          active: true },
-                    { dot: '#cbd5e1', bg: '#f8fafc', date: '3\u20135 hari kerja',               title: 'Proses oleh vendor / bank',             desc: 'Refund diteruskan ke penyedia pembayaran',            done: false },
-                    { dot: '#cbd5e1', bg: '#f8fafc', date: '7\u201314 hari kerja',               title: 'Dana masuk ke rekeningmu',     desc: `${fmtRp(cancelResult.received_amount)} diterima`,    done: false },
+                    { dot: '#10b981', bg: '#ecfdf5', date: `Hari ini, ${todayStr}`, title: 'Pembatalan vendor dikonfirmasi', desc: `Pesanan ${booking.orderNumber} berhasil dibatalkan.`, done: true },
+                    {
+                      dot: cancelResult.refund_mode === 'auto' ? '#10b981' : '#ea580c',
+                      bg: cancelResult.refund_mode === 'auto' ? '#ecfdf5' : '#fff7ed',
+                      date: cancelResult.refund_mode === 'auto' ? 'Selesai' : 'Menunggu admin',
+                      title: cancelResult.refund_mode === 'auto' ? 'Refund dikirim otomatis' : 'Verifikasi nominal dan review refund',
+                      desc: cancelResult.received_amount === null
+                        ? 'Nominal akan diverifikasi dari data vendor sebelum refund diproses.'
+                        : cancelResult.refund_mode === 'auto'
+                          ? `${fmtRp(cancelResult.received_amount)} dikirim ke metode pembayaran asal.`
+                          : `Nominal vendor ${fmtRp(cancelResult.received_amount)} menunggu persetujuan admin.`,
+                      active: cancelResult.refund_mode !== 'auto',
+                      done: cancelResult.refund_mode === 'auto',
+                    },
                   ].map((item, i) => (
                     <div key={i} style={{ position: 'relative', marginBottom: i < 3 ? '28px' : 0 }}>
                       {/* Dot */}
@@ -967,14 +1159,19 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                   ))}
                 </div>
 
-                {/* Email notification */}
+                {/* Refund status information */}
                 <div style={{ marginTop: '24px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '16px', padding: '18px 20px', display: 'flex', gap: '12px' }}>
                   <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <i className="fa-solid fa-envelope" style={{ color: '#3b82f6', fontSize: '14px' }}></i>
                   </div>
                   <div style={{ fontSize: '12px', color: '#1e40af', lineHeight: 1.6 }}>
-                    <p style={{ fontWeight: 700, margin: '0 0 2px' }}>Notifikasi email aktif</p>
-                    <p style={{ margin: 0 }}>Kamu akan mendapat email di setiap tahap proses. Simpan kode refund <strong>{cancelResult.refund_code}</strong> untuk referensi.</p>
+                    <p style={{ fontWeight: 700, margin: '0 0 2px' }}>Status permintaan refund</p>
+                    <p style={{ margin: 0 }}>
+                      {cancelResult.refund_mode === 'auto'
+                        ? 'Refund otomatis telah dikirim ke metode pembayaran asal.'
+                        : 'Tim admin akan memverifikasi nominal vendor sebelum memproses pengembalian dana.'}
+                      {cancelResult.refund_code ? <> Simpan kode refund <strong>{cancelResult.refund_code}</strong> untuk referensi.</> : null}
+                    </p>
                   </div>
                 </div>
               </div>

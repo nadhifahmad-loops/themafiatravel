@@ -2,14 +2,46 @@ import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 import RefundQueueClient from './RefundQueueClient';
 
 export const metadata = {
   title: 'Antrian Refund',
 };
 
-function mapBooking(booking: any) {
-  const data = (booking.bookingData as Record<string, any>) || {};
+type RefundQueueBooking = Prisma.BookingGetPayload<{
+  include: { user: { select: { name: true; email: true } } };
+}>;
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function mapRefundRequest(value: unknown) {
+  const data = objectValue(value);
+  if (!data) return null;
+  return {
+    ...(typeof data.amount === 'number' ? { amount: data.amount } : {}),
+    ...(typeof data.reason === 'string' ? { reason: data.reason } : {}),
+    ...(typeof data.requestedAt === 'string' ? { requestedAt: data.requestedAt } : {}),
+    ...(typeof data.mode === 'string' ? { mode: data.mode } : {}),
+  };
+}
+
+function mapRefundResult(value: unknown) {
+  const data = objectValue(value);
+  if (!data) return null;
+  return {
+    ...(typeof data.amount === 'number' ? { amount: data.amount } : {}),
+    ...(typeof data.refundedAt === 'string' ? { refundedAt: data.refundedAt } : {}),
+    ...(typeof data.processedBy === 'string' ? { processedBy: data.processedBy } : {}),
+  };
+}
+
+function mapBooking(booking: RefundQueueBooking) {
+  const data = objectValue(booking.bookingData) || {};
   return {
     id: booking.id,
     orderNumber: booking.orderNumber,
@@ -27,8 +59,9 @@ function mapBooking(booking: any) {
     paymentStatus: booking.paymentStatus,
     paymentId: booking.paymentId,
     paymentType: booking.paymentType,
-    refundRequest: data.refundRequest ?? null,
-    refundResult: data.refundResult ?? null,
+    refundRequest: mapRefundRequest(data.refundRequest),
+    refundResult: mapRefundResult(data.refundResult),
+    flightRefundEstimate: mapRefundRequest(data.flightRefundEstimate),
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
     user: booking.user,

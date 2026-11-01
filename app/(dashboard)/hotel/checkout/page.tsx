@@ -254,7 +254,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
       }
       setCheckoutDone(true);
 
-      router.push(data.orderId ? `/payment/${data.orderId}` : '/bookings');
+      router.push(data.orderId ? `/bookings/${data.orderId}/review` : '/bookings');
     } catch (error) {
       // Gagal di level JARINGAN (timeout / Failed to fetch) sengaja TIDAK
       // me-regenerate key: bisa jadi request pertama justru sukses di server,

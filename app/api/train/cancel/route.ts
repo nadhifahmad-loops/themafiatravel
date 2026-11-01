@@ -4,7 +4,18 @@ import { authOptions } from '@/lib/auth';
 import { trainAPI } from '@/lib/orbis';
 import { bookingStore } from '@/lib/store';
 import { settleRefundAfterCancel } from '@/lib/refund';
+import { extractVendorRefundAmount } from '@/lib/refund-amount';
 import { canManageBooking } from '@/lib/booking-access';
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Kesalahan tidak diketahui';
+}
+
+function getOrbisCode(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object' || !('orbisCode' in error)) return undefined;
+  const code = error.orbisCode;
+  return typeof code === 'number' ? code : undefined;
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -55,16 +66,17 @@ export async function POST(req: NextRequest) {
 
     // Cancel ke KAI Orbis (pakai orderNumber dari KAI, bukan internal orderId)
     const kaiOrderNumber = booking.orderNumber; // format: TN.xxxxxxx
-    let cancelResult: any = null;
+    let cancelResult: unknown;
 
     try {
       cancelResult = await trainAPI.cancelBooking(kaiOrderNumber);
-    } catch (e: any) {
-      console.error('[KAI cancelBooking ERROR]', e.message);
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
+      console.error('[KAI cancelBooking ERROR]', message);
       return NextResponse.json({
         success: false,
-        error: `Gagal membatalkan di KAI: ${e.message}`,
-        orbisCode: e.orbisCode,
+        error: `Gagal membatalkan di KAI: ${message}`,
+        orbisCode: getOrbisCode(error),
       }, { status: 422 });
     }
 
@@ -83,21 +95,29 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const settle = await settleRefundAfterCancel(booking, reason || 'Refund booking train');
+    const vendorRefundAmount = extractVendorRefundAmount(cancelResult);
+    const settle = await settleRefundAfterCancel(
+      booking,
+      reason || 'Refund booking train',
+      vendorRefundAmount
+    );
 
     return NextResponse.json({
       success: true,
       message: settle.mode === 'auto'
         ? 'Booking berhasil dibatalkan dan refund diproses otomatis.'
-        : 'Booking berhasil dibatalkan. Permintaan refund diterima dan menunggu review admin.',
+        : vendorRefundAmount === null
+          ? 'Pembatalan vendor berhasil. Nominal refund belum tersedia dari API dan harus diverifikasi admin sebelum dana dikembalikan.'
+          : 'Booking berhasil dibatalkan. Refund menunggu review admin.',
       cancel_type: 'refund',
       refund_mode: settle.mode,
+      refund_amount: settle.amount,
       kaiOrderNumber,
       cancelResult,
     });
 
-  } catch (e: any) {
-    console.error('[Train Cancel ERROR]', e.message);
+  } catch (error: unknown) {
+    console.error('[Train Cancel ERROR]', getErrorMessage(error));
     return NextResponse.json({ success: false, error: 'Terjadi kesalahan sistem.' }, { status: 500 });
   }
 }

@@ -110,6 +110,10 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true, transpa
                 <i className="fa-solid fa-bookmark text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
                 <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{t.favorites}</span>
               </Link>
+              <Link href="/refunds" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-brand-blue/5 transition-all group">
+                <i className="fa-solid fa-rotate-left text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
+                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{t.refund}</span>
+              </Link>
             </div>
             <div className="border-t border-slate-100 p-1.5">
               <LogoutConfirmButton
@@ -308,6 +312,10 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true, transpa
                 <Link href="/favorites" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${isActive('/favorites') ? 'bg-brand-blue/5' : ''}`}>
                   <i className="fa-solid fa-bookmark text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
                   <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{t.favorites}</span>
+                </Link>
+                <Link href="/refunds" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${isActive('/refunds') ? 'bg-brand-blue/5' : ''}`}>
+                  <i className="fa-solid fa-rotate-left text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
+                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{t.refund}</span>
                 </Link>
                 <Link href="/help" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${isActive('/help') ? 'bg-brand-blue/5' : ''}`}>
                   <i className="fa-solid fa-circle-question text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>

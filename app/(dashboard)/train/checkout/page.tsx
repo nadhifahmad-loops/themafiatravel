@@ -299,7 +299,7 @@ function TrainCheckoutContent() {
       }
       setCheckoutDone(true);
       const bookingId = data.orderId || '';
-      if (bookingId) router.push(`/payment/${bookingId}`);
+      if (bookingId) router.push(`/bookings/${bookingId}/review`);
       else router.push('/bookings');
     } catch (e: any) {
       // Gagal di level JARINGAN sengaja TIDAK me-regenerate key: bisa jadi

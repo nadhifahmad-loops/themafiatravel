@@ -5,6 +5,7 @@ import { flightAPI } from '@/lib/orbis';
 import { bookingStore } from '@/lib/store';
 import { settleRefundAfterCancel } from '@/lib/refund';
 import { canManageBooking } from '@/lib/booking-access';
+import { extractAirlineRefundAmount, getAirlineProviderBookings, getAirlineRefundCancellationStatus, hasFlightDeparted, toAirlineRefundBookings } from '@/lib/orbis-post-booking';
 
 /**
  * Cancel Booking Pesawat — Orbis Airline API v2.2
@@ -22,20 +23,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: any;
+  let body: Record<string, unknown>;
   try {
-    body = await req.json();
+    const parsed: unknown = await req.json();
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid request body');
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return NextResponse.json({ success: false, error: 'Request body tidak valid.' }, { status: 400 });
   }
 
-  const {
-    order_id,         // ID booking di database kita (TMT-FLT-xxx)
-    provider_bookings, // Wajib untuk refund: [{ pnr, journeys: [...] }]
-    reason,           // Alasan pembatalan
-  } = body;
+  const order_id = body.order_id;
+  const reason = typeof body.reason === 'string' ? body.reason : '';
 
-  if (!order_id) {
+  if (typeof order_id !== 'string' || !order_id.trim()) {
     return NextResponse.json({ success: false, error: 'order_id wajib diisi.' }, { status: 400 });
   }
 
@@ -52,7 +54,7 @@ export async function POST(req: NextRequest) {
     sessionUserId: user.id ?? null,
     sessionEmail: user.email ?? null,
     isAdmin: user.role === 'admin',
-    bookerEmail: body.booker_email,
+    bookerEmail: typeof body.booker_email === 'string' ? body.booker_email : undefined,
   })) {
     return NextResponse.json({ success: false, error: 'Akses tidak diizinkan.' }, { status: 403 });
   }
@@ -75,24 +77,20 @@ export async function POST(req: NextRequest) {
 
   const orderNumber = booking.orderNumber;
 
-  // Cek apakah penerbangan sudah lewat
-  const depDate = booking.departureDate ? new Date(booking.departureDate) : null;
-  const now = new Date();
-  if (depDate && depDate < now) {
-    console.warn('[Flight Cancel] Penerbangan sudah lewat:', depDate.toISOString());
+  if (derivedCancelType === 'refund' && hasFlightDeparted(booking)) {
+    console.warn('[Flight Cancel] Refund mandiri ditolak karena penerbangan sudah berangkat:', booking.id);
     return NextResponse.json(
       {
         success: false,
-        error: 'Pembatalan tidak dapat dilakukan karena penerbangan sudah berangkat/sudah lewat. Hubungi CS untuk bantuan lebih lanjut.',
+        error: 'Refund mandiri tidak dapat dilakukan karena penerbangan sudah berangkat atau tanggalnya lewat. Hubungi customer service untuk pemeriksaan kebijakan maskapai.',
         departed: true,
-        departureDate: depDate.toISOString(),
       },
-      { status: 400 }
+      { status: 409 }
     );
   }
 
   try {
-    let cancelResult: any;
+    let cancelResult: unknown;
 
     if (derivedCancelType === 'void') {
       // ─ VOID CANCEL ─────────────────────────────────────────────────────────
@@ -116,67 +114,80 @@ export async function POST(req: NextRequest) {
       // ─ REFUND CANCEL ────────────────────────────────────────────────────────
       // REQ: { order_number, provider_bookings: [{ pnr, journeys }] }
       // Jika client tidak kirim provider_bookings, ambil dari bookingData di DB
-      let resolvedProviderBookings = provider_bookings;
-
-      if (!resolvedProviderBookings || !Array.isArray(resolvedProviderBookings) || resolvedProviderBookings.length === 0) {
-        const bookingData = booking.bookingData as any;
-
-        // Hitung jumlah penumpang dari passengerData
-        const paxData = booking.passengerData as any[];
-        const totalPax = Array.isArray(paxData) ? paxData.length : 1;
-        const paxNumbers = Array.from({ length: totalPax }, (_, i) => i);
-
-        // Coba ambil dari bookingData.provider_bookings
-        if (bookingData?.provider_bookings && Array.isArray(bookingData.provider_bookings) && bookingData.provider_bookings.length > 0) {
-          resolvedProviderBookings = bookingData.provider_bookings.map((pb: any) => {
-            const segments = pb.segments || pb.journeys || [];
-            return {
-              pnr: pb.pnr || booking.pnr || orderNumber,
-              journeys: segments.map((seg: any) => {
-                // Handle passengers: bisa array of objects atau array of numbers
-                const rawPax = seg.passengers || seg.pax || [];
-                let pax = rawPax.map((p: any) => typeof p === 'number' ? p : (p.passenger_number ?? p.number ?? 0));
-
-                // Jika pax kosong, isi dari passengerData
-                if (!pax || pax.length === 0) {
-                  pax = paxNumbers;
-                }
-
-                return {
-                  origin: seg.origin || booking.origin,
-                  destination: seg.destination || booking.destination,
-                  departure_date: seg.departure_date,
-                  pax,
-                };
-              }),
-            };
-          });
-          console.log('[Flight Cancel] provider_bookings dari bookingData DB:', JSON.stringify(resolvedProviderBookings, null, 2));
-        }
-
-        // Fallback: bangun dari data booking langsung
-        if (!resolvedProviderBookings || resolvedProviderBookings.length === 0) {
-          resolvedProviderBookings = [{
-            pnr: booking.pnr || orderNumber,
-            journeys: [{
-              origin: booking.origin,
-              destination: booking.destination,
-              departure_date: booking.departureDate?.toISOString?.() || booking.departureDate,
-              pax: paxNumbers,
-            }],
-          }];
-          console.log('[Flight Cancel] provider_bookings dari fallback data booking');
-        }
+      const resolvedProviderBookings = getAirlineProviderBookings(booking);
+      if (!resolvedProviderBookings.length) {
+        return NextResponse.json({ success: false, error: 'Data itinerary refund tidak lengkap.' }, { status: 400 });
       }
 
-      console.log('[Flight Cancel] Refund cancel untuk order_number:', orderNumber, '| provider_bookings:', JSON.stringify(resolvedProviderBookings, null, 2));
+      const bookingData = booking.bookingData && typeof booking.bookingData === 'object'
+        ? booking.bookingData as Record<string, unknown>
+        : {};
+      const savedEstimateData = bookingData.flightRefundEstimate && typeof bookingData.flightRefundEstimate === 'object'
+        ? bookingData.flightRefundEstimate as Record<string, unknown>
+        : {};
+      const savedEstimateAt = typeof savedEstimateData.capturedAt === 'string'
+        ? Date.parse(savedEstimateData.capturedAt)
+        : NaN;
+      if (!Number.isFinite(savedEstimateAt) || savedEstimateAt > Date.now() || Date.now() - savedEstimateAt > 30 * 60 * 1000) {
+        return NextResponse.json(
+          { success: false, error: 'Periksa estimasi refund maskapai kembali sebelum membatalkan booking.' },
+          { status: 409 }
+        );
+      }
+      const savedEstimate = typeof savedEstimateData.amount === 'number'
+        && Number.isFinite(savedEstimateData.amount)
+        && savedEstimateData.amount >= 0
+        ? savedEstimateData.amount
+        : null;
+
+      console.log('[Flight Cancel] Refund cancel untuk order_number:', orderNumber);
       cancelResult = await flightAPI.cancelRefund({
         order_number: orderNumber,
-        provider_bookings: resolvedProviderBookings,
+        provider_bookings: toAirlineRefundBookings(booking),
       });
 
+      const cancellationStatus = getAirlineRefundCancellationStatus(
+        cancelResult,
+        resolvedProviderBookings.map(({ pnr }) => pnr)
+      );
+      if (!cancellationStatus.confirmed) {
+        const statusSummary = cancellationStatus.providers
+          .map(({ pnr, state, error }) => `${pnr || 'PNR tidak diketahui'}: ${state || 'status tidak tersedia'}${error ? ` (${error})` : ''}`)
+          .join('; ') || 'status provider tidak tersedia';
+        const reviewReason = `${reason || 'Refund booking flight'} — status refund vendor belum terkonfirmasi (${statusSummary}); verifikasi status PNR sebelum memproses dana.`;
+        const settle = await settleRefundAfterCancel(booking, reviewReason, null);
+
+        console.warn('[Flight Cancel] Status refund provider belum terkonfirmasi; masuk review manual:', statusSummary);
+        return NextResponse.json({
+          success: true,
+          cancel_type: 'refund',
+          refund_mode: settle.mode,
+          refund_amount: null,
+          manual_review_required: true,
+          provider_statuses: cancellationStatus.providers,
+          orderNumber,
+          data: cancelResult,
+          message: 'Status refund vendor belum terkonfirmasi untuk seluruh PNR. Permintaan diamankan di antrean review admin; jangan ajukan ulang sebelum status booking diverifikasi.',
+        });
+      }
+
+      const vendorRefundAmount = extractAirlineRefundAmount(cancelResult);
+      const settledAmount = vendorRefundAmount ?? savedEstimate ?? null;
+
       // Auto vs manual queue — tiket sudah batal di vendor, dana mengikuti keputusan.
-      const settle = await settleRefundAfterCancel(booking, reason || 'Refund booking flight');
+      const settle = await settleRefundAfterCancel(booking, reason || 'Refund booking flight', settledAmount);
+
+      if (vendorRefundAmount !== null) {
+        await bookingStore.mergeBookingData(booking.id, {
+          bookingData: {
+            flightRefundEstimate: {
+              amount: vendorRefundAmount,
+              source: 'cancel_response',
+              capturedAt: new Date().toISOString(),
+            },
+          },
+        });
+      }
 
       console.log('[Flight Cancel] ✅ Refund settle | mode:', settle.mode, '| amount:', settle.amount, '| degraded:', Boolean(settle.degraded));
 
@@ -184,6 +195,15 @@ export async function POST(req: NextRequest) {
         success: true,
         cancel_type: 'refund',
         refund_mode: settle.mode,
+        refund_amount: settle.amount,
+        refund_amount_source: vendorRefundAmount !== null
+          ? 'vendor_cancel'
+          : savedEstimate !== null
+            ? 'vendor_quote'
+            : 'unknown',
+        ...(settledAmount === null
+          ? { refund_amount_warning: 'Nominal refund dari vendor tidak tersedia; admin harus memverifikasi sebelum memproses dana.' }
+          : {}),
         orderNumber,
         data: cancelResult,
         message: settle.mode === 'auto'
@@ -192,8 +212,13 @@ export async function POST(req: NextRequest) {
       });
     }
   } catch (e: unknown) {
-    const orbisCode = (e as any)?.orbisCode || (e as any)?.code || '';
-    const orbisMsg = (e as any)?.orbisMessage || (e as any)?.message || 'Gagal membatalkan booking.';
+    const errorData = e && typeof e === 'object'
+      ? e as { orbisCode?: unknown; code?: unknown; orbisMessage?: unknown; message?: unknown }
+      : {};
+    const orbisCode = errorData.orbisCode ?? errorData.code ?? '';
+    const orbisMsg = typeof errorData.orbisMessage === 'string'
+      ? errorData.orbisMessage
+      : e instanceof Error ? e.message : 'Gagal membatalkan booking.';
     console.error('[Flight Cancel] Error:', orbisCode, orbisMsg, e);
     return NextResponse.json(
       { success: false, error: orbisMsg, orbisCode },

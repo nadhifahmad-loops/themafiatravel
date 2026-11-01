@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { flightAPI } from '@/lib/orbis';
 import { bookingStore } from '@/lib/store';
 import { canManageBooking } from '@/lib/booking-access';
+import { getAirlineProviderBookings, getFlightCabinClass, hasFlightDeparted } from '@/lib/orbis-post-booking';
 
 /**
  * Get Reschedule Availability — Orbis Airline API v2.2 §3.25
@@ -17,16 +18,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: any;
+  let body: Record<string, unknown>;
   try {
-    body = await req.json();
+    const parsed: unknown = await req.json();
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid request body');
+    }
+    body = parsed as Record<string, unknown>;
   } catch {
     return NextResponse.json({ success: false, error: 'Request body tidak valid.' }, { status: 400 });
   }
 
-  const { order_id, cabin_class, reschedule_list } = body;
+  const { order_id, reschedule_list } = body;
 
-  if (!order_id) {
+  if (typeof order_id !== 'string' || !order_id.trim()) {
     return NextResponse.json({ success: false, error: 'order_id wajib diisi.' }, { status: 400 });
   }
 
@@ -34,14 +39,18 @@ export async function POST(req: NextRequest) {
   const booking = await bookingStore.findById(order_id);
 
   if (!booking) {
-    return NextResponse.json({ success: false, error: 'Booking tidak ditemukan.' }, { status: 404 });
+    return NextResponse.json({ success: false, error: 'Booking tidak ditemukan.' }, { status: 404 }    );
+  }
+
+  if (booking.bookingType !== 'flight') {
+    return NextResponse.json({ success: false, error: 'Reschedule online hanya tersedia untuk booking pesawat.' }, { status: 400 });
   }
 
   if (!canManageBooking(booking, {
     sessionUserId: user.id ?? null,
     sessionEmail: user.email ?? null,
     isAdmin: user.role === 'admin',
-    bookerEmail: body.booker_email,
+    bookerEmail: typeof body.booker_email === 'string' ? body.booker_email : undefined,
   })) {
     return NextResponse.json({ success: false, error: 'Akses tidak diizinkan.' }, { status: 403 });
   }
@@ -53,39 +62,83 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Bangun reschedule_list dari data booking jika tidak disediakan
-  let resolvedRescheduleList = reschedule_list;
-  if (!resolvedRescheduleList || !Array.isArray(resolvedRescheduleList) || resolvedRescheduleList.length === 0) {
-    const bookingData = booking.bookingData as any;
-    const pnr = booking.pnr || bookingData?.pnr;
+  if (hasFlightDeparted(booking)) {
+    return NextResponse.json(
+      { success: false, error: 'Jadwal yang sudah berangkat atau tanggalnya lewat tidak dapat di-reschedule.' },
+      { status: 409 }
+    );
+  }
 
-    if (!pnr) {
-      return NextResponse.json(
-        { success: false, error: 'PNR tidak ditemukan untuk booking ini.' },
-        { status: 400 }
-      );
+  const providerBookings = getAirlineProviderBookings(booking);
+  if (!providerBookings.length) {
+    return NextResponse.json({ success: false, error: 'Data itinerary reschedule tidak lengkap.' }, { status: 400 });
+  }
+
+  const requestedList = Array.isArray(reschedule_list) ? reschedule_list : null;
+  if (reschedule_list !== undefined && !requestedList) {
+    return NextResponse.json({ success: false, error: 'reschedule_list harus berupa array.' }, { status: 400 });
+  }
+  if (requestedList && requestedList.length !== providerBookings.length) {
+    return NextResponse.json({ success: false, error: 'Semua PNR booking harus disertakan untuk reschedule.' }, { status: 400 });
+  }
+
+  const resolvedRescheduleList = providerBookings.map((providerBooking, index) => {
+    const requestedProvider = requestedList?.[index];
+    if (requestedProvider && (!requestedProvider || typeof requestedProvider !== 'object' || Array.isArray(requestedProvider))) {
+      return null;
+    }
+    const requestedRecord = requestedProvider as Record<string, unknown> | undefined;
+    if (requestedRecord?.pnr !== undefined && requestedRecord.pnr !== providerBooking.pnr) return null;
+    const requestedJourneys = requestedRecord?.journeys;
+    if (requestedJourneys !== undefined && (!Array.isArray(requestedJourneys) || requestedJourneys.length !== providerBooking.journeys.length)) {
+      return null;
     }
 
-    resolvedRescheduleList = [{
-      pnr,
-      journeys: [{
-        origin: booking.origin,
-        destination: booking.destination,
-        departure_date: booking.departureDate?.toISOString?.()?.split('T')[0] || booking.departureDate,
-      }],
-    }];
+    const journeys = providerBooking.journeys.map((journey, journeyIndex) => {
+      const requestedJourney = Array.isArray(requestedJourneys)
+        ? requestedJourneys[journeyIndex]
+        : undefined;
+      if (requestedJourney !== undefined && (!requestedJourney || typeof requestedJourney !== 'object' || Array.isArray(requestedJourney))) {
+        return null;
+      }
+      const requestedJourneyRecord = requestedJourney as Record<string, unknown> | undefined;
+      if (
+        (requestedJourneyRecord?.origin !== undefined && requestedJourneyRecord.origin !== journey.origin)
+        || (requestedJourneyRecord?.destination !== undefined && requestedJourneyRecord.destination !== journey.destination)
+      ) {
+        return null;
+      }
+      const departureDate = requestedJourneyRecord?.departure_date;
+      const date = typeof departureDate === 'string' ? departureDate.trim() : journey.departure_date.slice(0, 10);
+      const parsedDate = new Date(`${date}T00:00:00Z`);
+      const today = new Date().toISOString().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date || date < today) return null;
+      return { origin: journey.origin, destination: journey.destination, departure_date: date };
+    });
+
+    if (journeys.some((journey) => !journey)) return null;
+    return { pnr: providerBooking.pnr, journeys };
+  });
+
+  if (resolvedRescheduleList.some((item) => !item)) {
+    return NextResponse.json({ success: false, error: 'Jadwal reschedule tidak sesuai dengan itinerary booking.' }, { status: 400 });
   }
+  const validRescheduleList = resolvedRescheduleList.flatMap((item) => {
+    if (!item) return [];
+    const journeys = item.journeys.filter((journey): journey is NonNullable<typeof journey> => Boolean(journey));
+    return [{ pnr: item.pnr, journeys }];
+  });
 
   try {
     const data = await flightAPI.getRescheduleAvailability({
       order_number: booking.orderNumber,
-      cabin_class: cabin_class || 'Y',
-      reschedule_list: resolvedRescheduleList,
+      cabin_class: getFlightCabinClass(booking),
+      reschedule_list: validRescheduleList,
     });
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
-    const code = (error as any).orbisCode;
-    const msg = error.message || '';
+  } catch (error: unknown) {
+    const code = error && typeof error === 'object' ? (error as { orbisCode?: number }).orbisCode : undefined;
+    const msg = error instanceof Error ? error.message : '';
 
     if (code === 4011 || msg.includes('kedaluwarsa')) {
       return NextResponse.json(

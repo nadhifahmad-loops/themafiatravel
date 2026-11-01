@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { insuranceAPI } from '@/lib/orbis';
 import { bookingStore } from '@/lib/store';
 import { settleRefundAfterCancel } from '@/lib/refund';
+import { extractVendorRefundAmount } from '@/lib/refund-amount';
 import { canManageBooking } from '@/lib/booking-access';
 
 export async function POST(req: NextRequest) {
@@ -67,20 +68,29 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const settle = await settleRefundAfterCancel(booking, reason || 'Refund booking insurance');
+    const vendorRefundAmount = extractVendorRefundAmount(cancelResult);
+    const settle = await settleRefundAfterCancel(
+      booking,
+      reason || 'Refund booking insurance',
+      vendorRefundAmount
+    );
 
     return NextResponse.json({
       success: true,
       message: settle.mode === 'auto'
         ? 'Pembatalan asuransi berhasil diproses dan refund dikembalikan otomatis.'
-        : 'Pembatalan asuransi berhasil diproses. Refund menunggu review admin.',
+        : vendorRefundAmount === null
+          ? 'Pembatalan asuransi berhasil. Nominal refund belum tersedia dari API dan harus diverifikasi admin sebelum dana dikembalikan.'
+          : 'Pembatalan asuransi berhasil. Refund menunggu review admin.',
       cancel_type: 'refund',
       refund_mode: settle.mode,
+      refund_amount: settle.amount,
       orderNumber: booking.orderNumber,
       data: cancelResult,
     });
-  } catch (e: any) {
-    console.error('[INSURANCE CANCEL ERROR]', e.message);
-    return NextResponse.json({ success: false, error: e.message || 'Gagal membatalkan booking asuransi.' }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Gagal membatalkan booking asuransi.';
+    console.error('[INSURANCE CANCEL ERROR]', message);
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

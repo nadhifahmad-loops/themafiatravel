@@ -4,69 +4,153 @@ import { authOptions } from '@/lib/auth';
 import { hotelAPI } from '@/lib/orbis';
 import { bookingStore } from '@/lib/store';
 import { settleRefundAfterCancel } from '@/lib/refund';
+import { extractVendorRefundAmount } from '@/lib/refund-amount';
 import { canManageBooking } from '@/lib/booking-access';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  let body: Record<string, unknown>;
   try {
-    const { order_number, issued_name, provider, check_only } = await req.json();
+    const parsed: unknown = await req.json();
+    if (!isRecord(parsed)) throw new Error('Invalid request body');
+    body = parsed;
+  } catch {
+    return NextResponse.json({ success: false, error: 'Request body tidak valid.' }, { status: 400 });
+  }
 
-    if (check_only) {
-      // 3.10 Check Refund Amount
-      const refund = await hotelAPI.checkRefundAmount(order_number, issued_name, provider);
-      return NextResponse.json({ success: true, data: refund });
+  if (typeof body.order_number !== 'string' || !body.order_number.trim()) {
+    return NextResponse.json({ success: false, error: 'order_number wajib diisi.' }, { status: 400 });
+  }
+
+  const booking = await bookingStore.findByOrderNumber(body.order_number.trim());
+  if (!booking || booking.bookingType !== 'hotel') {
+    return NextResponse.json({ success: false, error: 'Booking hotel tidak ditemukan.' }, { status: 404 });
+  }
+
+  const user = session.user as { id?: string; email?: string; role?: string };
+  if (!canManageBooking(booking, {
+    sessionUserId: user.id ?? null,
+    sessionEmail: user.email ?? null,
+    isAdmin: user.role === 'admin',
+    bookerEmail: typeof body.booker_email === 'string' ? body.booker_email : undefined,
+  })) {
+    return NextResponse.json({ success: false, error: 'Akses tidak diizinkan.' }, { status: 403 });
+  }
+
+  const checkOnly = body.check_only === true;
+  const isPending = booking.status === 'pending_payment';
+  const isPaid = ['paid', 'issued'].includes(booking.status);
+  if (checkOnly && !isPaid) {
+    return NextResponse.json(
+      { success: false, error: 'Estimasi refund hotel hanya tersedia untuk booking yang sudah dibayar/issued.' },
+      { status: 400 }
+    );
+  }
+  if (!checkOnly && !isPending && !isPaid) {
+    return NextResponse.json(
+      { success: false, error: `Status booking tidak mendukung pembatalan: ${booking.status}.` },
+      { status: 400 }
+    );
+  }
+
+  const issuedName = booking.pnr?.trim();
+  const provider = booking.provider?.trim();
+  if (!issuedName || !provider) {
+    return NextResponse.json(
+      { success: false, error: 'Data issued_name/provider hotel tidak lengkap pada booking.' },
+      { status: 422 }
+    );
+  }
+
+  try {
+    if (checkOnly) {
+      const quote: unknown = await hotelAPI.checkRefundAmount(booking.orderNumber, issuedName, provider);
+      const amount = extractVendorRefundAmount(quote);
+      if (amount === null) {
+        console.error('[Hotel Refund Quote] Vendor response tidak memuat nominal refund.');
+        return NextResponse.json(
+          { success: false, error: 'Vendor tidak mengembalikan nominal refund yang valid. Hubungi customer service.' },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json({ success: true, data: quote, refundAmount: amount });
     }
 
-    // Cari booking + validasi kepemilikan sebelum cancel
-    const booking = order_number ? await bookingStore.findByOrderNumber(order_number) : null;
-    if (booking) {
-      const user = session.user as { id?: string; email?: string; role?: string };
-      if (!canManageBooking(booking, {
-        sessionUserId: user.id ?? null,
-        sessionEmail: user.email ?? null,
-        isAdmin: user.role === 'admin',
-      })) {
-        return NextResponse.json({ error: 'Akses tidak diizinkan.' }, { status: 403 });
+    let quotedAmount: number | null = null;
+    if (isPaid) {
+      const expectedAmount = body.expected_refund_amount;
+      if (typeof expectedAmount !== 'number' || !Number.isFinite(expectedAmount) || expectedAmount < 0) {
+        return NextResponse.json(
+          { success: false, error: 'Periksa estimasi refund hotel sebelum mengonfirmasi pembatalan.' },
+          { status: 409 }
+        );
+      }
+
+      const quote: unknown = await hotelAPI.checkRefundAmount(booking.orderNumber, issuedName, provider);
+      quotedAmount = extractVendorRefundAmount(quote);
+      if (quotedAmount === null) {
+        return NextResponse.json(
+          { success: false, error: 'Vendor tidak mengembalikan nominal refund yang valid. Pembatalan tidak dilanjutkan.' },
+          { status: 502 }
+        );
+      }
+      if (Math.abs(quotedAmount - expectedAmount) > 0.5) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Estimasi refund berubah. Periksa kembali kebijakan dan nominal terbaru sebelum melanjutkan.',
+            quoteChanged: true,
+            data: quote,
+            refundAmount: quotedAmount,
+          },
+          { status: 409 }
+        );
       }
     }
 
-    // 3.11 Cancel Booking
-    const data = await hotelAPI.cancelBooking(order_number, issued_name, provider);
-
-    // Update status di database (kalau booking ditemukan)
-    if (booking) {
-      const derivedCancelType = booking.status === 'pending_payment'
-        ? 'void'
-        : ['paid', 'issued'].includes(booking.status)
-          ? 'refund'
-          : null;
-
-      if (!derivedCancelType) {
-        return NextResponse.json({ success: false, error: 'Status booking tidak mendukung pembatalan saat ini.' }, { status: 400 });
-      }
-
-      if (derivedCancelType === 'void') {
-        await bookingStore.cancelBooking(booking.id, {
-          reason: 'Dibatalkan oleh pengguna',
-          cancelType: 'void',
-        });
-      } else {
-        // Hotel selalu masuk antrian review (nominal refund ditentukan vendor).
-        const settle = await settleRefundAfterCancel(booking, 'Refund booking hotel');
-        console.log('[Hotel Cancel] Refund settle | mode:', settle.mode, '| amount:', settle.amount);
-      }
+    const cancelResult: unknown = await hotelAPI.cancelBooking(booking.orderNumber, issuedName, provider);
+    if (isPending) {
+      await bookingStore.cancelBooking(booking.id, {
+        reason: 'Dibatalkan oleh pengguna',
+        cancelType: 'void',
+      });
+      return NextResponse.json({
+        success: true,
+        data: cancelResult,
+        cancel_type: 'void',
+        refund_mode: 'void',
+        refund_amount: null,
+      });
     }
+
+    const vendorAmount = extractVendorRefundAmount(cancelResult) ?? quotedAmount;
+    const settle = await settleRefundAfterCancel(
+      booking,
+      typeof body.reason === 'string' ? body.reason : 'Refund booking hotel',
+      vendorAmount
+    );
+    console.log('[Hotel Cancel] Refund settle | mode:', settle.mode, '| amount:', settle.amount);
 
     return NextResponse.json({
       success: true,
-      data,
-      cancel_type: booking?.status === 'pending_payment' ? 'void' : 'refund',
-      refund_mode: booking?.status === 'pending_payment' ? 'void' : 'manual',
+      data: cancelResult,
+      cancel_type: 'refund',
+      refund_mode: settle.mode,
+      refund_amount: settle.amount,
     });
-  } catch (e: any) {
-    console.error('[HOTEL CANCEL ERROR]', e.message);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error: unknown) {
+    const orbisCode = isRecord(error) && typeof error.orbisCode === 'number' ? error.orbisCode : undefined;
+    const message = error instanceof Error ? error.message : 'Gagal memproses pembatalan hotel.';
+    console.error('[HOTEL CANCEL ERROR]', orbisCode, message);
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: orbisCode === 4043 || orbisCode === 4022 ? 422 : 500 }
+    );
   }
 }

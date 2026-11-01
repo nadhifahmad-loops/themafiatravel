@@ -677,17 +677,19 @@ export const flightAPI = {
 
   // ── Pre Refund Login List (§3.22) ──────────────────────────────────────────
   // Mendapatkan captcha untuk proses refund (jika vendor menyediakan captcha).
-  // Request: { provider: ["citilink"], pnr: ["ZD23NM"] }
-  preRefundLoginList: (params: { provider: string[]; pnr: string[] }) =>
-    orbisRequest('/booking/airline', 'pre_refund_login_list', params),
+  // Request: { order_number, provider: ["citilink"], pnr: ["ZD23NM"] }
+  preRefundLoginList: (params: { order_number: string; provider: string[]; pnr: string[] }) =>
+    // Captcha hanya langkah opsional. Batasi percobaan agar alur estimasi refund
+    // dapat beralih ke get_refund_booking tanpa menunggu retry berulang.
+    orbisRequest('/booking/airline', 'pre_refund_login_list', params, 30000, 1),
 
   // ── Get Refund Booking (§3.23) ─────────────────────────────────────────────
   // Mendapatkan detail refund booking.
-  // Request: { order_number, provider_bookings: [{pnr, journeys: [...]}], captcha?: {pnr: value} }
+  // Captcha wajib berdasarkan validasi vendor: { order_number, provider_bookings: [...], captcha: {pnr: value} }
   getRefundBooking: (params: {
     order_number: string;
     provider_bookings: OrbisStruct[];
-    captcha?: Record<string, string>;
+    captcha: Record<string, string>;
   }) => orbisRequest('/booking/airline', 'get_refund_booking', params),
 
   // ── Get Fare Rules (§3.9) ──────────────────────────────────────────────────
@@ -768,7 +770,7 @@ export const trainAPI = {
     orbisRequest('/booking/train', 'issued', { order_number }),
 
   cancelBooking: (order_number: string) =>
-    orbisRequest('/booking/train', 'cancel', { order_number }),
+    orbisRequest('/booking/train', 'cancel_booking', { order_number }),
 
   getPrintout: (order_number: string) =>
     orbisRequest('/printout', 'get_printout_api', {
@@ -1035,7 +1037,7 @@ export const insuranceAPI = {
     orbisRequest('/booking/insurance', 'get_booking', { order_number, force_sync }),
 
   cancelBooking: (order_number: string) =>
-    orbisRequest('/booking/insurance', 'cancel_booking', { order_number }),
+    orbisRequest('/booking/insurance', 'cancel', { order_number }),
 
   getBalance: () =>
     orbisRequest('/booking/insurance', 'get_balance', {}),

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { estimateRefundByType } from '@/lib/refund';
+import { hasFlightDeparted } from '@/lib/orbis-post-booking';
 
 // ─── POST ──────────────────────────────────────────────────────────────────
 export async function POST(
@@ -57,12 +57,20 @@ export async function POST(
       );
     }
 
-    const estimate = estimateRefundByType(booking.bookingType, booking.totalAmount);
+    if (booking.bookingType === 'flight' && hasFlightDeparted(booking)) {
+      return NextResponse.json(
+        { success: false, error: 'Estimasi refund mandiri tidak tersedia karena penerbangan sudah berangkat atau tanggalnya lewat. Hubungi customer service untuk pemeriksaan kebijakan maskapai.' },
+        { status: 409 }
+      );
+    }
 
-    return NextResponse.json({
-      success: true,
-      data: estimate,
-    });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'API vendor tidak menyediakan estimasi nominal untuk layanan ini. Nominal refund harus diverifikasi melalui proses pembatalan/review admin.',
+      },
+      { status: 422 }
+    );
   } catch (error) {
     console.error('Error fetching refund estimate:', error);
     return NextResponse.json(

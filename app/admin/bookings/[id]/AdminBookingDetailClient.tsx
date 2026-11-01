@@ -21,12 +21,14 @@ interface Booking {
   status: string;
   totalAmount: number;
   currency?: string;
+  origin?: string | null;
+  destination?: string | null;
   pnr?: string | null;
   flightNumber?: string | null;
   provider?: string | null;
   routeLabel?: string | null;
   hotelName?: string | null;
-  bookingData?: any;
+  bookingData?: unknown;
   passengerData?: unknown;
   /** 'settlement' | 'pending' | 'expire' | 'late_settlement' | ... */
   paymentStatus?: string | null;
@@ -37,6 +39,18 @@ interface Booking {
   updatedAt: string | Date;
   user?: { name?: string | null; email?: string | null; phone?: string | null } | null;
 }
+
+type RescheduleHistoryEntry = {
+  pnr?: string | null;
+  originalDepartureDate?: string | null;
+  departureDate?: string | null;
+  origin?: string | null;
+  destination?: string | null;
+  flightNumber?: string | null;
+  amount?: number | null;
+  adminFee?: number | null;
+  changedAt?: string | null;
+};
 
 const STATUS_OPTIONS = [
   { value: 'pending_payment', label: 'Menunggu Pembayaran', color: 'bg-amber-100 text-amber-700', icon: Clock },
@@ -67,8 +81,16 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
 
   const currentStatus = STATUS_OPTIONS.find(s => s.value === status) || { label: status, color: 'bg-slate-100 text-slate-700', icon: Clock };
   const TypeIcon = TYPE_ICONS[booking.bookingType] || Plane;
-  const bookingInfo = typeof booking.bookingData === 'object' && booking.bookingData ? booking.bookingData : {};
+  const bookingInfo = booking.bookingData && typeof booking.bookingData === 'object' && !Array.isArray(booking.bookingData)
+    ? booking.bookingData as Record<string, unknown>
+    : {};
   const passengers: Passenger[] = Array.isArray(booking.passengerData) ? booking.passengerData : [];
+  const rescheduleHistory: RescheduleHistoryEntry[] = Array.isArray(bookingInfo.rescheduleHistory)
+    ? [...bookingInfo.rescheduleHistory].filter((entry): entry is RescheduleHistoryEntry => Boolean(entry && typeof entry === 'object' && !Array.isArray(entry))).reverse()
+    : [];
+  const refundEstimate = bookingInfo.flightRefundEstimate && typeof bookingInfo.flightRefundEstimate === 'object'
+    ? bookingInfo.flightRefundEstimate as { amount?: number | null; capturedAt?: string; source?: string }
+    : null;
 
   async function handleStatusChange(newStatus: string) {
     if (newStatus === status || updating) return;
@@ -165,6 +187,55 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Info */}
         <div className="lg:col-span-2 space-y-6">
+          {booking.bookingType === 'flight' && (refundEstimate || rescheduleHistory.length > 0) ? (
+            <section className="rounded-2xl border border-sky-100 bg-sky-50/70 p-5">
+              <div className="flex items-center gap-2">
+                <Plane className="h-5 w-5 text-sky-700" />
+                <h3 className="font-bold text-sky-950">Riwayat Refund &amp; Reschedule Maskapai</h3>
+              </div>
+              {refundEstimate ? (
+                <div className="mt-3 rounded-xl border border-white bg-white/80 p-3 text-sm">
+                  <p className="font-semibold text-slate-700">Estimasi refund vendor</p>
+                  <p className="mt-1 font-black text-slate-900">
+                    {typeof refundEstimate.amount === 'number' ? formatCurrency(refundEstimate.amount, booking.currency) : 'Nominal tidak tersedia'}
+                  </p>
+                  {refundEstimate.capturedAt ? (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Diperiksa {formatDate(refundEstimate.capturedAt)} · {refundEstimate.source || 'get_refund_booking'}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {rescheduleHistory.length ? (
+                <ol className="mt-3 space-y-2">
+                  {rescheduleHistory.map((entry, index) => (
+                    <li key={`${entry.pnr || 'pnr'}-${entry.changedAt || index}`} className="rounded-xl border border-white bg-white/80 p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-bold text-slate-800">
+                          {entry.origin || booking.origin || '-'} → {entry.destination || booking.destination || '-'}
+                          {entry.flightNumber ? ` · ${entry.flightNumber}` : ''}
+                        </p>
+                        <span className="text-[11px] text-slate-500">{entry.changedAt ? formatDate(entry.changedAt) : '-'}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {entry.originalDepartureDate ? formatDate(entry.originalDepartureDate) : '-'}
+                        {' → '}
+                        {entry.departureDate ? formatDate(entry.departureDate) : '-'}
+                        {entry.pnr ? ` · PNR ${entry.pnr}` : ''}
+                      </p>
+                      {typeof entry.amount === 'number' ? (
+                        <p className="mt-1 text-xs font-semibold text-slate-700">
+                          Biaya perubahan: {formatCurrency(entry.amount, booking.currency)}
+                          {typeof entry.adminFee === 'number' ? ` · Admin: ${formatCurrency(entry.adminFee, booking.currency)}` : ''}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </section>
+          ) : null}
+
           {/* Card Utama */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             {/* Gradient Header */}

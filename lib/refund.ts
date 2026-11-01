@@ -1,51 +1,7 @@
-// lib/refund.ts
-// Estimasi biaya pembatalan lokal (tanpa panggil Orbis API).
-// Dipakai oleh route /api/bookings/[id]/refund-estimate DAN route cancel
-// (flight/train/insurance) agar jumlah refund SELALU dihitung server-side,
-// tidak pernah dipercaya dari body request.
-
 import { bookingStore } from './store';
 import { refundTransaction } from './midtrans';
 
-export const REFUND_ADMIN_FEE = 50_000; // Biaya admin tetap
 export const DEFAULT_REFUND_AUTO_MAX = 500_000; // Ambang nominal auto-refund flight
-
-export function estimateRefundByType(bookingType: string, totalAmount: number) {
-  let penaltyRate: number;
-
-  switch (bookingType) {
-    case 'flight':
-      // Maskapai: 20% penalty + admin fee
-      penaltyRate = 0.20;
-      break;
-    case 'train':
-      // KAI: 10% admin fee (sudah termasuk admin, tidak ada penalty terpisah)
-      return {
-        penalty_fee: 0,
-        admin_fee: Math.round(totalAmount * 0.10),
-        estimated_refund_amount: Math.round(totalAmount * 0.90),
-      };
-    case 'insurance':
-      // Asuransi: biasanya full refund dalam free-look period
-      return {
-        penalty_fee: 0,
-        admin_fee: 0,
-        estimated_refund_amount: totalAmount,
-      };
-    default:
-      penaltyRate = 0.20;
-  }
-
-  const penaltyFee = Math.round(totalAmount * penaltyRate);
-  const totalDeduction = penaltyFee + REFUND_ADMIN_FEE;
-  const refundAmount = Math.max(0, totalAmount - totalDeduction);
-
-  return {
-    penalty_fee: penaltyFee,
-    admin_fee: REFUND_ADMIN_FEE,
-    estimated_refund_amount: refundAmount,
-  };
-}
 
 export function getRefundAutoMax() {
   const raw = process.env.REFUND_AUTO_MAX;
@@ -57,29 +13,21 @@ export type RefundMode = 'auto' | 'manual';
 
 // Keputusan auto vs manual (bisa diubah di satu tempat tanpa ubah route).
 export function refundDecision(bookingType: string, amount: number, maxAuto: number = getRefundAutoMax()): RefundMode {
+  if (amount <= 0) return 'manual';
   switch (bookingType) {
-    case 'insurance':
-    case 'train':
-      return 'auto';
     case 'flight':
       return amount <= maxAuto ? 'auto' : 'manual';
     case 'hotel':
+    case 'train':
+    case 'insurance':
     default:
       return 'manual';
   }
 }
 
-export function computeRefundAmount(booking: { bookingType: string; totalAmount: number }): number {
-  const total = Number(booking.totalAmount ?? 0);
-  if (booking.bookingType === 'hotel') {
-    return Math.max(0, total);
-  }
-  return Math.max(0, estimateRefundByType(booking.bookingType, total).estimated_refund_amount);
-}
-
 export type RefundSettleResult = {
   mode: RefundMode;
-  amount: number;
+  amount: number | null;
   auto: boolean;
   degraded?: boolean;
 };
@@ -90,24 +38,44 @@ export type RefundSettleResult = {
 // Jika refund auto gagal, degrade ke manual queue (jangan 502 — tiket sudah batal di vendor).
 export async function settleRefundAfterCancel(
   booking: { id: string; bookingType: string; totalAmount: number },
-  reason: string
+  reason: string,
+  amountOverride?: number | null
 ): Promise<RefundSettleResult> {
-  const amount = computeRefundAmount(booking);
-  const mode = refundDecision(booking.bookingType, amount);
+  if (amountOverride !== null && amountOverride !== undefined
+    && (!Number.isFinite(amountOverride) || amountOverride < 0)) {
+    throw new Error('Nominal refund dari vendor tidak valid.');
+  }
+  const amount = amountOverride === null || amountOverride === undefined
+    ? null
+    : Math.round(amountOverride);
+  if (amount !== null && amount > booking.totalAmount) {
+    throw new Error('Nominal refund dari vendor melebihi total pembayaran booking.');
+  }
+  const mode = amount === null ? 'manual' : refundDecision(booking.bookingType, amount);
 
-  if (mode === 'auto') {
+  if (mode === 'auto' && amount !== null) {
+    let midtrans: unknown;
     try {
-      const midtrans = await refundTransaction(booking.id, amount, reason || 'Refund booking');
-      await bookingStore.autoRefund(booking.id, { amount, reason: reason || 'Refund booking', midtrans });
-      return { mode, amount, auto: true };
+      midtrans = await refundTransaction(booking.id, amount, reason || 'Refund booking');
     } catch (err: unknown) {
       console.error('[Refund] Auto refund gagal, degrade ke manual queue:', err instanceof Error ? err.message : String(err));
-      await bookingStore.requestRefund(booking.id, { amount, reason: reason || 'Refund booking' });
+      const queued = await bookingStore.requestRefund(booking.id, { amount, reason: reason || 'Refund booking' });
+      if (!queued) throw new Error('Refund otomatis gagal dan booking tidak dapat dimasukkan ke antrean review.');
       return { mode: 'manual', amount, auto: false, degraded: true };
     }
+    const updated = await bookingStore.autoRefund(booking.id, {
+      amount,
+      reason: reason || 'Refund booking',
+      midtrans,
+    });
+    if (!updated) {
+      throw new Error('Dana telah dikirim ke Midtrans, tetapi status booking gagal diperbarui. Perlu rekonsiliasi admin.');
+    }
+    return { mode, amount, auto: true };
   }
 
-  await bookingStore.requestRefund(booking.id, { amount, reason: reason || 'Refund booking' });
+  const queued = await bookingStore.requestRefund(booking.id, { amount, reason: reason || 'Refund booking' });
+  if (!queued) throw new Error('Booking tidak dapat dimasukkan ke antrean review refund.');
   return { mode, amount, auto: false };
 }
 
@@ -121,7 +89,7 @@ export class RefundExecutionError extends Error {
 }
 
 // Eksekusi refund manual oleh admin (dari antrian review).
-export async function executeBookingRefund(bookingId: string, processedBy: string) {
+export async function executeBookingRefund(bookingId: string, processedBy: string, verifiedAmount: number) {
   const booking = await bookingStore.findById(bookingId);
   if (!booking) {
     throw new RefundExecutionError(404, 'Booking tidak ditemukan.');
@@ -134,21 +102,40 @@ export async function executeBookingRefund(bookingId: string, processedBy: strin
   const refundRequest = refundRequestRaw && typeof refundRequestRaw === 'object'
     ? (refundRequestRaw as Record<string, unknown>)
     : null;
-  const amount = typeof refundRequest?.amount === 'number' && refundRequest.amount > 0
+  const savedAmount = typeof refundRequest?.amount === 'number' && Number.isFinite(refundRequest.amount)
     ? refundRequest.amount
-    : computeRefundAmount(booking);
+    : null;
+  if (!Number.isFinite(verifiedAmount) || verifiedAmount < 0) {
+    throw new RefundExecutionError(
+      409,
+      'Nominal refund belum dikonfirmasi. Verifikasi nominal pada respons/vendor terlebih dahulu sebelum memproses refund.'
+    );
+  }
+  if (savedAmount !== null && Math.round(savedAmount) !== Math.round(verifiedAmount)) {
+    throw new RefundExecutionError(
+      409,
+      'Nominal yang dimasukkan berbeda dari nominal vendor yang tersimpan. Perbarui/verifikasi data vendor terlebih dahulu.'
+    );
+  }
+  const amount = Math.round(verifiedAmount);
+  if (amount > booking.totalAmount) {
+    throw new RefundExecutionError(400, 'Nominal refund tidak boleh melebihi total pembayaran booking.');
+  }
   const reason = typeof refundRequest?.reason === 'string' && refundRequest.reason
     ? refundRequest.reason
     : 'Refund booking';
 
-  const midtrans = await refundTransaction(booking.id, amount, reason);
+  const midtrans = amount === 0 ? null : await refundTransaction(booking.id, amount, reason);
 
-  await bookingStore.completeRefund(booking.id, {
+  const completed = await bookingStore.completeRefund(booking.id, {
     amount,
     reason,
     midtrans,
     processedBy: `admin:${processedBy}`,
   });
+  if (!completed) {
+    throw new RefundExecutionError(409, 'Status booking berubah. Refund belum dapat dicatat, periksa kembali antrean.');
+  }
 
-  return { amount, midtrans };
+  return { amount, midtrans, noRefund: amount === 0 };
 }

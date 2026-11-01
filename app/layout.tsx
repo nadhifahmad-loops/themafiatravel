@@ -4,43 +4,42 @@ import './globals.css';
 import { Providers } from './providers';
 import { buildCsp } from '@/lib/csp';
 import { getToken } from 'next-auth/jwt';
+import { getPageMetadata } from '@/lib/page-metadata';
 
 const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
 
-export const metadata: Metadata = {
-  metadataBase: new URL(baseUrl),
-  title: {
-    default: 'The Mafia Travel — Perjalanan Terbaik',
-    template: '%s | The Mafia Travel',
-  },
-  description: 'Pesan hotel, tiket pesawat, kereta, dan asuransi perjalanan terpercaya.',
-  keywords: [
-    'hotel murah',
-    'tiket pesawat',
-    'tiket kereta',
-    'asuransi perjalanan',
-    'The Mafia Travel',
-  ],
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true, 'max-video-preview': -1, 'max-image-preview': 'large' },
-  },
-  openGraph: {
-    type: 'website',
-    siteName: 'The Mafia Travel',
-    title: 'The Mafia Travel — Perjalanan Terbaik',
-    description: 'Pesan hotel, tiket pesawat, kereta, dan asuransi perjalanan terpercaya.',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'The Mafia Travel — Perjalanan Terbaik',
-    description: 'Pesan hotel, tiket pesawat, kereta, dan asuransi perjalanan terpercaya.',
-  },
-  alternates: {
-    canonical: '/',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const cookieStore = await cookies();
+  const language = cookieStore.get('app_lang')?.value === 'EN' ? 'EN' : 'ID';
+  const metadata = getPageMetadata('/', language);
+
+  return {
+    metadataBase: new URL(baseUrl),
+    title: { default: metadata.title, template: '%s | The Mafia Travel' },
+    description: metadata.description,
+    keywords: language === 'ID'
+      ? ['hotel murah', 'tiket pesawat', 'tiket kereta', 'asuransi perjalanan', 'The Mafia Travel']
+      : ['hotels', 'flights', 'train tickets', 'travel insurance', 'The Mafia Travel'],
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: { index: true, follow: true, 'max-video-preview': -1, 'max-image-preview': 'large' },
+    },
+    openGraph: {
+      type: 'website',
+      siteName: 'The Mafia Travel',
+      title: metadata.title,
+      description: metadata.description,
+      locale: language === 'ID' ? 'id_ID' : 'en_US',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: metadata.title,
+      description: metadata.description,
+    },
+    alternates: { canonical: '/' },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: '#338CB2',
