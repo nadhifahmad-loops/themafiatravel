@@ -57,6 +57,9 @@ export default function PaymentsClient({ initialPayments }: { initialPayments: A
   const [page, setPage] = useState(1);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [payments, setPayments] = useState(initialPayments);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncMessageType, setSyncMessageType] = useState<'success' | 'warning' | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const filtered = payments.filter((p) => {
     const query = searchQuery.toLowerCase();
@@ -74,16 +77,38 @@ export default function PaymentsClient({ initialPayments }: { initialPayments: A
 
   async function handleSync(p: AdminPayment) {
     setSyncingId(p.id);
+    setSyncMessage(null);
+    setSyncMessageType(null);
+    setSyncError(null);
     try {
       const res = await fetch('/api/admin/payments/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: p.orderId }),
       });
-      const data = await res.json();
-      if (res.ok && data.payment) {
-        setPayments((prev) => prev.map((x) => (x.id === p.id ? data.payment : x)));
+      const data = await res.json() as {
+        error?: string;
+        payment?: AdminPayment;
+        lateSettlement?: boolean;
+        warnings?: string[];
+      };
+      if (!res.ok) {
+        throw new Error(data.error || 'Status pembayaran gagal diperiksa.');
       }
+      const syncedPayment = data.payment;
+      if (syncedPayment) setPayments((prev) => prev.map((x) => (x.id === p.id ? syncedPayment : x)));
+      if (data.lateSettlement) {
+        setSyncMessage('Dana diterima setelah batas pembayaran. Pesanan tidak diaktifkan dan perlu ditindaklanjuti sebagai refund.');
+        setSyncMessageType('warning');
+      } else if (data.warnings?.length) {
+        setSyncMessage(data.warnings.join(' '));
+        setSyncMessageType('warning');
+      } else {
+        setSyncMessage('Status pembayaran berhasil diperiksa dan diselaraskan dengan pesanan.');
+        setSyncMessageType('success');
+      }
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : 'Status pembayaran gagal diperiksa.');
     } finally {
       setSyncingId(null);
     }
@@ -94,11 +119,28 @@ export default function PaymentsClient({ initialPayments }: { initialPayments: A
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-brand-ink">Log Pembayaran (Midtrans)</h1>
-          <p className="text-brand-neutral text-sm mt-0.5">Pantau status transaksi webhook dari payment gateway.</p>
+          <p className="text-brand-neutral text-sm mt-0.5">Periksa transaksi ke Midtrans dan selaraskan status pesanan dengan alur pembayaran yang berlaku.</p>
         </div>
       </div>
 
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        {syncMessage && (
+          <p
+            role="status"
+            className={`rounded-xl border px-4 py-3 text-sm ${
+              syncMessageType === 'warning'
+                ? 'border-amber-200 bg-amber-50 text-amber-900'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            }`}
+          >
+            {syncMessage}
+          </p>
+        )}
+        {syncError && (
+          <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {syncError}
+          </p>
+        )}
         {/* Status Tabs */}
         <div className="flex flex-wrap gap-2">
           {STATUS_TABS.map((tab) => {
@@ -192,10 +234,12 @@ export default function PaymentsClient({ initialPayments }: { initialPayments: A
                           <button
                             onClick={() => handleSync(p)}
                             disabled={isSyncing}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-40"
-                            title="Sync dari Midtrans"
+                            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-blue-700 hover:bg-blue-50 transition-colors disabled:opacity-40"
+                            title="Periksa status di Midtrans"
+                            aria-label={`Periksa status pembayaran ${p.orderId} di Midtrans`}
                           >
                             <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                            <span className="hidden xl:inline">{isSyncing ? 'Memeriksa' : 'Periksa status'}</span>
                           </button>
                         </div>
                       </td>

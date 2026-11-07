@@ -55,7 +55,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const cookieStore = await cookies();
   const reqLike = { headers: Object.fromEntries(headersList.entries()), cookies: Object.fromEntries(cookieStore.getAll().map(c => [c.name, c.value])) } as any;
   const token = await getToken({ req: reqLike, secret: process.env.NEXTAUTH_SECRET, secureCookie: process.env.NODE_ENV === 'production' });
-  const session = token ? { user: { id: token.sub || '', name: token.name || '', email: token.email || '', image: token.picture || null } } : null;
+  const session = token ? { user: { id: token.sub || '', name: token.name || '', email: token.email || '', image: token.picture || null, role: token.role || 'user' } } : null;
 
   // Bahasa dari cookie `app_lang` (ditulis LanguageProvider saat user ganti
   // bahasa) → memastikan `<html lang>` dan render awal sesuai preferensi.

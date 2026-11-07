@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { OrbisError, OrbisStruct } from '@/lib/orbis-types';
+import { buildOrbisHotelBookingPayload, normalizeHotelChildAges } from '@/lib/orbis-hotel-payload';
 
 // =========================
 // 🔐 CONFIG
@@ -381,6 +382,21 @@ export async function orbisRequest<T = any>(
   maxRetries = 3
 ): Promise<T> {
   let signature = await getOrbisSignature();
+  const isHotelSearch = endpoint === '/booking/hotel' && action === 'search';
+  const requestInfo = isHotelSearch
+    ? {
+        method: 'POST' as const,
+        url: `${ORBIS_URL}${endpoint}`,
+        action,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          action,
+          signature: '[REDACTED]' as const,
+        },
+        body,
+      }
+    : undefined;
 
   const doFetch = async (currentSignature: string) => {
     let res: Response;
@@ -412,21 +428,44 @@ export async function orbisRequest<T = any>(
       );
     } catch (err) {
       console.error(`[ORBIS FETCH ERROR] ${action}`, err);
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error(`Timeout saat menghubungi Orbis untuk ${action}`);
-      }
-      throw new Error('Koneksi ke sistem maskapai terputus');
+      const requestError = new Error(
+        err instanceof Error && err.name === 'AbortError'
+          ? `Timeout saat menghubungi Orbis untuk ${action}`
+          : 'Koneksi ke sistem maskapai terputus'
+      ) as OrbisError;
+      requestError.orbisRequest = requestInfo;
+      throw requestError;
     }
 
     if (res.status === 502 || res.status === 503) {
-      throw new Error('Sistem maskapai sedang sibuk');
+      const responseBody = await res.text();
+      const requestError = new Error('Sistem maskapai sedang sibuk') as OrbisError;
+      requestError.orbisRequest = requestInfo;
+      requestError.orbisRawResponse = responseBody;
+      requestError.orbisHttpStatus = res.status;
+      throw requestError;
     }
 
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status} pada ${action}`);
+      const responseBody = await res.text();
+      const requestError = new Error(`HTTP ${res.status} pada ${action}`) as OrbisError;
+      requestError.orbisRequest = requestInfo;
+      requestError.orbisRawResponse = responseBody;
+      requestError.orbisHttpStatus = res.status;
+      throw requestError;
     }
 
-    return res.json();
+    const responseText = await res.text();
+    try {
+      return JSON.parse(responseText);
+    } catch (err) {
+      if (!requestInfo) throw err;
+      const requestError = new Error(`Respons Orbis bukan JSON untuk ${action}`) as OrbisError;
+      requestError.orbisRequest = requestInfo;
+      requestError.orbisRawResponse = responseText;
+      requestError.orbisHttpStatus = res.status;
+      throw requestError;
+    }
   };
 
   let lastError: unknown;
@@ -459,6 +498,9 @@ export async function orbisRequest<T = any>(
         const err = new Error(friendlyMsg) as OrbisError;
         err.orbisCode = result.error_code;
         err.orbisResponse = result.response;
+        err.orbisRequest = requestInfo;
+        err.orbisRawResponse = json;
+        err.orbisHttpStatus = 200;
         throw err;
       }
 
@@ -810,36 +852,6 @@ export const sessionAPI = {
   },
 };
 
-// ── Helper: normalisasi child_ages ──────────────────────────────────────────
-// Internal aplikasi memakai array number murni [5, 7] (tanpa string), sesuai
-// keputusan menghilangkan format string di codebase. TAPI di boundary ke Orbis,
-// vendor mensyaratkan STRING "[5,7]" (doc §3.4.1.1) — kalau dikirim array,
-// vendor balas daftar hotel kosong tanpa error_code. Jadi konversi terjadi
-// HANYA di sini, tepat sebelum request dikirim.
-function normalizeChildAges(
-  childAges: unknown
-): string {
-  if (Array.isArray(childAges)) {
-    return '[' + childAges.map(Number).filter(n => !isNaN(n)).join(',') + ']';
-  }
-  if (typeof childAges === 'string') {
-    // Sudah string — rapi-kan ke format "[x,y,z]"
-    const raw = childAges.replace(/^\[|\]$/g, '');
-    const parsed = raw.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n));
-    return '[' + parsed.join(',') + ']';
-  }
-  return '[]';
-}
-
-// ── Helper: tambahkan search_name jika belum ada ────────────────────────────
-// Dokumentasi §3.4.2.1 / §3.5.2.1 menunjukkan search_name selalu ada (walaupun kosong).
-function ensureSearchName<T extends Record<string, unknown>>(params: T): T {
-  if (!('search_name' in params) || params.search_name === undefined || params.search_name === null) {
-    return { ...params, search_name: '' };
-  }
-  return params;
-}
-
 // =========================
 // 🏨 HOTEL API
 // Semua action hotel menggunakan endpoint /booking/hotel
@@ -847,21 +859,22 @@ function ensureSearchName<T extends Record<string, unknown>>(params: T): T {
 // =========================
 export const hotelAPI = {
   // 3.4 Search Hotel Availability
-  // FIX: timeout 90 detik – hotel search aggregates banyak vendor, bisa lambat
+  // Fit two read-only attempts (plus sign-in and backoff) within the search
+  // route's 90-second execution budget.
   search: (params: OrbisStruct) => {
-    const normalized = ensureSearchName(params);
+    const normalized = { ...params };
     if ('child_ages' in normalized) {
-      normalized.child_ages = normalizeChildAges(normalized.child_ages);
+      normalized.child_ages = normalizeHotelChildAges(normalized.child_ages);
     }
-    return orbisRequest('/booking/hotel', 'search', normalized, 90000);
+    return orbisRequest('/booking/hotel', 'search', normalized, 35000, 2);
   },
 
   // 3.5 Hotel Search Detail (action header: get_details)
   // FIX: timeout 90 detik – sama seperti search
   getDetails: (params: OrbisStruct) => {
-    const normalized = ensureSearchName(params);
+    const normalized = { ...params };
     if ('child_ages' in normalized) {
-      normalized.child_ages = normalizeChildAges(normalized.child_ages);
+      normalized.child_ages = normalizeHotelChildAges(normalized.child_ages);
     }
     return orbisRequest('/booking/hotel', 'get_details', normalized, 90000);
   },
@@ -891,86 +904,20 @@ export const hotelAPI = {
         ...(includeProvider && provider ? { provider: String(provider) } : {}),
     }),
 
-  // 3.8 Create Booking (action header: booked)
-  // ROUND 1: payload lama merename `price_code` → `price_codes` (plural)
-  // SEKALIGUS memotongnya ke bagian integer saja (`.split('~')[0]`), dan
-  // men-JSON.stringify search_data/passenger/contact/booker. Saya kira nama
-  // field yang benar adalah `price_code` (singular, sesuai §3.8.1.1/§3.8.2.1
-  // dokumentasi PDF) dan objeknya harus native JSON — jadi awalnya diganti ke
-  // `price_code` + objek native semua.
-  //
-  // ROUND 2: server balas error spesifik `"Internal server error, 'price_codes'"`
-  // — pesan `KeyError` Python mentah (`str(KeyError('price_codes'))`), bukti
-  // langsung bahwa key HARUS `price_codes` (plural). Nama field dari dev
-  // sebelumnya terbukti benar di titik ini; dokumentasi PDF yang meleset
-  // (sama seperti field `provider` di provision yang wajib tapi tidak
-  // terdokumentasi). Value tetap dikirim UTUH (bukan dipotong `.split('~')[0]`)
-  // karena format mgjarvis (`"RM_1511_0~Flexi~RO~False"`) tidak punya prefix
-  // integer sama sekali — asumsi "harus integer" dari versi lama tidak
-  // berlaku umum.
-  //
-  // ROUND 4: Doc §3.8.2.1 menunjukkan passenger, contact, booker, search_data,
-  // special_request sebagai native JSON objects — BUKAN JSON strings.
-  // Sekarang default: native objects (sesuai doc). Set
-  // HOTEL_BOOK_STRINGIFY_NESTED=true hanya jika Orbis minta stringified.
-  //
-  // ROUND 5: Strip `provider` dari payload booked — §3.8.1.1 HANYA list:
-  // hotel_code, price_code, passenger, contact, booker, special_request,
-  // search_data. Field `provider` menyebabkan Orbis 500 (handler crash
-  // karena tidak mengenali field). Juga strip `hotel_id` dari search_data
-  // (tidak ada di §3.8.1.1 search_data fields).
-  //
-  // ROUND 6: Kembali ke `price_code` (singular, sesuai §3.8.1.1/§3.8.2.1).
-  // Sebelumnya dipakai `price_codes` (plural) karena KeyError saat data
-  // masih stringified — sekarang ternyata itu karena stringified data,
-  // bukan nama field. Dengan native objects, `price_code` singular benar.
+  // 3.8 Create Booking (action header: booked). The booking payload is
+  // normalized at the API boundary to use the provisioned price code and the
+  // field names/types accepted by Orbis.
   createBooking: (params: OrbisStruct & {
     hotel_code: string;
     price_code?: string;
     provider?: string;
     special_request?: string;
-  }) => {
-    const { price_code, search_data, passenger, contact, booker, special_request, ...rest } = params;
-    // §3.8.1.1: `provider` tidak ada di daftar field yang didukung — buang dari payload.
-    delete rest.provider;
-    // Doc §3.8.1.1 search_data: checkin_date, checkout_date, destination_id,
-    // search_name, adult, child, child_ages, room/rooms, nationality.
-    // Strip hotel_id (not documented, may cause Orbis 500).
-    const cleanSearchData = search_data ? {
-      ...Object.fromEntries(
-        Object.entries(search_data as Record<string, unknown>).filter(([k]) => k !== 'hotel_id')
-      ),
-      // §3.8.1.1: child_ages harus berupa string "[5,5,10]" — konversi di boundary
-      // karena internal memakai array number murni
-      ...('child_ages' in (search_data as Record<string, unknown>) ? { child_ages: normalizeChildAges((search_data as Record<string, unknown>).child_ages) } : {}),
-    } : search_data;
-    const stringifyNested = process.env.HOTEL_BOOK_STRINGIFY_NESTED === 'true';
-    const nested = stringifyNested
-      ? {
-          ...(cleanSearchData !== undefined ? { search_data: JSON.stringify(cleanSearchData) } : {}),
-          ...(passenger !== undefined ? { passenger: JSON.stringify(passenger) } : {}),
-          ...(contact !== undefined ? { contact: JSON.stringify(contact) } : {}),
-          ...(booker !== undefined ? { booker: JSON.stringify(booker) } : {}),
-          ...(special_request !== undefined ? { special_request: JSON.stringify(special_request) } : {}),
-        }
-      : {
-          ...(cleanSearchData !== undefined ? { search_data: cleanSearchData } : {}),
-          ...(passenger !== undefined ? { passenger } : {}),
-          ...(contact !== undefined ? { contact } : {}),
-          ...(booker !== undefined ? { booker } : {}),
-          ...(special_request !== undefined ? { special_request } : {}),
-        };
-    return orbisRequest('/booking/hotel', 'booked', {
-      ...rest,
-      price_code: String(price_code ?? ''),
-      ...nested,
-    });
-  },
+  }) => orbisRequest('/booking/hotel', 'booked', buildOrbisHotelBookingPayload(params)),
 
 
-  // 3.9 Check Booking Status (action header: check_booking_status)
+  // 3.9 Check Booking Status (action header: get_summary_booking)
   getBooking: (order_number: string, issued_name: string, provider: string) =>
-    orbisRequest('/booking/hotel', 'check_booking_status', { order_number, issued_name, provider }),
+    orbisRequest('/booking/hotel', 'get_summary_booking', { order_number, issued_name, provider }),
 
   // 3.10 Check Refund Amount
   checkRefundAmount: (order_number: string, issued_name: string, provider: string) =>

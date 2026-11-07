@@ -17,21 +17,28 @@ export async function proxy(req: NextRequest) {
   })) as JWTWithRole | null;
   const { pathname } = req.nextUrl;
 
-  const isAdminRoute = pathname.startsWith('/admin');
+  const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
+  const isAdminLogin = pathname === '/admin/login';
   const isGuestBookingReview = /^\/bookings\/[^/]+\/review\/?$/.test(pathname);
   const isMemberRoute = MEMBER_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   ) && !isGuestBookingReview;
 
-  if (isAdminRoute || isMemberRoute) {
+  if (!isAdminLogin && (isAdminRoute || isMemberRoute)) {
     const callbackUrl = encodeURIComponent(pathname + req.nextUrl.search);
-    const loginUrl = new URL(`/login?callbackUrl=${callbackUrl}`, req.url);
 
-    // Admin: wajib login + role admin
+    // Admin: wajib login + role admin — arahkan ke halaman login admin terpisah.
     if (isAdminRoute) {
-      if (!token) return NextResponse.redirect(loginUrl);
-      if (token.role !== 'admin') return NextResponse.redirect(loginUrl);
+      const adminLoginUrl = new URL(`/admin/login?callbackUrl=${callbackUrl}`, req.url);
+      if (!token) {
+        return NextResponse.redirect(adminLoginUrl);
+      }
+      if (token.role !== 'admin') {
+        adminLoginUrl.searchParams.set('error', 'Unauthorized');
+        return NextResponse.redirect(adminLoginUrl);
+      }
     } else if (!token) {
+      const loginUrl = new URL(`/login?callbackUrl=${callbackUrl}`, req.url);
       return NextResponse.redirect(loginUrl);
     }
   }
@@ -45,6 +52,7 @@ export async function proxy(req: NextRequest) {
 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('x-pathname', pathname);
   requestHeaders.set('Content-Security-Policy', csp);
 
   const response = NextResponse.next({

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { id as dateFnsId, enUS as dateFnsEnUS } from 'date-fns/locale';
 import { CalendarField, CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -56,7 +56,7 @@ function parseLocalDate(value: string): Date {
   return new Date(year, month - 1, day);
 }
 
-function FloatingPanel({ triggerRef, open, onClose, children, className, align = 'left', dropUp = false }: {
+function FloatingPanel({ triggerRef, open, onClose, children, className, align = 'left', dropUp = false, maxWidth = 360 }: {
   triggerRef: React.RefObject<HTMLDivElement | null>;
   open: boolean;
   onClose: () => void;
@@ -64,6 +64,7 @@ function FloatingPanel({ triggerRef, open, onClose, children, className, align =
   className?: string;
   align?: 'left' | 'right';
   dropUp?: boolean;
+  maxWidth?: number;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
@@ -113,7 +114,7 @@ function FloatingPanel({ triggerRef, open, onClose, children, className, align =
         left: align === 'right' ? undefined : pos.left,
         right: align === 'right' ? `calc(100vw - ${pos.left}px)` : undefined,
         width: pos.width,
-        maxWidth: 360,
+        maxWidth,
       }}
     >
       {children}
@@ -276,7 +277,12 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
   const [formError, setFormError] = useState('');
 
   const [startDate, setStartDate] = useState<Date | null>(() => initialData?.departure_date ? parseLocalDate(initialData.departure_date) : new Date(Date.now()+86400000));
-  const [endDate, setEndDate] = useState<Date | null>(() => initialData?.return_date ? parseLocalDate(initialData.return_date) : null);
+  const [endDate, setEndDate] = useState<Date | null>(() => {
+    if (initialData?.return_date) return parseLocalDate(initialData.return_date);
+    if (initialData?.direction !== 'RT') return null;
+    const dep = initialData?.departure_date ? parseLocalDate(initialData.departure_date) : new Date(Date.now()+86400000);
+    return addDays(dep, 1);
+  });
   const minDateToday = useMemo(() => new Date(), []);
 
   useEffect(() => {
@@ -325,7 +331,7 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
         </div>
         <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`}></i>
       </div>
-      <FloatingPanel triggerRef={paxRef} open={openPax} onClose={() => setOpenPax(false)} align="right" className={`w-full lg:w-[320px] rounded-xl p-3 flex flex-col gap-3 ${vPanel(variant)}`}>
+      <FloatingPanel triggerRef={paxRef} open={openPax} onClose={() => setOpenPax(false)} align="right" maxWidth={480} className={`w-full rounded-xl p-3 flex flex-col gap-3 ${vPanel(variant)}`}>
         {([{ k: 'adult', l: t.adult, desc: t.adultAge, i: 'fa-user' }, { k: 'infant', l: t.infant, desc: t.infantAge, i: 'fa-baby' }] as const).map(({ k, l, desc, i }) => {
           const val = pax[k];
           const isMin = k === 'adult' ? val <= 1 : val <= 0;
@@ -358,7 +364,12 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
         <h3 className={vFormHeading(variant)}>{t.tripTypeLabel}</h3>
         <div className={`grid w-full grid-cols-2 gap-1 rounded-lg p-1 sm:flex sm:w-fit ${vToggle(variant)}`}>
           {[{id:'OW',l:t.oneWay},{id:'RT',l:t.roundTrip}].map(opt => (
-            <button key={opt.id} type="button" aria-pressed={tripType === opt.id} onClick={() => { setTripType(opt.id); setFormError(''); }} className={`min-h-11 px-2 sm:px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${tripType === opt.id ? 'bg-sky-600 text-white shadow-sm' : vToggleIdle(variant)}`}>{opt.l}</button>
+            <button key={opt.id} type="button" aria-pressed={tripType === opt.id} onClick={() => {
+              setTripType(opt.id);
+              setFormError('');
+              // Mode pulang-pergi: isi tanggal pulang H+1 agar range tidak kosong.
+              if (opt.id === 'RT' && startDate && (!endDate || endDate <= startDate)) setEndDate(addDays(startDate, 1));
+            }} className={`min-h-11 px-2 sm:px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${tripType === opt.id ? 'bg-sky-600 text-white shadow-sm' : vToggleIdle(variant)}`}>{opt.l}</button>
           ))}
         </div>
       </section>
@@ -366,7 +377,7 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
       {/* Baris 2: Semua field + tombol cari dalam satu baris */}
       <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-12 relative w-full">
         {/* From + Swap + To */}
-        <div className="flex min-w-0 flex-col md:col-span-2 xl:col-span-5">
+        <div className="flex min-w-0 flex-col md:col-span-2 xl:col-span-4">
           <div className="grid grid-cols-2 gap-2">
             <span className={vFormLabel(variant)}>{t.from}</span>
             <span className={vFormLabel(variant)}>{t.to}</span>
@@ -387,6 +398,12 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
               startDate={startDate}
               endDate={endDate}
               onChange={(r) => { setStartDate(r.from); setEndDate(r.to); setFormError(''); }}
+              onOpenChange={(o) => {
+                // Ditutup tanpa memilih tanggal pulang: pakai default H+1.
+                if (!o && tripType === 'RT' && startDate) {
+                  setEndDate(prev => (prev && prev > startDate ? prev : addDays(startDate, 1)));
+                }
+              }}
               minDate={minDateToday}
               defaultMonth={startDate ?? minDateToday}
             >
@@ -414,7 +431,7 @@ export default function TrainSearchForm({ onSearch, loading, initialData, varian
             </CalendarField>
           )}
         </div>
-        <div className="flex min-w-0 flex-col md:col-span-1 xl:col-span-2">{renderPaxDropdown()}</div>
+        <div className="flex min-w-0 flex-col md:col-span-1 xl:col-span-3">{renderPaxDropdown()}</div>
 
         <button type="submit" disabled={loading} className={`w-full md:col-span-2 xl:col-span-2 ${vBtnSearch(variant)}`}>
           {loading

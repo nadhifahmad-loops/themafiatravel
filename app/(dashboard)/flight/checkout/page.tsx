@@ -1,8 +1,7 @@
 'use client';
-import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense, type ReactNode } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import Link from 'next/link';
 import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
 import CheckoutStepBar from '@/components/checkout/CheckoutStepBar';
 import PayButton from '@/components/checkout/PayButton';
@@ -16,10 +15,15 @@ import LeaveGuard from '@/components/checkout/LeaveGuard';
 import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
 import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, isValidPassportExpiry, parsePhoneWithCode, scrollToFirstError, buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
 import CouponInput from '@/components/checkout/CouponInput';
+import SavedPassengerPicker, { SavedPassengerNotice } from '@/components/checkout/SavedPassengerPicker';
+import { useSavedPassengers } from '@/components/hooks/useSavedPassengers';
+import { savedPassengerToPassenger, type SavedPassengerRecord } from '@/lib/saved-passengers';
+import { COUNTRY_OPTIONS as PASSENGER_COUNTRIES } from '@/lib/countries';
 import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 
 const AIRPORT_COUNTRY: Record<string, string> = {
@@ -258,10 +262,11 @@ function SeatMap({ segment, passengerCount, selectedSeats, onSelectSeat }: {
   );
 }
 
-function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onChange }: {
+function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onChange, savedPicker }: {
   pax: Passenger; index: number; fieldCls: (err?: string) => string; selectCls: string; labelCls: string;
   errors?: Record<string,string>;
   onChange: (idx: number, field: string, value: any) => void;
+  savedPicker?: ReactNode;
 }) {
   const { language } = useLanguage();
   const t = i18n.flightCheckout[language];
@@ -273,6 +278,7 @@ function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onCh
   const errId = errors?.[k('pax_id')];
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5" id={`pax_card_${index}`}>
+      {savedPicker}
       <div className="flex items-center gap-2 mb-4">
         <span className="w-6 h-6 rounded-full bg-slate-800 text-white text-[11px] font-bold flex items-center justify-center">{index+1}</span>
         <span className="text-xs font-bold text-slate-500">{t.passengerTitle} {index+1}</span>
@@ -295,7 +301,9 @@ function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onCh
         </div>
         <div><label className={labelCls}>{t.nationality}</label>
           <select value={pax.nationality_code} onChange={e=>onChange(index,'nationality_code',e.target.value)} className={selectCls}>
-            <option value="ID">Indonesia</option><option value="SG">Singapura</option><option value="MY">Malaysia</option><option value="TH">Thailand</option><option value="PH">Filipina</option><option value="VN">Vietnam</option><option value="JP">Jepang</option><option value="KR">Korea Selatan</option><option value="CN">China</option><option value="IN">India</option><option value="US">Amerika Serikat</option><option value="GB">Inggris</option><option value="AU">Australia</option><option value="DE">Jerman</option><option value="FR">Prancis</option><option value="AE">Uni Emirat Arab</option><option value="SA">Arab Saudi</option><option value="NL">Belanda</option><option value="SG">Singapura</option>
+            {PASSENGER_COUNTRIES.map((country) => (
+              <option key={country.code} value={country.code}>{country.label}</option>
+            ))}
           </select>
         </div>
         <div><label className={labelCls}>{t.birthDate}</label>
@@ -339,7 +347,9 @@ function PassengerForm({ pax, index, fieldCls, selectCls, labelCls, errors, onCh
             </div>
             <div><label className={labelCls}>{t.idCountry}</label>
               <select value={pax.identity.identity_country_of_issued_code} onChange={e=>onChange(index,'identity',{...pax.identity,identity_country_of_issued_code:e.target.value})} className={selectCls}>
-                <option value="ID">Indonesia</option><option value="SG">Singapura</option><option value="MY">Malaysia</option><option value="US">Amerika Serikat</option>
+                {PASSENGER_COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>{country.label}</option>
+                ))}
               </select>
             </div>
           </>
@@ -365,6 +375,7 @@ function FlightCheckoutContent() {
   const idempotencyKey = useIdempotencyKey();
   // Callback agar guest kembali ke halaman checkout ini setelah login/register.
   const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
+  const { openLogin, openRegister } = useAuthModal();
 
   usePageTitle('Pembayaran Pesawat');
 
@@ -372,6 +383,12 @@ function FlightCheckoutContent() {
   const [isInternational, setIsInternational] = useState(false);
   const [booker, setBooker] = useState({ title: 'MR', first_name: '', last_name: '', email: '', mobile: '', calling_code: '62', nationality_code: 'ID' });
   const [passengers, setPassengers] = useState<Passenger[]>([]);
+  const {
+    savedPassengers,
+    loading: savedPassengersLoading,
+    error: savedPassengersError,
+    refetch: refetchSavedPassengers,
+  } = useSavedPassengers(status === 'authenticated');
   const [selectedSeats, setSelectedSeats] = useState<Record<string,SelectedSeat>>({});
   const [segmentSeats, setSegmentSeats] = useState<SegmentSeatData[]>([]);
   const [seatsLoading, setSeatsLoading] = useState(false);
@@ -585,6 +602,19 @@ function FlightCheckoutContent() {
 
   const updatePassenger = (idx: number, field: string, value: any) =>
     setPassengers(prev => prev.map((p,i) => i===idx ? {...p,[field]:value} : p));
+
+  const applySavedPassenger = (idx: number, saved: SavedPassengerRecord) => {
+    setPassengers(prev => prev.map((pax, i) => {
+      if (i !== idx) return pax;
+      return { ...pax, ...savedPassengerToPassenger(saved, pax.pax_type) };
+    }));
+    setFormErrors(prev => {
+      const next = { ...prev };
+      [`pax_first_${idx}`, `pax_last_${idx}`, `pax_birth_${idx}`, `pax_id_${idx}`, `pax_passport_exp_${idx}`]
+        .forEach((key) => delete next[key]);
+      return next;
+    });
+  };
 
   const clearErr = (key: string) => setFormErrors(f => { if (!f[key]) return f; const n={...f}; delete n[key]; return n; });
 
@@ -828,7 +858,7 @@ function FlightCheckoutContent() {
               <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
               <div>
                 <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
-                <p className="text-xs text-slate-400"><Link href={`/login?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">Masuk</Link> atau <Link href={`/register?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">daftar</Link> untuk melihat riwayat pesanan.</p>
+                <p className="text-xs text-slate-400"><button type="button" onClick={() => openLogin({ callbackUrl: checkoutCallbackUrl })} className="text-slate-600 underline">Masuk</button> atau <button type="button" onClick={() => openRegister({ callbackUrl: checkoutCallbackUrl })} className="text-slate-600 underline">daftar</button> untuk melihat riwayat pesanan.</p>
               </div>
             </div>
           </div>
@@ -1004,9 +1034,32 @@ function FlightCheckoutContent() {
             </div>
 
             {/* Penumpang */}
-            <div ref={section1} className="scroll-mt-[60px] lg:scroll-mt-[124px]">
+            <div ref={section1} className="scroll-mt-[60px] lg:scroll-mt-[124px] space-y-4">
+              {status === 'authenticated' && (savedPassengers.length === 0 || savedPassengersError) && (
+                <SavedPassengerNotice
+                  loading={savedPassengersLoading}
+                  error={!!savedPassengersError}
+                  onRetry={refetchSavedPassengers}
+                />
+              )}
               {passengers.map((pax,i) => (
-                <PassengerForm key={i} pax={pax} index={i} fieldCls={fieldCls} labelCls={labelCls} selectCls={selectCls} errors={formErrors} onChange={updatePassenger}/>
+                <PassengerForm
+                  key={i}
+                  pax={pax}
+                  index={i}
+                  fieldCls={fieldCls}
+                  labelCls={labelCls}
+                  selectCls={selectCls}
+                  errors={formErrors}
+                  onChange={updatePassenger}
+                  savedPicker={status === 'authenticated' && savedPassengers.length > 0 ? (
+                    <SavedPassengerPicker
+                      passengers={savedPassengers}
+                      context={{ mode: 'flight', isInternational, paxType: pax.pax_type }}
+                      onSelect={(saved) => applySavedPassenger(i, saved)}
+                    />
+                  ) : undefined}
+                />
               ))}
             </div>
 

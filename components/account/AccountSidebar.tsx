@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import LogoutConfirmButton from '@/components/auth/LogoutConfirmButton';
-import { Ticket, RotateCcw, Heart, User, LogOut, type LucideIcon } from 'lucide-react';
+import { Ticket, RotateCcw, Heart, Users, User, LogOut, type LucideIcon } from 'lucide-react';
 
 type NavItem = {
   href: string;
@@ -32,10 +32,13 @@ export default function AccountSidebar() {
     { href: '/bookings', label: t.bookings, icon: Ticket },
     { href: '/refunds', label: t.refunds, icon: RotateCcw },
     { href: '/favorites', label: t.favorites, icon: Heart },
+    { href: '/account/passengers', label: t.passengers, icon: Users },
     { href: '/account', label: t.profile, icon: User },
   ];
 
-  const isActive = (href: string) => pathname === href || pathname?.startsWith(`${href}/`);
+  const isActive = (href: string) => href === '/account'
+    ? pathname === '/account'
+    : pathname === href || pathname?.startsWith(`${href}/`);
 
   return (
     <aside className="lg:w-[248px] lg:shrink-0">

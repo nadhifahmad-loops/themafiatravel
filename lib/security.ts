@@ -50,11 +50,6 @@ export function getRequestIp(headers?: HeaderSource): string {
   return read('x-real-ip') || 'unknown';
 }
 
-// Proteksi open redirect: hanya izinkan URL relatif internal (mis. /account, /checkout).
-// Menolak `//evil.com`, `/\evil.com`, maupun URL absolut.
-export function safeCallbackUrl(value: string | null | undefined, fallback = '/'): string {
-  if (!value) return fallback;
-  if (!value.startsWith('/')) return fallback;
-  if (value.startsWith('//') || value.startsWith('/\\')) return fallback;
-  return value;
-}
+// Proteksi open redirect dipindah ke lib/safe-callback.ts agar bisa di-import
+// komponen client tanpa ikut menarik modul Node `crypto`.
+export { safeCallbackUrl } from './safe-callback';

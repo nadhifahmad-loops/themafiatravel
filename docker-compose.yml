@@ -1,14 +1,42 @@
+# Menjalankan aplikasi + PostgreSQL di satu server (VPS).
+#   1) cp .env.example .env  (isi semua nilai, DATABASE_URL memakai host `db`)
+#   2) docker compose up -d --build
+# Migrasi database dijalankan otomatis oleh service `migrate` sebelum `app` start.
 services:
-  app:
-    build: .
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
+  migrate:
+    build:
+      context: .
+      target: migrator
     env_file:
       - .env
     depends_on:
       db:
         condition: service_healthy
+    restart: "no"
+    networks:
+      - mafia-travel
+
+  app:
+    build:
+      context: .
+      target: runner
+      args:
+        # Dibundel saat build. Ubah di .env lalu `docker compose up -d --build`.
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?isi NEXT_PUBLIC_APP_URL di .env}
+        NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY:-}
+        NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION: ${NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION:-false}
+        NEXT_PUBLIC_WHATSAPP_SUPPORT: ${NEXT_PUBLIC_WHATSAPP_SUPPORT:-}
+    restart: unless-stopped
+    ports:
+      # Hanya loopback: ekspos ke publik lewat reverse proxy (nginx/Caddy) dengan HTTPS.
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - mafia-travel
 
@@ -16,15 +44,15 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mafia_travel
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-mafia_travel}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment or .env file}"
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mafia_travel}"]
       interval: 5s
       timeout: 5s
       retries: 5

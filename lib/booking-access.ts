@@ -1,3 +1,5 @@
+import { matchGuestContact } from './booking-contact-match';
+
 export interface BookingLike {
   userId: string | null | undefined;
   bookingData?: unknown;
@@ -105,4 +107,37 @@ export function verifyGuestBookingProof(
     || allDataStr.includes(cleanInput)
     || allDataStr.includes('+' + cleanInput)
     || allDataStr.includes(cleanInput.replace(/^62/, ''));
+}
+
+export type BookingAccessResult =
+  | { allowed: true; isAdmin: boolean }
+  | { allowed: false; status: 401 | 403; message: string };
+
+export function authorizeBookingAccess(input: {
+  bookingUserId: string | null;
+  requesterId: string | null;
+  isAdmin: boolean;
+  guestContact?: string | null;
+  bookingData: unknown;
+  passengerData: unknown;
+}): BookingAccessResult {
+  if (input.isAdmin) return { allowed: true, isAdmin: true };
+
+  if (input.bookingUserId) {
+    if (!input.requesterId) {
+      return { allowed: false, status: 401, message: 'Unauthorized' };
+    }
+
+    return input.requesterId === input.bookingUserId
+      ? { allowed: true, isAdmin: false }
+      : { allowed: false, status: 403, message: 'Akses ditolak: bukan pesanan Anda' };
+  }
+
+  if (!input.guestContact?.trim()) {
+    return { allowed: false, status: 401, message: 'Verifikasi kontak pemesan diperlukan' };
+  }
+
+  return matchGuestContact(input.guestContact, input.bookingData, input.passengerData).ok
+    ? { allowed: true, isAdmin: false }
+    : { allowed: false, status: 403, message: 'Verifikasi kontak gagal' };
 }

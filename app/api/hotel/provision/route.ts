@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { hotelAPI } from '@/lib/orbis';
+import { getOrbisHotelProvisionPriceCode } from '@/lib/orbis-hotel-payload';
+import { isHotelProviderOutage, resolveHotelApiError } from '@/lib/hotel-errors';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 type OrbisProvisionError = Error & {
@@ -13,6 +15,15 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error) return error.message || fallback;
   if (typeof error === 'string') return error;
   return fallback;
+};
+
+const respondToHotelOutage = (error: unknown, fallback: string) => {
+  if (!isHotelProviderOutage(error)) return null;
+  const resolved = resolveHotelApiError(error, fallback);
+  return NextResponse.json(
+    { success: false, error: resolved.message, code: resolved.code, fallback: false },
+    { status: resolved.status },
+  );
 };
 
 // Error Orbis yang berarti "sesi/cache kadaluwarsa, harus cari ulang" — bukan bug kode kita
@@ -71,7 +82,14 @@ export async function POST(req: NextRequest) {
         // Respons provision membawa provider INTERNAL (mis. "mgjarvis") — pakai itu
         // supaya re-provision di checkout juga memakai kode internal yang benar.
         const internalProvider = (pe.orbisResponse as any)?.provider || prov;
-        return NextResponse.json({ success: true, data: pe.orbisResponse, priceChanged: true, priceChangedMsg: 'Harga kamar telah berubah.', selectedProvider: internalProvider, selectedPriceCode: code });
+        return NextResponse.json({
+          success: true,
+          data: pe.orbisResponse,
+          priceChanged: true,
+          priceChangedMsg: 'Harga kamar telah berubah.',
+          selectedProvider: internalProvider,
+          selectedPriceCode: getOrbisHotelProvisionPriceCode(pe.orbisResponse, code),
+        });
       }
       if (pe.orbisCode === 4003 || pe.orbisCode === 1002) {
         return NextResponse.json({ error: 'Sesi hotel telah kedaluwarsa. Silakan cari kamar kembali.' }, { status: 410 });
@@ -106,11 +124,19 @@ export async function POST(req: NextRequest) {
     try {
       const res = await warmAndProvision(priceCode, provider);
       console.log('[HOTEL PROVISION] SUCCESS on attempt 1!');
-      return NextResponse.json({ success: true, data: res.data, priceChanged: false, selectedProvider: res.provider, selectedPriceCode: priceCode });
+      return NextResponse.json({
+        success: true,
+        data: res.data,
+        priceChanged: false,
+        selectedProvider: res.provider,
+        selectedPriceCode: getOrbisHotelProvisionPriceCode(res.data, priceCode),
+      });
     } catch (err) {
       const pe = err as OrbisProvisionError;
       const handled = respondFromOrbisError(pe, priceCode, provider);
       if (handled) return handled;
+      const outage = respondToHotelOutage(pe, 'Kamar ini belum bisa diverifikasi saat ini. Silakan coba lagi beberapa saat.');
+      if (outage) return outage;
       console.warn(`[HOTEL PROVISION] Attempt 1 failed: code=${pe.orbisCode} | ${String(pe.orbisResponse ?? pe.message).slice(0, 150)}`);
 
       if (!isCacheMiss(pe)) {
@@ -142,7 +168,6 @@ export async function POST(req: NextRequest) {
         checkout_date: search_data.checkout_date,
         destination_id: search_data.destination_id,
         hotel_id: String(hotel_code),
-        search_name: '',
         adult: search_data.adult ?? 2,
         child: search_data.child ?? 0,
         child_ages: search_data.child_ages ?? [],
@@ -176,11 +201,20 @@ export async function POST(req: NextRequest) {
       try {
         const data2 = await warmAndProvision(freshCode, freshProvider);
         console.log('[HOTEL PROVISION] SUCCESS on attempt 2 (fresh price_code)!');
-        return NextResponse.json({ success: true, data: data2.data, priceChanged: true, priceChangedMsg: 'Harga kamar diperbarui.', selectedProvider: data2.provider, selectedPriceCode: freshCode });
+        return NextResponse.json({
+          success: true,
+          data: data2.data,
+          priceChanged: true,
+          priceChangedMsg: 'Harga kamar diperbarui.',
+          selectedProvider: data2.provider,
+          selectedPriceCode: getOrbisHotelProvisionPriceCode(data2.data, freshCode),
+        });
       } catch (err2) {
         const pe2 = err2 as OrbisProvisionError;
         const handled2 = respondFromOrbisError(pe2, freshCode, freshProvider);
         if (handled2) return handled2;
+        const outage2 = respondToHotelOutage(pe2, 'Kamar ini belum bisa diverifikasi saat ini. Silakan coba lagi beberapa saat.');
+        if (outage2) return outage2;
         console.warn(`[HOTEL PROVISION] Attempt 2 failed: code=${pe2.orbisCode} | ${String(pe2.orbisResponse ?? pe2.message).slice(0, 150)}`);
       }
     } catch (fetchErr) {
@@ -195,6 +229,8 @@ export async function POST(req: NextRequest) {
     }, { status: 409 });
   } catch (error) {
     console.error('[HOTEL PROVISION ERROR]', error);
+    const outage = respondToHotelOutage(error, 'Gagal memverifikasi ketersediaan kamar. Silakan coba lagi beberapa saat.');
+    if (outage) return outage;
     return NextResponse.json({ error: getErrorMessage(error, 'Gagal memverifikasi ketersediaan kamar') }, { status: 500 });
   }
 }

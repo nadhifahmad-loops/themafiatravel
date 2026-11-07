@@ -32,7 +32,7 @@ JSON_BODY=$(jq -nc \
   --arg checkout "$CHECKOUT" \
   --arg dest "$DEST_ID" \
   --arg nat "$NATIONALITY" \
-  '{checkin_date:$checkin, checkout_date:$checkout, destination_id:$dest, search_name:"", adult:2, child:0, child_ages:"[]", room:1, nationality:$nat}')
+  '{checkin_date:$checkin, checkout_date:$checkout, destination_id:$dest, adult:2, child:0, child_ages:"[]", room:1, nationality:$nat}')
 
 echo "== [1/2] SIGNIN =="
 SIGNIN_RESP=$(curl -s -X POST "$ORBISWAY_BASE_URL/session" \

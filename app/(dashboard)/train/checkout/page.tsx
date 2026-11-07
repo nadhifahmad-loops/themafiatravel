@@ -1,8 +1,7 @@
 'use client';
-import { Suspense, useState, useEffect, useMemo, useRef } from 'react';
+import { Suspense, useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
 import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
@@ -14,11 +13,16 @@ import TermsModal from '@/components/checkout/TermsModal';
 import TermsAgreementText from '@/components/checkout/TermsAgreementText';
 import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { isValidName, isValidEmail, isValidPhone, isValidIdentityNumber, isValidBirthDate, parsePhoneWithCode, scrollToFirstError, buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
 import CouponInput from '@/components/checkout/CouponInput';
 import DatePickerField from '@/components/checkout/DatePickerField';
+import SavedPassengerPicker, { SavedPassengerNotice } from '@/components/checkout/SavedPassengerPicker';
+import { useSavedPassengers } from '@/components/hooks/useSavedPassengers';
+import { savedPassengerToPassenger, type SavedPassengerRecord } from '@/lib/saved-passengers';
+import { COUNTRY_OPTIONS as PASSENGER_COUNTRIES } from '@/lib/countries';
 
 const TITLES = ['MR', 'MRS', 'MS'];
 const INFANT_TITLES = ['MSTR', 'MISS'];
@@ -35,10 +39,11 @@ function fmtDur(e: string) {
   if (p.length >= 2) { const h = parseInt(p[0], 10); const m = parseInt(p[1], 10); return h > 0 ? `${h}j ${m}m` : `${m}m`; }
   return e;
 }
-function PassengerForm({ pax, index, fieldCls, labelCls, selectCls, errors, onChange }: {
+function PassengerForm({ pax, index, fieldCls, labelCls, selectCls, errors, onChange, savedPicker }: {
   pax: any; index: number; fieldCls: (err?: string) => string; selectCls: string; labelCls: string;
   errors?: Record<string,string>;
   onChange: (idx: number, field: string, value: any) => void;
+  savedPicker?: ReactNode;
 }) {
   const { language } = useLanguage();
   const t = i18n.trainCheckout[language];
@@ -53,6 +58,7 @@ function PassengerForm({ pax, index, fieldCls, labelCls, selectCls, errors, onCh
   const errId = errors?.[k('pax_id')];
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5" id={`pax_card_${index}`}>
+      {savedPicker}
       <div className="flex items-center gap-2 mb-4">
         <span className="w-6 h-6 rounded-full bg-slate-800 text-white text-[11px] font-bold flex items-center justify-center">{index+1}</span>
         <span className="text-xs font-bold text-slate-400">{tc.passenger} {index+1}</span>
@@ -75,7 +81,9 @@ function PassengerForm({ pax, index, fieldCls, labelCls, selectCls, errors, onCh
         </div>
         <div><label className={labelCls}>Kewarganegaraan</label>
           <select value={pax.nationality_code} onChange={e=>onChange(index,'nationality_code',e.target.value)} className={selectCls}>
-            <option value="ID">Indonesia</option><option value="SG">Singapura</option><option value="MY">Malaysia</option>
+            {PASSENGER_COUNTRIES.map((country) => (
+              <option key={country.code} value={country.code}>{country.label}</option>
+            ))}
           </select>
         </div>
         <div><label className={labelCls}>{t.birthDate}</label>
@@ -113,7 +121,9 @@ function PassengerForm({ pax, index, fieldCls, labelCls, selectCls, errors, onCh
             </div>
             <div><label className={labelCls}>Negara Penerbit</label>
               <select value={pax.identity.identity_country_of_issued_code} onChange={e=>onChange(index,'identity',{...pax.identity,identity_country_of_issued_code:e.target.value})} className={selectCls}>
-                <option value="ID">Indonesia</option><option value="SG">Singapura</option>
+                {PASSENGER_COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>{country.label}</option>
+                ))}
               </select>
             </div>
           </>
@@ -140,6 +150,7 @@ function TrainCheckoutContent() {
   const idempotencyKey = useIdempotencyKey();
   // Callback agar guest kembali ke halaman checkout ini setelah login/register.
   const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
+  const { openLogin, openRegister } = useAuthModal();
 
   const origin       = sp.get('origin') || '';
   const destination  = sp.get('destination') || '';
@@ -152,7 +163,7 @@ function TrainCheckoutContent() {
   const cabinClass   = sp.get('cabin_class') || '';
   const classOfService = sp.get('class_of_service') || '';
   const elapsedTime  = sp.get('elapsed_time') || '';
-  const baseAmount   = parseFloat(sp.get('total_amount') || '0');
+  const baseAmount   = parseFloat(sp.get('base_amount') || sp.get('total_amount') || '0');
   const adultCount   = parseInt(sp.get('adult') || '1');
   const infantCount  = parseInt(sp.get('infant') || '0');
   const paxCount     = adultCount + infantCount;
@@ -199,6 +210,12 @@ function TrainCheckoutContent() {
     }));
 
   const [passengers, setPassengers] = useState<any[]>([...initPax('ADT', adultCount), ...initPax('INF', infantCount)]);
+  const {
+    savedPassengers,
+    loading: savedPassengersLoading,
+    error: savedPassengersError,
+    refetch: refetchSavedPassengers,
+  } = useSavedPassengers(status === 'authenticated');
   const [contact, setContact] = useState({
     title: 'MR', first_name: '', last_name: '', email: session?.user?.email || '',
     calling_code: '62', mobile: '', nationality_code: 'ID', is_also_booker: true,
@@ -210,6 +227,19 @@ function TrainCheckoutContent() {
       if (field === 'identity') return { ...x, identity: val };
       return { ...x, [field]: val };
     }));
+  };
+
+  const applySavedPassenger = (index: number, saved: SavedPassengerRecord) => {
+    setPassengers(prev => prev.map((pax, i) => {
+      if (i !== index) return pax;
+      return { ...pax, ...savedPassengerToPassenger(saved, pax.pax_type) };
+    }));
+    setFormErrors(prev => {
+      const next = { ...prev };
+      [`pax_first_${index}`, `pax_last_${index}`, `pax_birth_${index}`, `pax_id_${index}`]
+        .forEach((key) => delete next[key]);
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -279,7 +309,7 @@ function TrainCheckoutContent() {
           contacts: [contact], passengers, booker: { ...contact },
           schedules: [{ journeys: [{ journey_code: journeyCode, fare_code: fareCode }], provider: 'kai' }],
           // Server menambahkan markup train satu kali sebelum membuat transaksi Midtrans.
-          total_amount: pricingAmount, origin, destination, departure_date: departureDate, arrival_date: arrivalDate,
+          total_amount: pricingAmount, base_amount: baseAmount, origin, destination, departure_date: departureDate, arrival_date: arrivalDate,
           train_name: trainName, train_number: trainNumber, cabin_class: cabinClass,
           ...(appliedCoupon && { coupon_code: appliedCoupon.code, discount_amount: discountAmount }),
         }),
@@ -344,7 +374,7 @@ function TrainCheckoutContent() {
               <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
               <div>
                 <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
-                <p className="text-xs text-slate-400"><Link href={`/login?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">Masuk</Link> atau <Link href={`/register?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">daftar</Link> untuk melihat e-tiket.</p>
+                <p className="text-xs text-slate-400"><button type="button" onClick={() => openLogin({ callbackUrl: checkoutCallbackUrl })} className="text-slate-600 underline">Masuk</button> atau <button type="button" onClick={() => openRegister({ callbackUrl: checkoutCallbackUrl })} className="text-slate-600 underline">daftar</button> untuk melihat e-tiket.</p>
               </div>
             </div>
           </div>
@@ -397,8 +427,31 @@ function TrainCheckoutContent() {
 
             {/* Section "Data Penumpang" — target scroll-spy chip langkah */}
             <div ref={sectionPassengers} className="scroll-mt-[60px] lg:scroll-mt-[124px] space-y-5">
+              {status === 'authenticated' && (savedPassengers.length === 0 || savedPassengersError) && (
+                <SavedPassengerNotice
+                  loading={savedPassengersLoading}
+                  error={!!savedPassengersError}
+                  onRetry={refetchSavedPassengers}
+                />
+              )}
               {passengers.map((pax, i) => (
-                <PassengerForm key={i} pax={pax} index={i} fieldCls={fieldCls} labelCls={labelCls} selectCls={selectCls} errors={formErrors} onChange={updatePax}/>
+                <PassengerForm
+                  key={i}
+                  pax={pax}
+                  index={i}
+                  fieldCls={fieldCls}
+                  labelCls={labelCls}
+                  selectCls={selectCls}
+                  errors={formErrors}
+                  onChange={updatePax}
+                  savedPicker={status === 'authenticated' && savedPassengers.length > 0 ? (
+                    <SavedPassengerPicker
+                      passengers={savedPassengers}
+                      context={{ mode: 'train', paxType: pax.pax_type }}
+                      onSelect={(saved) => applySavedPassenger(i, saved)}
+                    />
+                  ) : undefined}
+                />
               ))}
             </div>
             <div ref={sectionAddons} className="scroll-mt-[60px] lg:scroll-mt-[124px]">

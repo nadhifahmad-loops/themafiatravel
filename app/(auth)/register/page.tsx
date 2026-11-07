@@ -1,12 +1,13 @@
 'use client';
-import { Suspense, useState } from 'react';
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { signIn } from 'next-auth/react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
-import { safeCallbackUrl } from '@/lib/security';
+import { safeCallbackUrl } from '@/lib/safe-callback';
+import { useAuthModal } from '@/contexts/AuthModalContext';
+import { useRegisterAuth } from '@/components/auth/useRegisterAuth';
 
 export default function RegisterPage() {
   return (
@@ -19,68 +20,19 @@ export default function RegisterPage() {
 function RegisterForm() {
   const { language } = useLanguage();
   const t = i18n.register[language];
-  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirm: '' });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   // Kembali ke halaman yang memicu register (mis. checkout) setelah berhasil.
   const searchParams = useSearchParams();
   const rawCallback = searchParams.get('callbackUrl');
-  const callbackUrl = safeCallbackUrl(rawCallback, '/dashboard');
+  const callbackUrl = safeCallbackUrl(rawCallback);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    
-    if (form.password !== form.confirm) { 
-      setError(t.errorPasswordMismatch); 
-      return; 
-    }
-    if (form.password.length < 8) { 
-      setError(t.errorPasswordShort); 
-      return; 
-    }
-    
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, email: form.email, phone: form.phone, password: form.password }),
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) { 
-        setError(data.error || t.errorServer); 
-        setLoading(false); 
-        return; 
-      }
-      
-      // Auto login setelah register manual berhasil
-      const signInResult = await signIn('credentials', { 
-        email: form.email, 
-        password: form.password, 
-        redirect: false 
-      });
-
-      if (signInResult?.error) {
-        setError(t.errorAutoLogin);
-        setLoading(false);
-      } else {
-        // Navigasi FULL agar cookie sesi terpasang lebih dulu (konsisten dengan /login),
-        // lalu kembali ke halaman checkout/asal bila ada.
-        window.location.href = callbackUrl;
-      }
-    } catch {
-      setError(t.errorServer);
-      setLoading(false);
-    }
-  };
-
-  const handleChange = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm(p => ({ ...p, [k]: e.target.value }));
-  };
+  const { showSuccess } = useAuthModal();
+  const { form, error, loading, handleChange, handleSubmit, handleGoogle } =
+    useRegisterAuth({
+      callbackUrl,
+      onSuccess: () => {
+        showSuccess({ callbackUrl, redirect: true, kind: 'register' });
+      },
+    });
 
   return (
     <div className="bg-brand-bgLight min-h-screen font-sans text-brand-ink flex flex-col selection:bg-brand-orange selection:text-white">
@@ -144,7 +96,7 @@ function RegisterForm() {
             <div className="mb-6">
               <button 
                 type="button" 
-                onClick={() => signIn('google', { callbackUrl })}
+                onClick={handleGoogle}
                 className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-slate-200 rounded-lg font-bold text-sm text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
               >
                 <Image src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" width={20} height={20} className="w-5 h-5" />

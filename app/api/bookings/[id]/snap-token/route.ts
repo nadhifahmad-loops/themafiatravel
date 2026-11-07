@@ -5,6 +5,8 @@ import { authOptions } from '@/lib/auth';
 import { createSnapTransaction } from '@/lib/midtrans';
 import { bookingStore } from '@/lib/store';
 import { PAYMENT_TIMEOUT_MS } from '@/lib/payment-window';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { authorizeBookingAccess } from '@/lib/booking-access';
 
 // Refresh token Snap Midtrans untuk booking yang masih pending_payment.
 // Token Snap hanya berlaku ±5 menit, sedangkan window pembayaran 1 jam —
@@ -14,6 +16,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const ip = getClientIp(request);
+    const requestLimit = await checkRateLimit(`booking-snap:${ip}`, 'booking');
+    if (!requestLimit.allowed) {
+      return NextResponse.json(
+        { success: false, message: 'Terlalu banyak permintaan. Silakan coba lagi nanti.' },
+        { status: 429, headers: { 'Retry-After': String(requestLimit.retryAfter ?? 60) } }
+      );
+    }
+
     const session = await getServerSession(authOptions);
     const resolvedParams = await params;
     const id = resolvedParams.id;
@@ -30,22 +41,34 @@ export async function POST(
       );
     }
 
-    // ── Ownership (sama seperti GET /api/bookings/[id]) ─────────────────────
-    if (booking.userId) {
-      if (!session?.user?.email) {
-        return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
-      }
-      const requester = await prisma.user.findUnique({ where: { email: session.user.email } });
-      if (!requester) {
-        return NextResponse.json({ success: false, message: 'User tidak ditemukan' }, { status: 401 });
-      }
-      const isAdmin = requester.role === 'admin';
-      if (!isAdmin && booking.userId !== requester.id) {
+    const requester = session?.user?.email
+      ? await prisma.user.findUnique({ where: { email: session.user.email } })
+      : null;
+    const isAdmin = requester?.role === 'admin';
+
+    if (!booking.userId && !isAdmin) {
+      const proofLimit = await checkRateLimit(`guest-booking-proof:${ip}:${booking.id}`, 'auth');
+      if (!proofLimit.allowed) {
         return NextResponse.json(
-          { success: false, message: 'Akses ditolak: bukan pesanan Anda' },
-          { status: 403 }
+          { success: false, message: 'Terlalu banyak percobaan verifikasi. Silakan coba lagi nanti.' },
+          { status: 429, headers: { 'Retry-After': String(proofLimit.retryAfter ?? 60) } }
         );
       }
+    }
+
+    const access = authorizeBookingAccess({
+      bookingUserId: booking.userId,
+      requesterId: requester?.id ?? null,
+      isAdmin,
+      guestContact: request.headers.get('x-booking-contact'),
+      bookingData: booking.bookingData,
+      passengerData: booking.passengerData,
+    });
+    if (!access.allowed) {
+      return NextResponse.json(
+        { success: false, message: access.message },
+        { status: access.status, headers: { 'Cache-Control': 'no-store' } }
+      );
     }
 
     // ── Hanya pending_payment & belum lewat batas waktu ─────────────────────
@@ -130,16 +153,19 @@ export async function POST(
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      snapToken: snap.token,
-      redirectUrl: snap.redirect_url,
-      data: {
-        id: updated.id,
-        snapToken: updated.snapToken,
-        snapRedirectUrl: updated.snapRedirectUrl,
+    return NextResponse.json(
+      {
+        success: true,
+        snapToken: snap.token,
+        redirectUrl: snap.redirect_url,
+        data: {
+          id: updated.id,
+          snapToken: updated.snapToken,
+          snapRedirectUrl: updated.snapRedirectUrl,
+        },
       },
-    });
+      { headers: { 'Cache-Control': 'no-store' } }
+    );
 
   } catch (error: any) {
     console.error('Error Refresh Snap Token:', error?.message || error);

@@ -40,6 +40,16 @@ function mapRefundResult(value: unknown) {
   };
 }
 
+function mapFlightRefundEstimate(value: unknown) {
+  const data = objectValue(value);
+  if (!data) return null;
+  return {
+    ...(typeof data.amount === 'number' ? { amount: data.amount } : {}),
+    ...(typeof data.capturedAt === 'string' ? { capturedAt: data.capturedAt } : {}),
+    ...(typeof data.source === 'string' ? { source: data.source } : {}),
+  };
+}
+
 function mapBooking(booking: RefundQueueBooking) {
   const data = objectValue(booking.bookingData) || {};
   return {
@@ -61,7 +71,7 @@ function mapBooking(booking: RefundQueueBooking) {
     paymentType: booking.paymentType,
     refundRequest: mapRefundRequest(data.refundRequest),
     refundResult: mapRefundResult(data.refundResult),
-    flightRefundEstimate: mapRefundRequest(data.flightRefundEstimate),
+    flightRefundEstimate: mapFlightRefundEstimate(data.flightRefundEstimate),
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
     user: booking.user,
@@ -71,7 +81,7 @@ function mapBooking(booking: RefundQueueBooking) {
 export default async function RefundQueuePage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
-    redirect('/login?callbackUrl=/admin/refund-queue&error=Unauthorized');
+    redirect('/admin/login?callbackUrl=/admin/refund-queue&error=Unauthorized');
   }
 
   const admin = await prisma.user.findUnique({
@@ -80,7 +90,7 @@ export default async function RefundQueuePage() {
   });
 
   if (!admin || admin.role !== 'admin') {
-    redirect('/login?callbackUrl=/admin/refund-queue&error=Unauthorized');
+    redirect('/admin/login?callbackUrl=/admin/refund-queue&error=Unauthorized');
   }
 
   // Pembayaran telat (lib/late-settlement.ts): status booking `payment_failed`

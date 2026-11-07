@@ -121,6 +121,19 @@ function getPassengerCount(data: unknown): number {
   return Array.isArray(data) ? data.length : 0;
 }
 
+function formatMealType(value?: string | null) {
+  if (!value) return '';
+  const key = value.trim().toUpperCase();
+  const labels: Record<string, string> = {
+    RO: 'Kamar saja',
+    BB: 'Termasuk sarapan',
+    HB: 'Setengah penginapan',
+    FB: 'Penginapan penuh',
+    AI: 'All inclusive',
+  };
+  return labels[key] || value;
+}
+
 function passengerSearchText(data: unknown): string {
   if (!Array.isArray(data)) return '';
   return data
@@ -349,6 +362,9 @@ export default function BookingsPage() {
     const isTransport = b.bookingType === 'flight' || b.bookingType === 'train';
     const logo = getVendorLogo(b.bookingType, b.provider || '', b.airlineName || '');
     const pax = b.adultCount || b.childCount ? (b.adultCount || 0) + (b.childCount || 0) : getPassengerCount(b.passengerData);
+    const displayStatus = isHotel && (b.status === 'paid' || b.status === 'issued')
+      ? (language === 'ID' ? 'Voucher terbit' : 'Voucher issued')
+      : statusLabel(b.status);
 
     const title = isHotel
       ? b.hotelName || '-'
@@ -361,6 +377,7 @@ export default function BookingsPage() {
           `${getNights(b.checkinDate, b.checkoutDate, b.nights)} ${t.night}`,
           b.roomCount ? `${b.roomCount} ${t.room}` : null,
           b.roomDescription,
+          formatMealType(b.mealType),
         ].filter(Boolean).join(' · ')
       : isTransport
         ? [b.airlineName ? (b.bookingType === 'flight' ? resolveAirlineName(b.airlineName) : b.airlineName) : null, b.flightNumber]
@@ -404,7 +421,7 @@ export default function BookingsPage() {
                 <span className="font-mono text-[11px] text-slate-400">{b.orderNumber || b.id}</span>
                 <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyle.bg} ${statusStyle.text}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
-                  {statusLabel(b.status)}
+                  {displayStatus}
                 </span>
               </div>
 
@@ -459,6 +476,21 @@ export default function BookingsPage() {
           <Link href={`/payment/${b.id}`} aria-label={`${t.payNow} ${b.orderNumber || b.id}`}>
             <PaymentBar createdAt={b.createdAt} labels={{ payWithin: t.payWithin, payNow: t.payNow }} />
           </Link>
+        )}
+
+        {b.bookingType === 'hotel' && (b.status === 'paid' || b.status === 'issued') && (
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-4 py-2.5 sm:px-5">
+            <span className="text-[11px] text-slate-500">
+              {language === 'ID' ? 'Voucher sudah diterbitkan.' : 'Voucher has been issued.'}
+            </span>
+            <Link
+              href={`/bookings/${b.id}/cancel`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-50"
+            >
+              <X className="w-3 h-3" />
+              {language === 'ID' ? 'Batalkan & Ajukan Refund' : 'Cancel & Request Refund'}
+            </Link>
+          </div>
         )}
       </article>
     );

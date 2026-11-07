@@ -8,7 +8,7 @@ import { matchGuestContact } from '@/lib/booking-contact-match';
 import { handleLateSettlement } from '@/lib/late-settlement';
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
-const IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === 'true';
+const IS_PRODUCTION = process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === 'true';
 const BASE_URL = IS_PRODUCTION
   ? 'https://api.midtrans.com/v2'
   : 'https://api.sandbox.midtrans.com/v2';

@@ -6,7 +6,8 @@ import { id as dateFnsId, enUS as dateFnsEnUS } from 'date-fns/locale';
 import { CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
-import { type FormVariant, vFormField, vFormHeading, vFormLabel, vValue, vPanel, vInput, vItem, vItemBg, vSub, vMuted, vCode, vDiv, vSection, vToggle, vToggleIdle, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vBtnSearch } from '@/lib/formVariants';
+import { type HotelPropertyType } from '@/lib/hotel-property-type';
+import { type FormVariant, vFormField, vFormHeading, vFormLabel, vValue, vPanel, vInput, vItem, vItemBg, vSub, vMuted, vCode, vDiv, vSection, vStepper, vStepBtn, vIconCircle, vEmpty, vChevron, vBtnSearch, vField, vToggle, vToggleIdle } from '@/lib/formVariants';
 
 function FloatingPanel({ triggerRef, open, onClose, children, className, align = 'left' }: {
   triggerRef: React.RefObject<HTMLDivElement | null>;
@@ -88,7 +89,7 @@ type HotelSearchPayload = {
   room: number;
   nationality: string;
   q: string;
-  property_type?: string;
+  property_type: HotelPropertyType;
 };
 
 interface Props {
@@ -109,20 +110,19 @@ const POPULAR_DESTINATIONS: Destination[] = [
   { code: 'ID8734', label: 'Bandung, ID', city: 'Bandung' },
 ];
 
-const DUMMY_DESTINATIONS: Destination[] = [
-  { code: "SG7355", label: "Singapore", city: "Singapore" },
-  { code: "2252", label: "Holiday Inn Atrium (Hotel)", city: "Singapore" },
-  { code: "2254", label: "Grand Park City Hall (Hotel)", city: "Singapore" },
-  { code: "ID001", label: "Jakarta", city: "Jakarta" },
-  { code: "ID002", label: "Bali", city: "Bali" }
+const NATIONALITIES = [
+  { code: 'ID', id: 'Indonesia', en: 'Indonesia' },
+  { code: 'SG', id: 'Singapura', en: 'Singapore' },
+  { code: 'MY', id: 'Malaysia', en: 'Malaysia' },
+  { code: 'TH', id: 'Thailand', en: 'Thailand' },
+  { code: 'AU', id: 'Australia', en: 'Australia' },
+  { code: 'CN', id: 'Tiongkok', en: 'China' },
+  { code: 'GB', id: 'Inggris', en: 'United Kingdom' },
+  { code: 'JP', id: 'Jepang', en: 'Japan' },
+  { code: 'US', id: 'Amerika Serikat', en: 'United States' },
 ];
 
-const DESTINATION_OPTIONS: Destination[] = [
-  ...POPULAR_DESTINATIONS,
-  ...DUMMY_DESTINATIONS.filter(dummy =>
-    !POPULAR_DESTINATIONS.some(destination => destination.code === dummy.code)
-  ),
-];
+const DESTINATION_OPTIONS = POPULAR_DESTINATIONS;
 
 function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
@@ -137,7 +137,14 @@ function parseLocalDate(value: string): Date {
 }
 
 /* ─── DESTINATION SELECTOR (AUTO-LOAD API ORBIS + RECENT SEARCH) ─── */
-function DestinationInput({ label, value, onChange, icon, variant = 'dark', id }: { label: string; value: string; onChange: (v: string) => void; icon: string; variant?: FormVariant; id?: string }) {
+function DestinationInput({ label, value, onChange, icon, variant = 'dark', id }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  icon: string;
+  variant?: FormVariant;
+  id?: string;
+}) {
   const { language } = useLanguage();
   const tfh = i18n.searchForm[language].hotel;
   const [open, setOpen] = useState(false);
@@ -151,7 +158,8 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark', id }
         ? parsed.filter((item): item is Destination =>
             typeof item?.code === 'string' &&
             typeof item?.label === 'string' &&
-            typeof item?.city === 'string'
+            typeof item?.city === 'string' &&
+            POPULAR_DESTINATIONS.some(destination => destination.code === item.code)
           )
         : [];
     } catch {
@@ -181,27 +189,28 @@ function DestinationInput({ label, value, onChange, icon, variant = 'dark', id }
   return (
     <div className="relative flex w-full flex-col" ref={ref}>
       <span id={labelId} className={vFormLabel(variant)}>{label}</span>
-      <div
-        id={id}
-        role="button"
-        tabIndex={0}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-labelledby={labelId}
-        onClick={() => setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setOpen(true);
-          }
-        }}
-        className={`group flex h-full cursor-pointer items-center gap-2 transition-all ${vFormField(variant)}`}
-      >
-        <i className={`fa-solid ${icon} text-sky-600 text-sm`} aria-hidden="true"></i>
-        <div className={`min-w-0 flex-1 truncate text-sm font-medium ${vValue(variant)}`}>
-          {selected ? selected.label : (value || tfh.destination)}
-        </div>
-        <i className={`fa-solid fa-chevron-down text-[10px] ${vChevron(variant)}`} aria-hidden="true"></i>
+      <div className={`flex min-h-11 items-center rounded-md ${vField(variant)}`}>
+        <button
+          id={id}
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-labelledby={labelId}
+          onClick={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setOpen(true);
+            }
+          }}
+          className="group flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left"
+        >
+          <i className={`fa-solid ${icon} shrink-0 text-sky-600 text-sm`} aria-hidden="true"></i>
+          <span className={`min-w-0 flex-1 truncate text-[13px] font-medium ${vValue(variant)}`}>
+            {selected ? selected.label : (value || tfh.destination)}
+          </span>
+          <i className={`fa-solid fa-chevron-down text-[10px] ${vChevron(variant)}`} aria-hidden="true"></i>
+        </button>
       </div>
 
       <FloatingPanel
@@ -280,16 +289,9 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
   const dateLocale = isEnglish ? dateFnsEnUS : dateFnsId;
   const defaultDest = initialData?.destination_id || POPULAR_DESTINATIONS[2]?.code || 'ID8731';
   const [destination, setDestination] = useState(defaultDest);
+  const [propertyType, setPropertyType] = useState<HotelPropertyType>(initialData?.property_type || 'all');
+  const [nationality, setNationality] = useState(initialData?.nationality || 'ID');
   const [formError, setFormError] = useState('');
-
-  // Property type filter
-  const PROPERTY_TYPES = [
-    { value: 'all', label: isEnglish ? 'All' : 'Semua', icon: 'fa-solid fa-list' },
-    { value: 'hotel', label: 'Hotel', icon: 'fa-solid fa-hotel' },
-    { value: 'villa', label: 'Villa', icon: 'fa-solid fa-house-chimney' },
-    { value: 'apartment', label: isEnglish ? 'Apartment' : 'Apartemen', icon: 'fa-solid fa-building' },
-  ];
-  const [propertyType, setPropertyType] = useState(initialData?.property_type || 'all');
 
   // Combined date range picker
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>(() => {
@@ -356,7 +358,7 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
       child: pax.child,
       child_ages: childAges,
       room: pax.room,
-      nationality: initialData?.nationality || 'ID',
+      nationality,
       q: POPULAR_DESTINATIONS.find(d => d.code === destination)?.label || destination,
       property_type: propertyType,
     };
@@ -403,7 +405,7 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
                 <i className="fa-solid fa-minus text-[10px]"></i>
               </button>
               <span className={`text-[13px] font-medium w-4 text-center ${vValue(variant)}`}>{pax.room}</span>
-              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.room}`} disabled={pax.room >= 5} onClick={() => setPax(p => ({ ...p, room: Math.min(5, p.room + 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.room >= 5 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.room}`} disabled={pax.room >= Math.min(5, pax.adult)} onClick={() => setPax(p => ({ ...p, room: Math.min(5, p.adult, p.room + 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.room >= Math.min(5, pax.adult) ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-plus text-[10px]"></i>
               </button>
             </div>
@@ -421,11 +423,11 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
               </div>
             </div>
             <div className={`flex items-center gap-3 px-2 py-1 rounded-xl ${vStepper(variant)}`}>
-              <button type="button" aria-label={`${isEnglish ? 'Remove' : 'Kurangi'} ${tfh.adult}`} disabled={pax.adult <= 1} onClick={() => setPax(p => ({ ...p, adult: Math.max(1, p.adult - 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.adult <= 1 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Remove' : 'Kurangi'} ${tfh.adult}`} disabled={pax.adult <= pax.room} onClick={() => setPax(p => ({ ...p, adult: Math.max(p.room, p.adult - 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.adult <= pax.room ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-minus text-[10px]"></i>
               </button>
               <span className={`text-[13px] font-medium w-4 text-center ${vValue(variant)}`}>{pax.adult}</span>
-              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.adult}`} disabled={pax.adult >= 10} onClick={() => setPax(p => ({ ...p, adult: Math.min(10, p.adult + 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.adult >= 10 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.adult}`} disabled={pax.adult >= 9} onClick={() => setPax(p => ({ ...p, adult: Math.min(9, p.adult + 1) }))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.adult >= 9 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-plus text-[10px]"></i>
               </button>
             </div>
@@ -439,7 +441,7 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
               </div>
               <div className="flex flex-col">
                 <span className={`text-[13px] font-medium ${vValue(variant)}`}>{tfh.child}</span>
-                <span className={`text-[11px] ${vSub(variant)}`}>0 - 11 {isEnglish ? 'yrs' : 'tahun'}</span>
+                <span className={`text-[11px] ${vSub(variant)}`}>0 - 12 {isEnglish ? 'yrs' : 'tahun'}</span>
               </div>
             </div>
             <div className={`flex items-center gap-3 px-2 py-1 rounded-xl ${vStepper(variant)}`}>
@@ -447,7 +449,7 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
                 <i className="fa-solid fa-minus text-[10px]"></i>
               </button>
               <span className={`text-[13px] font-medium w-4 text-center ${vValue(variant)}`}>{pax.child}</span>
-              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.child}`} disabled={pax.child >= 4} onClick={() => updateChildCount(Math.min(4, pax.child + 1))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.child >= 4 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
+              <button type="button" aria-label={`${isEnglish ? 'Add' : 'Tambah'} ${tfh.child}`} disabled={pax.child >= 9} onClick={() => updateChildCount(Math.min(9, pax.child + 1))} className={`w-6 h-6 rounded-md transition-all flex items-center justify-center ${pax.child >= 9 ? 'opacity-30 cursor-not-allowed' : vStepBtn(variant)}`}>
                 <i className="fa-solid fa-plus text-[10px]"></i>
               </button>
             </div>
@@ -470,7 +472,7 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
                     }}
                     className={`text-[13px] font-medium p-2 rounded-md outline-none transition-colors ${variant === 'light' ? 'bg-white/60 border border-white/40 text-slate-700 focus:border-orange-400' : 'bg-slate-800 text-white border border-white/10 focus:border-orange-500'}`}
                   >
-                    {Array.from({length: 12}).map((_, i) => (
+                    {Array.from({length: 13}).map((_, i) => (
                       <option key={i} value={i}>{i} {isEnglish ? 'yrs' : 'Tahun'}</option>
                     ))}
                   </select>
@@ -478,44 +480,76 @@ export default function HotelSearchForm({ onSearch, loading, initialData, varian
               </div>
             </div>
           )}
+
+          {/* Nationality */}
+          <div className={`mt-1 pt-3 flex flex-col gap-2 ${variant === 'light' ? 'border-t border-slate-100/60' : 'border-t border-white/10'}`}>
+            <label htmlFor="hotel-nationality" className={`text-[10px] font-semibold uppercase tracking-wider ${vSection(variant)}`}>
+              {tfh.nationality}
+            </label>
+            <select
+              id="hotel-nationality"
+              value={nationality}
+              onChange={event => setNationality(event.target.value)}
+              className={`w-full cursor-pointer rounded-md border px-3 py-2 text-[13px] font-medium outline-none transition-colors ${
+                variant === 'light'
+                  ? 'border-slate-200 bg-white text-slate-700 focus:border-orange-400'
+                  : 'border-white/10 bg-slate-800 text-white focus:border-orange-500'
+              }`}
+            >
+              {NATIONALITIES.map(option => (
+                <option key={option.code} value={option.code}>
+                  {isEnglish ? option.en : option.id} ({option.code})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
     </div>
   );
 
-  const renderPropertyTypeToggle = () => (
-    <div className={`grid w-full grid-cols-2 gap-1 rounded-lg p-1 sm:flex sm:w-fit ${vToggle(variant)}`}>
-      {PROPERTY_TYPES.map(p => (
-        <button
-          key={p.value}
-          type="button"
-          aria-pressed={propertyType === p.value}
-          onClick={() => setPropertyType(p.value)}
-          className={`flex min-h-11 items-center justify-center gap-2 px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${
-            propertyType === p.value
-              ? 'bg-sky-600 text-white shadow-sm'
-              : vToggleIdle(variant)
-          }`}
-        >
-          <i className={`${p.icon} text-[10px]`} />
-          {p.label}
-        </button>
-      ))}
-    </div>
-  );
+  const PROPERTY_TYPES = [
+    { value: 'all', label: isEnglish ? 'All' : 'Semua', icon: 'fa-list' },
+    { value: 'hotel', label: 'Hotel', icon: 'fa-hotel' },
+    { value: 'villa', label: 'Villa', icon: 'fa-house-chimney' },
+  ] as const;
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 animate-fade-up">
-      {/* Baris 1: Property Type Toggle */}
+      {/* Baris 1: Jenis properti (selaras dengan trip type di form lain) */}
       <section>
         <h3 className={vFormHeading(variant)}>{tfh.tripTypeLabel}</h3>
-        {renderPropertyTypeToggle()}
+        <div className={`grid w-full grid-cols-3 gap-1 rounded-lg p-1 sm:flex sm:w-fit ${vToggle(variant)}`}>
+          {PROPERTY_TYPES.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={propertyType === option.value}
+              onClick={() => setPropertyType(option.value)}
+              className={`flex min-h-11 items-center justify-center gap-2 rounded-md px-2 text-center text-xs font-semibold transition-all sm:px-4 ${
+                propertyType === option.value
+                  ? 'bg-sky-600 text-white shadow-sm'
+                  : vToggleIdle(variant)
+              }`}
+            >
+              <i className={`fa-solid ${option.icon}`} aria-hidden="true" />
+              {option.label}
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* Baris 2: Semua field + tombol cari dalam satu baris */}
-      <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-12 w-full">
+      <div className="grid w-full grid-cols-1 items-end gap-3 md:grid-cols-2 xl:grid-cols-12">
         <div className="flex min-w-0 flex-col md:col-span-2 xl:col-span-4">
-          <DestinationInput id="hotel-destination" label={tfh.destination} value={destination} onChange={setDestination} icon="fa-bed" variant={variant} />
+          <DestinationInput
+            id="hotel-destination"
+            label={isEnglish ? 'City or destination' : 'Kota atau destinasi'}
+            value={destination}
+            onChange={setDestination}
+            icon="fa-location-dot"
+            variant={variant}
+          />
         </div>
 
         {/* DATE RANGE */}

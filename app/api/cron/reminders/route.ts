@@ -10,3 +10,9 @@ export async function POST(req: NextRequest) {
   const reminders = await sendTripReminders();
   return NextResponse.json({ success: true, reminders });
 }
+
+// Vercel Cron memanggil endpoint dengan HTTP GET (bukan POST). Otorisasi tetap
+// diperiksa di handler POST lewat CRON_SECRET.
+export async function GET(req: NextRequest) {
+  return POST(req);
+}

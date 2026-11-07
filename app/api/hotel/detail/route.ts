@@ -61,7 +61,6 @@ export async function POST(req: NextRequest) {
       checkout_date: v.checkout_date,
       destination_id: v.destination_id,
       hotel_id: v.hotel_id,
-      search_name: v.search_name ?? '',
       adult: Number(v.adult) || 2,
       child: Number(v.child) || 0,
       child_ages: v.child_ages?.map((n: string | number) => Number(n)) ?? [],

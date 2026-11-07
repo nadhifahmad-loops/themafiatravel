@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { flightAPI } from '@/lib/orbis';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 /**
  * Get FF (Frequent Flyer) Availability — Orbis Airline API v2.2 §3.11
@@ -8,7 +9,17 @@ import { flightAPI } from '@/lib/orbis';
  * Dipanggil SEBELUM update_passengers jika ingin menyertakan FF pax.
  * Request body: {} (kosong — Orbis pakai sesi internal dari sell_journeys).
  */
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
+  // Endpoint publik yang meneruskan ke supplier Orbisway: batasi per IP agar tidak
+  // bisa dipakai menguras kuota/rate limit akun supplier.
+  const rl = await checkRateLimit(`flight-ff:${getClientIp(req)}`, 'search');
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Terlalu banyak permintaan. Silakan coba lagi nanti.', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 60) } }
+    );
+  }
+
   try {
     const data = await flightAPI.getFfAvailability();
     return NextResponse.json({ success: true, data });

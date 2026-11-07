@@ -10,3 +10,9 @@ export async function POST(req: NextRequest) {
   const expired = await expireUnpaidBookings();
   return NextResponse.json({ success: true, expired });
 }
+
+// Vercel Cron memanggil endpoint dengan HTTP GET (bukan POST). Otorisasi tetap
+// diperiksa di handler POST lewat CRON_SECRET.
+export async function GET(req: NextRequest) {
+  return POST(req);
+}

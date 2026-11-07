@@ -25,7 +25,7 @@ interface AdminRefundBooking {
   paymentType?: string | null;
   refundRequest?: { amount?: number | null; reason?: string; requestedAt?: string; mode?: string } | null;
   refundResult?: { amount?: number; refundedAt?: string; processedBy?: string } | null;
-  flightRefundEstimate?: { amount?: number | null; capturedAt?: string } | null;
+  flightRefundEstimate?: { amount?: number | null; capturedAt?: string; source?: string } | null;
   createdAt: string | Date;
   updatedAt: string | Date;
   user?: { name?: string | null; email?: string | null } | null;
@@ -84,7 +84,15 @@ export default function RefundQueueClient({
   const matches = useMemo(() => {
     const term = searchQuery.toLowerCase();
     return (booking: AdminRefundBooking) => {
-      const haystack = [booking.id, booking.orderNumber, booking.pnr, booking.user?.name, booking.user?.email]
+      const haystack = [
+        booking.id,
+        booking.orderNumber,
+        booking.pnr,
+        booking.user?.name,
+        booking.user?.email,
+        booking.cancelReason,
+        booking.refundRequest?.reason,
+      ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -102,15 +110,21 @@ export default function RefundQueueClient({
 
   async function processRefund(id: string) {
     const row = review.find((booking) => booking.id === id);
+    if (!row || row.status !== 'refund_requested') {
+      setStatusType('error');
+      setStatusMessage('Refund ini tidak berada pada status menunggu review. Buka detail untuk memeriksa status terbaru.');
+      return;
+    }
     const rawAmount = refundAmounts[id] ?? (
       typeof row?.refundRequest?.amount === 'number' ? String(row.refundRequest.amount) : ''
     );
     const amount = Number(rawAmount);
-    if (!rawAmount.trim() || !Number.isFinite(amount) || amount < 0) {
+    if (!rawAmount.trim() || !Number.isFinite(amount) || amount < 0 || amount > row.totalAmount) {
       setStatusType('error');
-      setStatusMessage('Masukkan nominal refund nol atau lebih yang sudah diverifikasi sebelum memproses dana.');
+      setStatusMessage('Masukkan nominal refund yang valid, mulai dari Rp0 sampai total pembayaran.');
       return;
     }
+    if (!window.confirm(`Konfirmasi refund ${formatRupiah(amount)} untuk pesanan ${row.orderNumber || row.id}? Pastikan nominal sudah sesuai bukti vendor.`)) return;
 
     try {
       setProcessingId(id);
@@ -175,7 +189,7 @@ export default function RefundQueueClient({
       <div className="flex flex-col gap-2">
         <h1 className="text-xl font-bold text-brand-ink">Antrian Refund</h1>
         <p className="text-brand-neutral text-sm">
-          Refund otomatis diproses langsung; refund manual masuk antrian review dan menunggu eksekusi admin.
+          Periksa permintaan dan nominal dari vendor sebelum mengirim refund. Status pembayaran dan pesanan tidak bisa diubah manual dari halaman ini.
         </p>
       </div>
 
@@ -245,26 +259,34 @@ export default function RefundQueueClient({
                       <td className="px-5 py-4">
                         <div className="font-bold text-slate-800">{formatRupiah(booking.totalAmount)}</div>
                         <RefundAmountBadge amount={booking.refundRequest?.amount} />
-                        {booking.refundRequest?.amount == null ? (
-                          <label className="mt-2 block text-left text-[10px] font-semibold text-slate-500">
-                            Nominal terverifikasi admin
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={refundAmountInput}
-                              onChange={(event) => setRefundAmounts((current) => ({
-                                ...current,
-                                [booking.id]: event.target.value,
-                              }))}
-                              placeholder="Masukkan nominal"
-                              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
-                            />
-                          </label>
-                        ) : null}
+                        <label className="mt-2 block text-left text-[10px] font-semibold text-slate-500">
+                          Nominal refund yang dicek
+                          <input
+                            type="number"
+                            min="0"
+                            max={booking.totalAmount}
+                            step="1"
+                            value={refundAmountInput}
+                            readOnly={typeof booking.refundRequest?.amount === 'number'}
+                            onChange={(event) => setRefundAmounts((current) => ({
+                              ...current,
+                              [booking.id]: event.target.value,
+                            }))}
+                            placeholder="Cek bukti vendor"
+                            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs font-medium text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100 read-only:bg-slate-50"
+                          />
+                          <span className="mt-1 block font-normal leading-relaxed">
+                            {typeof booking.refundRequest?.amount === 'number'
+                              ? 'Nominal dari respons vendor. Pastikan sesuai bukti sebelum mengirim.'
+                              : `Isi setelah cek bukti vendor; maksimal ${formatRupiah(booking.totalAmount)}.`}
+                          </span>
+                        </label>
                         {typeof booking.flightRefundEstimate?.amount === 'number' ? (
                           <div className="mt-1 text-[10px] text-sky-700">
                             Estimasi vendor: {formatRupiah(booking.flightRefundEstimate.amount)}
+                            {booking.flightRefundEstimate.capturedAt
+                              ? ` · ${format(new Date(booking.flightRefundEstimate.capturedAt), 'dd MMM yyyy', { locale: localeId })}`
+                              : ''}
                           </div>
                         ) : null}
                       </td>
@@ -272,18 +294,26 @@ export default function RefundQueueClient({
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide ${badge.cls}`}>
                           <badge.icon className="w-3.5 h-3.5" />{badge.label}
                         </span>
-                        {booking.cancelReason && <div className="text-[10px] text-slate-400 mt-1">{(booking.cancelReason || '').slice(0, 60)}</div>}
+                        {(booking.refundRequest?.reason || booking.cancelReason) && (
+                          <div className="mt-1 max-w-48 text-left text-[10px] leading-relaxed text-slate-500">
+                            Alasan: {(booking.refundRequest?.reason || booking.cancelReason || '').slice(0, 120)}
+                          </div>
+                        )}
                       </td>
                       <td className="px-5 py-4 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => processRefund(booking.id)}
-                            disabled={processingId === booking.id || !canProcessRefund}
-                            className={`px-3 py-1 text-xs rounded-md ${processingId === booking.id ? 'bg-purple-200 text-white/70 cursor-not-allowed' : 'bg-purple-600 text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-slate-300'}`}
-                          >
-                            {processingId === booking.id ? 'Memproses...' : numericRefundAmount === 0 && canProcessRefund ? 'Tutup tanpa refund' : 'Proses Refund'}
-                          </button>
-                          <a href={`/admin/bookings/${booking.id}`} className="px-3 py-1 text-xs bg-slate-100 text-slate-700 rounded-md">Detail</a>
+                          {booking.status === 'refund_requested' ? (
+                            <button
+                              onClick={() => processRefund(booking.id)}
+                              disabled={processingId === booking.id || !canProcessRefund || numericRefundAmount > booking.totalAmount}
+                              className={`px-3 py-2 text-xs font-semibold rounded-lg ${processingId === booking.id ? 'bg-purple-200 text-white/70 cursor-not-allowed' : 'bg-purple-700 text-white hover:bg-purple-800 disabled:cursor-not-allowed disabled:bg-slate-300'}`}
+                            >
+                              {processingId === booking.id ? 'Mengirim...' : numericRefundAmount === 0 && canProcessRefund ? 'Tutup, tanpa pengembalian' : 'Verifikasi & kirim refund'}
+                            </button>
+                          ) : (
+                            <span className="text-xs font-semibold text-amber-700">Sedang diproses — tidak dapat dikirim ulang</span>
+                          )}
+                          <a href={`/admin/bookings/${booking.id}`} className="px-3 py-2 text-xs font-semibold bg-slate-100 text-slate-700 rounded-lg">Lihat detail</a>
                         </div>
                       </td>
                     </tr>

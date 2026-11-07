@@ -1,19 +1,34 @@
 import { hotelAPI } from '@/lib/orbis';
+import type { OrbisError } from '@/lib/orbis-types';
+
+type HotelSearchResponse = {
+  hotel_ids?: Array<{
+    id?: string;
+    name?: string;
+    rating?: string | number;
+    prices?: Record<string, unknown>;
+  }>;
+  city_ids?: unknown[];
+};
 
 // Penggunaan (dari root project):
-//   node --env-file=.env --import tsx scripts/hotel-search-test.ts
-//   node --env-file=.env --import tsx scripts/hotel-search-test.ts SG7355 2026-10-10 2026-10-12 SG
+//   node --env-file=.env --import tsx scripts/hotel-search-smoke.ts
+//   node --env-file=.env --import tsx scripts/hotel-search-smoke.ts SG7355 2026-12-10 2026-12-12 SG
 //
 // Argumen opsional berurutan: destination_id, checkin_date, checkout_date, nationality,
-// adult, child, room. Memanggil hotelAPI.search yang SAMA dengan route
-// app/api/hotel/search/route.ts (termasuk normalisasi child_ages & retry).
+// adult, child, room. Ini smoke test vendor manual, tidak termasuk `npm test`.
 
 async function main() {
   const args = process.argv.slice(2);
+  const dateOffset = (days: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
   const [
     destination_id = 'SG7355',
-    checkin_date = '2026-10-10',
-    checkout_date = '2026-10-12',
+    checkin_date = dateOffset(30),
+    checkout_date = dateOffset(32),
     nationality = 'SG',
     adultInput = '2',
     childInput = '0',
@@ -24,7 +39,6 @@ async function main() {
     checkin_date,
     checkout_date,
     destination_id,
-    search_name: '',
     adult: Number(adultInput),
     child: Number(childInput),
     child_ages: [],
@@ -36,7 +50,7 @@ async function main() {
   const started = Date.now();
 
   try {
-    const data = (await hotelAPI.search(payload)) as Record<string, any>;
+    const data = (await hotelAPI.search(payload)) as HotelSearchResponse;
     const ms = Date.now() - started;
 
     console.log(`[HOTEL SEARCH TEST] SUCCESS dalam ${ms}ms`);
@@ -58,7 +72,8 @@ async function main() {
       console.log('\n=== FULL RESPONSE ===\n');
     }
     console.log(JSON.stringify(data, null, 2));
-  } catch (e: any) {
+  } catch (error: unknown) {
+    const e = error as OrbisError;
     const ms = Date.now() - started;
     console.log(`[HOTEL SEARCH TEST] ERROR dalam ${ms}ms`);
     console.log('message:', e?.message);

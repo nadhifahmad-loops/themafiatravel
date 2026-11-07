@@ -2,7 +2,6 @@
 import { Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
 import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
@@ -15,6 +14,7 @@ import TermsAgreementText from '@/components/checkout/TermsAgreementText';
 import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import CouponInput from '@/components/checkout/CouponInput';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
@@ -86,6 +86,7 @@ function CheckoutContent() {
   const isGuest = status !== 'authenticated';
   // Callback agar guest kembali ke halaman checkout ini setelah login/register.
   const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
+  const { openLogin, openRegister } = useAuthModal();
 
   const hotelId       = sp.get('hotel_id') || '';
   const priceCode     = sp.get('price_code') || '';
@@ -234,7 +235,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
           passenger: normalizedPassengers, contact: [normalizedContact], booker: normalizedContact,
           special_request: specialRequest, total_amount: totalAmount, hotel_name: hotelName,
           ...(appliedCoupon && { coupon_code: appliedCoupon.code, discount_amount: discountAmount }),
-          search_data: { checkin_date: checkinDate, checkout_date: checkoutDate, destination_id: sp.get('destination_id') || '', hotel_id: hotelId, search_name: sp.get('search_name') || '', adult: adultCount, child: parseInt(sp.get('child') || '0'), child_ages: (() => { try { return JSON.parse(sp.get('child_ages') || '[]'); } catch { return []; } })(), room: parseInt(sp.get('room') || '1'), nationality: sp.get('nationality') || 'ID', nights, meal_type: sp.get('meal_type') || '', room_description: sp.get('room_desc') || '' },
+          search_data: { checkin_date: checkinDate, checkout_date: checkoutDate, destination_id: sp.get('destination_id') || '', hotel_id: hotelId, adult: adultCount, child: parseInt(sp.get('child') || '0'), child_ages: (() => { try { return JSON.parse(sp.get('child_ages') || '[]'); } catch { return []; } })(), room: parseInt(sp.get('room') || '1'), nationality: sp.get('nationality') || 'ID', nights, meal_type: sp.get('meal_type') || '', room_description: sp.get('room_desc') || '' },
         }),
       });
       const data = await res.json();
@@ -320,7 +321,7 @@ const [checkoutDone, setCheckoutDone] = useState(false);
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
                 <div>
                   <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
-                  <p className="text-xs text-slate-400"><Link href={`/login?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">Masuk</Link> atau <Link href={`/register?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">daftar</Link> untuk melihat riwayat pesanan.</p>
+                  <p className="text-xs text-slate-400"><button type="button" onClick={() => openLogin({ callbackUrl: checkoutCallbackUrl })} className="text-slate-600 underline">Masuk</button> atau <button type="button" onClick={() => openRegister({ callbackUrl: checkoutCallbackUrl })} className="text-slate-600 underline">daftar</button> untuk melihat riwayat pesanan.</p>
                 </div>
               </div>
             </div>
@@ -453,7 +454,6 @@ const [checkoutDone, setCheckoutDone] = useState(false);
 
               {roomDesc && <p className="text-xs text-slate-500 mb-3">{roomDesc}</p>}
               {mealType && <p className="text-xs text-slate-400 mb-3">{mealType}</p>}
-              {provider && <p className="text-xs text-slate-400 mb-3">Provider: <span className="font-semibold text-slate-600">{provider}</span></p>}
 
               <div className="border-t border-slate-100 pt-3 space-y-2 text-xs">
                 <div className="flex justify-between">

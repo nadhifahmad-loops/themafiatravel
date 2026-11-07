@@ -3,11 +3,15 @@ docker-compose.yml
 .dockerignore
 node_modules
 .git
+.github
 .gitignore
-.env
-.env.local
+.env*
+!.env.example
+.kilo
+.agents
 .next
 .vercel
 *.md
 tmp-*
 cookie.txt
+public/uploads

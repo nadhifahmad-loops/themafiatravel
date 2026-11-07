@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { flightAPI } from '@/lib/orbis';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  // Endpoint publik yang meneruskan ke supplier Orbisway: batasi per IP agar tidak
+  // bisa dipakai menguras kuota/rate limit akun supplier.
+  const rl = await checkRateLimit(`flight-price:${getClientIp(req)}`, 'search');
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Terlalu banyak permintaan. Silakan coba lagi nanti.', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter ?? 60) } }
+    );
+  }
+
   try {
     const body = await req.json();
     const { adult, child, infant, schedules } = body;

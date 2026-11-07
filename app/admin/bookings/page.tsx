@@ -26,6 +26,7 @@ export default async function BookingsPage({
   if (q) {
     where.OR = [
       { id: { contains: q, mode: 'insensitive' as const } },
+      { orderNumber: { contains: q, mode: 'insensitive' as const } },
       { pnr: { contains: q, mode: 'insensitive' as const } },
       { user: { name: { contains: q, mode: 'insensitive' as const } } },
       { user: { email: { contains: q, mode: 'insensitive' as const } } },
@@ -45,6 +46,7 @@ export default async function BookingsPage({
 
   return (
     <BookingsClient
+      key={`${tab}:${q}:${page}`}
       initialBookings={bookings}
       initialTotal={total}
       initialPage={page}

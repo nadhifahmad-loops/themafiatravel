@@ -35,6 +35,8 @@ interface BaseProps {
   disabled?: boolean;
   /** Elemen pemicu (kotak field yang sudah ada). */
   children: ReactNode;
+  /** Dipanggil saat popover kalender dibuka/ditutup. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 interface CalendarFieldProps extends BaseProps {
@@ -64,6 +66,7 @@ export function CalendarField({
   defaultMonth,
   numberOfMonths = 1,
   disabled,
+  onOpenChange,
   children,
 }: CalendarFieldProps) {
   const [open, setOpen] = useState(false);
@@ -71,7 +74,7 @@ export function CalendarField({
   const disabledDays = buildDisabledDays(minDate, maxDate);
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open} onOpenChange={(o) => { setOpen(o); onOpenChange?.(o); }}>
       <Popover.Trigger asChild disabled={disabled}>
         {children}
       </Popover.Trigger>
@@ -111,6 +114,7 @@ export function CalendarRangeField({
   defaultMonth,
   numberOfMonths = 1,
   disabled,
+  onOpenChange,
   children,
 }: CalendarRangeFieldProps) {
   const [open, setOpen] = useState(false);
@@ -118,7 +122,7 @@ export function CalendarRangeField({
   const disabledDays = buildDisabledDays(minDate, maxDate);
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
+    <Popover.Root open={open} onOpenChange={(o) => { setOpen(o); onOpenChange?.(o); }}>
       <Popover.Trigger asChild disabled={disabled}>
         {children}
       </Popover.Trigger>

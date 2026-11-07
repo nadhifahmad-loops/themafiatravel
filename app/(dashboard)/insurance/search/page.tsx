@@ -132,7 +132,7 @@ function NoResultsWithAlternatives({ searchMeta, onSearch, onRetry }: { searchMe
 }
 
 // ─── Review / Konfirmasi Panel (mirip FlightReviewPanel) ──────────────────────
-function ReviewPanel({ isOpen, onClose, onConfirm, product, searchMeta, priceData, loadingConfirm }: any) {
+function ReviewPanel({ isOpen, onClose, onConfirm, product, searchMeta, priceData, priceError, loadingConfirm }: any) {
   const { language } = useLanguage();
   const t = i18n.insuranceSearch[language];
   const bd = i18n.bookingDetail[language];
@@ -226,10 +226,16 @@ function ReviewPanel({ isOpen, onClose, onConfirm, product, searchMeta, priceDat
             </div>
           )}
 
+          {priceError && (
+            <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              {priceError}
+            </p>
+          )}
+
           {/* CTA */}
           <button
             onClick={onConfirm}
-            disabled={loadingConfirm}
+            disabled={loadingConfirm || Boolean(priceError) || !priceData}
             className="w-full py-4 bg-orange-600 text-white font-black rounded-2xl hover:bg-orange-700 transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-lg shadow-orange-600/20"
           >
             {loadingConfirm ? (
@@ -333,6 +339,7 @@ function InsuranceSearchContent() {
   const [reviewOpen,       setReviewOpen]      = useState(false);
   const [loadingPrice,     setLoadingPrice]    = useState(false);
   const [selectingId,      setSelectingId]     = useState<string | null>(null);
+  const [priceError,       setPriceError]      = useState('');
 
   // Timeout notification saat loading terlalu lama
   useEffect(() => {
@@ -410,6 +417,7 @@ function InsuranceSearchContent() {
   const handleSelectProduct = useCallback(async (product: any) => {
     const pid = `${product.product_code}-${product.provider}`;
     setSelectingId(pid); setError('');
+    setPriceError('');
     try {
       const defaultBirth = new Date();
       defaultBirth.setFullYear(defaultBirth.getFullYear() - 30);
@@ -431,16 +439,21 @@ function InsuranceSearchContent() {
         }),
       });
       const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Harga asuransi gagal diverifikasi. Silakan coba pilih ulang.');
+      }
       const priced = Array.isArray(data.data) ? data.data[0] : data.data;
+      if (!priced || !Number.isFinite(Number(priced.total_price)) || Number(priced.total_price) <= 0) {
+        throw new Error('Harga asuransi tidak tersedia. Silakan cari ulang.');
+      }
 
       setSelectedProduct(product);
-      setPriceData(priced || null);
+      setPriceData(priced);
       setReviewOpen(true);
-    } catch (err: any) {
-      // Buka review panel dengan data mentah jika price gagal
-      void err;
+    } catch (err) {
       setSelectedProduct(product);
       setPriceData(null);
+      setPriceError(err instanceof Error ? err.message : 'Harga asuransi gagal diverifikasi. Silakan coba lagi.');
       setReviewOpen(true);
     }
     setSelectingId(null);
@@ -448,11 +461,15 @@ function InsuranceSearchContent() {
 
   // ── Konfirmasi dari review panel → checkout ──
   const handleConfirm = useCallback(async () => {
-    if (!selectedProduct) return;
+    if (!selectedProduct || !priceData || priceError) return;
     setLoadingPrice(true);
     try {
-      const price    = priceData?.total_price || selectedProduct.total_price || 0;
+      const price    = Number(priceData.total_price);
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new Error('Harga asuransi tidak tersedia. Silakan pilih ulang produk.');
+      }
       const nights   = searchMeta?.nights || 1;
+      const paxCount = Number(searchMeta?.pax || 1);
       const q = new URLSearchParams({
         product_code: selectedProduct.product_code,
         package: String(selectedProduct.package ?? selectedProduct.package_id ?? selectedProduct.package_code ?? '1'),
@@ -469,17 +486,19 @@ function InsuranceSearchContent() {
         international: String(searchMeta?.international ?? !/domestic|domestik/i.test(String(searchMeta?.destination_area || ''))),
         adult:        String(searchMeta?.adult || searchMeta?.pax || 1),
         child:        String(searchMeta?.child || 0),
-        total_amount: String(Math.round(price)),
+        total_amount: String(Math.round(price * paxCount)),
         sector_type:  selectedProduct.sector_type || '',
         product_type: selectedProduct.product_type_code || 'individual',
         trip_type:    selectedProduct.master_trip_id || searchMeta?.trip_type || 'single_trip',
         nights:       String(nights),
       }).toString();
       router.push(`/insurance/checkout?${q}`);
-    } catch {
+    } catch (err) {
+      setPriceData(null);
+      setPriceError(err instanceof Error ? err.message : 'Checkout asuransi gagal disiapkan. Silakan coba lagi.');
       setLoadingPrice(false);
     }
-  }, [selectedProduct, priceData, searchMeta, router]);
+  }, [selectedProduct, priceData, priceError, searchMeta, router]);
 
   // ── Urutkan berdasarkan harga terendah ──
   const displayed = useMemo(() => {
@@ -672,11 +691,12 @@ function InsuranceSearchContent() {
       {/* ── Review Panel ── */}
       <ReviewPanel
         isOpen={reviewOpen}
-        onClose={() => { setReviewOpen(false); setLoadingPrice(false); }}
+        onClose={() => { setReviewOpen(false); setLoadingPrice(false); setPriceError(''); }}
         onConfirm={handleConfirm}
         product={selectedProduct}
         searchMeta={{ ...searchMeta, nights }}
         priceData={priceData}
+        priceError={priceError}
         loadingConfirm={loadingPrice}
       />
     </div>

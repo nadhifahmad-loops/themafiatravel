@@ -42,4 +42,15 @@ yarn-error.log*
 next-env.d.ts
 .neon
 
-.vercel
+# alat bantu agent/IDE & berkas sementara
+.kilo/
+.agents/
+.claude/
+skills-lock.json
+tmp-*
+cookie.txt
+*.tmp.mjs
+
+# upload lokal (hanya development; produksi memakai Cloudinary)
+/public/uploads/*
+!/public/uploads/.gitkeep

@@ -1,7 +1,6 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, Suspense, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -11,6 +10,7 @@ import { format } from 'date-fns';
 import { id as dateFnsId } from 'date-fns/locale';
 import { CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { i18n } from '@/lib/i18n';
 import { vBtnSearch, vField, vInput, vLabel, vValue } from '@/lib/formVariants';
@@ -430,7 +430,6 @@ function PromoScrollRow({ children, prevLabel, nextLabel }: { children: React.Re
   };
   useEffect(() => {
     update();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const scrollBy = (dir: 1 | -1) => rowRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
   return (
@@ -463,6 +462,7 @@ export default function HomeClient({ promos }: { promos: PromoItem[] }) {
   const router   = useRouter();
   const pathname = usePathname();
   const { language } = useLanguage();
+  const { openRegister } = useAuthModal();
   const location = useLocation();
 
   usePageTitle(null);
@@ -1086,9 +1086,9 @@ export default function HomeClient({ promos }: { promos: PromoItem[] }) {
               >
                 {isEN ? 'Search Tickets' : 'Cari Tiket'}
               </button>
-              <Link href="/register" className="px-8 py-3.5 rounded-xl border border-white/25 text-white text-sm font-bold hover:bg-white/10 transition-all">
+              <button type="button" onClick={() => openRegister()} className="px-8 py-3.5 rounded-xl border border-white/25 text-white text-sm font-bold hover:bg-white/10 transition-all">
                 {isEN ? 'Register Free' : 'Daftar Gratis'}
-              </Link>
+              </button>
             </div>
           </div>
         </Reveal>

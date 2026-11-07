@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { hotelAPI } from '@/lib/orbis';
+import { getOrbisHotelBookingIdentifiers, getOrbisHotelProvisionPriceCode } from '@/lib/orbis-hotel-payload';
 import { createSnapTransaction } from '@/lib/midtrans';
 import { bookingStore } from '@/lib/store';
 import { hotelBookSchema, validateBody, apiError } from '@/lib/validate';
 import { getMarkup, applyPercentMarkup } from '@/lib/markup';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { isHotelProviderOutage, resolveHotelApiError } from '@/lib/hotel-errors';
 import { generateBookingId } from '@/lib/security';
 import { withIdempotency, hashPayload, readBodyIdempotencyKey, recordIdempotencyOrderId } from '@/lib/idempotency';
 // verifyHotelPrice DIHAPUS dari book route — provision hanya boleh dipanggil SEKALI
@@ -81,7 +83,7 @@ async function handleBook(args: {
     const normalizedContacts = Array.isArray(contact) ? contact : contact ? [contact] : [];
 
     let effectivePriceCode = String(price_code);
-    let effectiveTotalAmount = Number(total_amount);
+    const effectiveTotalAmount = Number(total_amount);
     let effectiveProvider = provider || '';
 
     // FIX (ROUND 5): SKIP re-provision di book route.
@@ -187,7 +189,6 @@ async function handleBook(args: {
               checkout_date: search_data.checkout_date,
               destination_id: search_data.destination_id,
               hotel_id: String(hotel_code),
-              search_name: '',
               adult: Number(search_data.adult ?? 2),
               child: Number(search_data.child ?? 0),
               child_ages: search_data.child_ages ?? [],
@@ -206,14 +207,21 @@ async function handleBook(args: {
             if (freshCode && freshCode !== effectivePriceCode) {
               console.log(`[HOTEL BOOK] Fresh price_code="${freshCode}" provider="${freshProvider}" — retrying booked...`);
               // Re-provision price_code baru supaya terdaftar di cache vendor
+              let provisionProvider = freshProvider;
               try {
-                await hotelAPI.getCancellationPolicy(String(hotel_code), freshCode);
-              } catch { /* non-fatal */ }
-              await hotelAPI.provision(String(hotel_code), freshCode, freshProvider, true);
+                const policy = await hotelAPI.getCancellationPolicy(String(hotel_code), freshCode);
+                if (typeof policy?.provider === 'string' && policy.provider.trim()) {
+                  provisionProvider = policy.provider;
+                }
+              } catch (warmErr) {
+                console.warn('[HOTEL BOOK] Cancellation policy warmup gagal:', warmErr);
+              }
+              const provisioned = await hotelAPI.provision(String(hotel_code), freshCode, provisionProvider, true);
+              const bookingPriceCode = getOrbisHotelProvisionPriceCode(provisioned, freshCode);
 
-              effectivePriceCode = freshCode;
-              effectiveProvider = freshProvider;
-              orbisPayload = { ...orbisPayload, price_code: freshCode, provider: freshProvider };
+              effectivePriceCode = bookingPriceCode;
+              effectiveProvider = provisionProvider;
+              orbisPayload = { ...orbisPayload, price_code: bookingPriceCode, provider: provisionProvider };
               continue; // retry loop
             }
           } catch (refetchErr: any) {
@@ -232,6 +240,13 @@ async function handleBook(args: {
             { status: 409 }
           );
         }
+        if (isHotelProviderOutage(error)) {
+          const resolved = resolveHotelApiError(error, 'Kamar tidak bisa diproses saat ini. Silakan coba lagi beberapa saat.');
+          return NextResponse.json(
+            { success: false, error: resolved.message, code: resolved.code },
+            { status: resolved.status },
+          );
+        }
         return apiError('Kamar tidak bisa diproses saat ini. Silakan coba lagi beberapa saat.', 502);
       }
     }
@@ -242,7 +257,12 @@ async function handleBook(args: {
     // langkah ini, klaim idempotency berikutnya menemukan Booking yang sudah
     // tersimpan dan mengembalikannya sebagai duplicate, bukan order kedua.
     await recordIdempotencyOrderId(idempotencyKey, orderId);
-    const effectiveOrderNumber = bookingData?.order_number || orderId;
+    const hotelIdentifiers = getOrbisHotelBookingIdentifiers(
+      bookingData,
+      effectiveProvider,
+      `${booker.first_name || ''} ${booker.last_name || ''}`.trim(),
+    );
+    const effectiveOrderNumber = hotelIdentifiers.orderNumber || orderId;
     const snapAmount = Math.round(finalAmount);
 
     let snap = { token: '', redirect_url: '' };
@@ -274,14 +294,17 @@ async function handleBook(args: {
         ...(bookingData ?? {}),
         booker,
         contact: normalizedContacts,
+        issued_name: hotelIdentifiers.issuedName,
+        provider: hotelIdentifiers.provider,
+        pnr: hotelIdentifiers.pnr,
       } as Prisma.InputJsonValue,
       snapToken: snap.token,
       snapRedirectUrl: snap.redirect_url,
       checkinDate: search_data.checkin_date,
       checkoutDate: search_data.checkout_date,
       // Orbis fields — disimpan untuk debugging & refund nanti
-      provider: effectiveProvider || undefined,
-      pnr: bookingData?.order_number || effectiveOrderNumber || undefined,
+      provider: hotelIdentifiers.provider || undefined,
+      pnr: hotelIdentifiers.pnr || effectiveOrderNumber || undefined,
       // Hotel detail fields (§3.5 — dari search_data untuk audit & re-search)
       destinationId: search_data.destination_id || undefined,
       hotelIdOrbis: hotel_code || undefined,
@@ -339,7 +362,7 @@ async function handleBook(args: {
             bookingType: 'hotel',
             hotelName: hotel_name,
             totalAmount: snapAmount,
-            pnr: bookingData?.order_number || effectiveOrderNumber,
+            pnr: hotelIdentifiers.pnr || effectiveOrderNumber,
           },
         });
         console.log('[Hotel Book] Checkout email sent to:', booker.email);

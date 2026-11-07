@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
-import { genVerificationHash } from '@/lib/ticket-verify';
+import { isValidVerificationHash } from '@/lib/ticket-verify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,7 +54,7 @@ export async function GET(
       },
     });
 
-    if (!booking || genVerificationHash(booking.id) !== hash) {
+    if (!booking || !isValidVerificationHash(booking.id, hash)) {
       return NextResponse.json(
         { valid: false, message: 'Dokumen tidak ditemukan atau kode verifikasi tidak cocok.' },
         { status: 404 },

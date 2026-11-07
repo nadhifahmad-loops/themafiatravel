@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
 import { hotelAPI } from '@/lib/orbis';
+import type { OrbisError } from '@/lib/orbis-types';
 import { hotelSearchSchema, validateBody, handleOrbisError } from '@/lib/validate';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
@@ -12,8 +11,6 @@ import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 export const maxDuration = 90;
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-
   const ip = getClientIp(req);
   const rateLimit = await checkRateLimit(`search:${ip}`, 'search');
   if (!rateLimit.allowed) {
@@ -41,29 +38,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Tanggal check-in dan check-out wajib diisi' }, { status: 400 });
     }
 
-    const payload: any = {
+    const payload = {
       checkin_date: v.checkin_date,
       checkout_date: v.checkout_date,
       destination_id: v.destination_id,
-      search_name: v.search_name ?? '',   // FIX: field ini wajib ada (lihat doc 3.4.2.1)
-      adult: Number(v.adult) || 2,
-      child: Number(v.child) || 0,
-      child_ages: v.child_ages?.map((n: string | number) => Number(n)) ?? [],
-      room: Number(v.room) || 1,
-      nationality: v.nationality ?? 'ID',
+      adult: v.adult,
+      child: v.child,
+      child_ages: v.child_ages,
+      room: v.room,
+      nationality: v.nationality,
     };
-
-    // Opsional: jika ada hotel_id (direct search by hotel code, doc 3.4)
-    if (v.hotel_id) {
-      payload.hotel_id = v.hotel_id;
-    }
-
-    console.log('[HOTEL SEARCH] Payload ke Orbis:', payload);
 
     const data = await hotelAPI.search(payload);
 
     return NextResponse.json({ success: true, data });
-  } catch (e: any) {
+  } catch (e: unknown) {
     // FIX: sebelumnya setiap error Orbis (termasuk 4005 "Provider is
     // unavailable" atau destinasi/hotel yang tidak dikenali salah satu
     // vendor) langsung dilempar sebagai HTTP 500, sehingga UI selalu
@@ -73,6 +62,17 @@ export async function POST(req: NextRequest) {
     // pada doc 3.4.1.2 (hotel_ids/city_ids/destination_ids), dan tetap
     // melempar error asli untuk kasus yang benar-benar bug (kredensial,
     // validasi request, dll).
+    if (e instanceof Error) {
+      const error = e as OrbisError;
+      console.error('[HOTEL SEARCH FAILURE]', {
+        code: error.orbisCode ?? null,
+        message: error.message,
+        httpStatus: error.orbisHttpStatus ?? null,
+      });
+    } else {
+      console.error('[HOTEL SEARCH FAILURE]', e);
+    }
+
     return handleOrbisError(e, 'HOTEL SEARCH', { hotel_ids: [], city_ids: [], destination_ids: [] });
   }
 }

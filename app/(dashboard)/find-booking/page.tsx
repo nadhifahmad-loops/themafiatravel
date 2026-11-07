@@ -4,6 +4,7 @@ import { useState, Suspense, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 import { i18n } from '@/lib/i18n';
 import { GUEST_BOOKING_CREDS_KEY, getBookingStatusMeta, getBookingTypeMeta } from '@/lib/booking-meta';
 import { vBtnSearch, vField, vInput, vLabel, vSub, vValue } from '@/lib/formVariants';
@@ -27,6 +28,7 @@ interface BookingResult {
 
 function FindBookingContent() {
   const { language } = useLanguage();
+  const { openLogin } = useAuthModal();
   const t = i18n.findBooking[language];
   const isEN = language === 'EN';
   const searchParams = useSearchParams();
@@ -230,9 +232,9 @@ function FindBookingContent() {
             </div>
             <p className="text-xs text-slate-500 font-semibold truncate">{t.loginInfo}</p>
           </div>
-          <Link href="/login" className="text-xs font-bold text-orange-500 hover:text-orange-600 transition-colors whitespace-nowrap">
+          <button type="button" onClick={() => openLogin()} className="text-xs font-bold text-orange-500 hover:text-orange-600 transition-colors whitespace-nowrap">
             {t.loginLink}
-          </Link>
+          </button>
         </div>
 
         {/* Hasil Pencarian */}

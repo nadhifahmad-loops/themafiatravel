@@ -24,6 +24,17 @@ export const bookingStore = {
     hotelName?: string;
     checkinDate?: string | Date | null;
     checkoutDate?: string | Date | null;
+    destinationId?: string;
+    hotelIdOrbis?: string;
+    roomCount?: number;
+    adultCount?: number;
+    childCount?: number;
+    nationality?: string;
+    mealType?: string;
+    roomDescription?: string;
+    priceCode?: string;
+    originalPrice?: number;
+    nights?: number;
     // Flight / Train
     routeLabel?: string;
     origin?: string;
@@ -58,6 +69,17 @@ export const bookingStore = {
         hotelName: data.hotelName,
         checkinDate: data.checkinDate ? new Date(data.checkinDate) : null,
         checkoutDate: data.checkoutDate ? new Date(data.checkoutDate) : null,
+        destinationId: data.destinationId,
+        hotelIdOrbis: data.hotelIdOrbis,
+        roomCount: data.roomCount,
+        adultCount: data.adultCount,
+        childCount: data.childCount,
+        nationality: data.nationality,
+        mealType: data.mealType,
+        roomDescription: data.roomDescription,
+        priceCode: data.priceCode,
+        originalPrice: data.originalPrice,
+        nights: data.nights,
         // Flight / Train
         routeLabel: data.routeLabel,
         origin: data.origin,

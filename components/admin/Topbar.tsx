@@ -3,10 +3,9 @@
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Menu, ChevronDown, LogOut, User, Settings, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Menu, ChevronDown, LogOut, User, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import Image from 'next/image';
 import LogoutConfirmButton from '@/components/auth/LogoutConfirmButton';
-import LanguageToggle from '@/components/layout/LanguageToggle';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -66,7 +65,6 @@ export default function Topbar({ onMenuClick, collapsed, onToggleCollapse, userN
       </div>
 
       <div className="flex items-center gap-2">
-        <LanguageToggle />
         <div className="relative">
           <button aria-label="Menu profil admin" onClick={() => setProfileOpen(!profileOpen)} className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
             <div className="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
@@ -94,16 +92,9 @@ export default function Topbar({ onMenuClick, collapsed, onToggleCollapse, userN
                 >
                   <User className="w-4 h-4" /> Profil
                 </Link>
-                <Link
-                  href="/admin/settings"
-                  onClick={() => setProfileOpen(false)}
-                  className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-slate-600 hover:bg-orange-50 hover:text-orange-600 transition-colors"
-                >
-                  <Settings className="w-4 h-4" /> Pengaturan
-                </Link>
                 <div className="border-t border-slate-100 mt-1 pt-1">
                   <LogoutConfirmButton
-                    callbackUrl="/login"
+                    callbackUrl="/"
                     className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
                   >
                     <LogOut className="w-4 h-4" /> Keluar

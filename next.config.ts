@@ -4,9 +4,12 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   output: 'standalone',
 
-  allowedDevOrigins: [
-    'sultrier-favoredly-kenneth.ngrok-free.dev',
-  ],
+  // Hanya dev: domain tunnel (mis. ngrok) yang boleh mengakses dev server,
+  // isi lewat env ALLOWED_DEV_ORIGINS=host1,host2
+  allowedDevOrigins: (process.env.ALLOWED_DEV_ORIGINS ?? '')
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean),
 
   reactStrictMode: true,
 

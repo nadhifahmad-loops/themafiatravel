@@ -40,6 +40,7 @@ type CancelResult = {
   received_amount: number | null;
   refund_mode?: 'auto' | 'manual' | 'void';
   status: string;
+  warning?: string;
 };
 
 const REASONS = [
@@ -275,10 +276,13 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
         : quote.refund_fee && typeof quote.refund_fee === 'object'
           ? [quote.refund_fee]
           : [];
+      const resolvedIssuedName = typeof data.identifiers?.issued_name === 'string'
+        ? data.identifiers.issued_name
+        : booking.pnr || booking.orderNumber;
 
       setRefundData({
         order_number: booking.orderNumber,
-        issued_name: booking.pnr || booking.orderNumber,
+        issued_name: resolvedIssuedName,
         provider: booking.provider || 'hotel',
         refund_amount: quoteAmount,
         estimate_source: 'vendor',
@@ -456,6 +460,7 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
         received_amount: refundAmt,
         refund_mode: data.refund_mode,
         status:          raw.status || 'CANCELLED',
+        warning:         typeof data.warning === 'string' ? data.warning : undefined,
       });
 
       setStep(4);
@@ -567,10 +572,12 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
   const productIcon = isFlight ? 'fa-plane' : isTrain ? 'fa-train' : isIns ? 'fa-shield-halved' : 'fa-hotel';
 
   const refundAmount = refundData?.refund_amount ?? null;
+  // charge_rate vendor bisa berupa persentase atau nominal per PNR, bukan
+  // selalu total biaya dalam rupiah. Selisih total dibayar - refund adalah
+  // angka yang konsisten untuk ditampilkan ke pengguna.
   const cancellationFee = refundAmount === null
     ? null
-    : refundData?.refund_fee?.[0]?.charge_rate
-      ?? Math.max(0, Number(booking.totalAmount || 0) - refundAmount);
+    : Math.max(0, Number(booking.totalAmount || 0) - refundAmount);
 
   const reasonLabel = REASONS.find(r => r.key === reason)?.title || reason;
 
@@ -682,7 +689,7 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                   <i className="fa-solid fa-receipt" style={{ color: '#cbd5e1', fontSize: '12px' }}></i> {booking.orderNumber}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
-                  <i className="fa-solid fa-plug" style={{ color: '#cbd5e1', fontSize: '12px' }}></i> {resolveAirlineName(booking.provider || '') || sType}
+                  <i className="fa-solid fa-plug" style={{ color: '#cbd5e1', fontSize: '12px' }}></i> {sType === 'hotel' ? sType : (resolveAirlineName(booking.provider || '') || sType)}
                 </span>
                 {booking.checkinDate && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
@@ -1110,6 +1117,18 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                 </div>
               </div>
             </div>
+
+            {cancelResult.warning && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '20px', padding: '20px 24px', display: 'flex', gap: '14px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <i className="fa-solid fa-triangle-exclamation" style={{ color: '#d97706', fontSize: '16px' }}></i>
+                </div>
+                <div>
+                  <p style={{ fontWeight: 700, color: '#92400e', fontSize: '14px', margin: '0 0 4px' }}>Perlu tindak lanjut</p>
+                  <p style={{ color: '#a16207', fontSize: '13px', margin: 0, lineHeight: 1.6 }}>{cancelResult.warning}</p>
+                </div>
+              </div>
+            )}
 
             {/* Timeline */}
             <div className="card-hover" style={{ background: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)' }}>

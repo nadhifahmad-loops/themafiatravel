@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
+import AccountSidebar from '@/components/account/AccountSidebar';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name: string) {
@@ -516,7 +517,7 @@ export default function AccountPage() {
     : session?.user ? new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : '';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F5FAFC' }}>
+    <div className="min-h-screen bg-brand-bgLight">
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -543,16 +544,14 @@ export default function AccountPage() {
       {toast && <Toast key={`${toast.type}-${toast.text}`} message={toast.text} type={toast.type} onClose={() => setToast(null)} />}
       {showDeleteModal && <DeleteAccountModal onClose={() => setShowDeleteModal(false)} onConfirm={handleDeleteAccount} loading={deleteLoading} userEmail={form.email} isGoogleLogin={isGoogleLogin} />}
 
-      <div style={{ maxWidth: '896px', margin: '0 auto', padding: '112px 16px 64px' }}>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 pt-[64px] md:pt-20">
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+          <AccountSidebar />
+          <div className="flex-1 min-w-0">
 
         {/* ══ PAGE HEADER ══ */}
         <div className="acct-card" style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <button onClick={() => router.back()} style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'white', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = '#F27717'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = '#f1f5f9'}>
-              <i className="fa-solid fa-arrow-left" style={{ fontSize: '13px', color: '#64748b' }}></i>
-            </button>
             <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#1F1D16', margin: 0, letterSpacing: '-0.02em' }}>{ta.title}</h1>
           </div>
           <p style={{ color: '#64748b', fontSize: '14px', margin: '0', fontWeight: 500 }}>{ta.subtitle}</p>
@@ -598,6 +597,18 @@ export default function AccountPage() {
             </div>
             <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
           </Link>
+          <div style={{ height: '1px', background: '#f1f5f9', margin: '0 32px' }} />
+          <Link href="/account/passengers" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.background = '#F5FAFC'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#EFF9FC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <i className="fa-solid fa-address-card" style={{ color: '#338CB2', fontSize: '16px' }}></i>
+              </div>
+              <span style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px' }}>{i18n.savedPassengers[language].title}</span>
+            </div>
+            <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
+          </Link>
         </div>
 
 
@@ -638,6 +649,8 @@ export default function AccountPage() {
         {/* ══ FOOTER ══ */}
         <div className="acct-card" style={{ textAlign: 'center', padding: '16px 0 0' }}>
           <p style={{ fontSize: '12px', color: '#cbd5e1', margin: 0, fontWeight: 600 }}>The Mafia Travel &middot; {memberSince}</p>
+        </div>
+          </div>
         </div>
       </div>
     </div>

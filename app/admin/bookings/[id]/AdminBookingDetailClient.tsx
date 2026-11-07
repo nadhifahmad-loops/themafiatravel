@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plane, Hotel, Train, Shield, CheckCircle, XCircle, Clock, RefreshCw, Banknote } from 'lucide-react';
+import { ArrowLeft, Plane, Hotel, Train, Shield, Clock, RefreshCw, Banknote } from 'lucide-react';
 
 interface Passenger {
   first_name?: string;
@@ -52,17 +52,13 @@ type RescheduleHistoryEntry = {
   changedAt?: string | null;
 };
 
-const STATUS_OPTIONS = [
-  { value: 'pending_payment', label: 'Menunggu Pembayaran', color: 'bg-amber-100 text-amber-700', icon: Clock },
-  { value: 'paid',            label: 'Dibayar',             color: 'bg-blue-100 text-blue-700',   icon: CheckCircle },
-  { value: 'issued',          label: 'Issued',              color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
-  { value: 'payment_failed',  label: 'Pembayaran Gagal',    color: 'bg-red-100 text-red-600',      icon: XCircle },
-  { value: 'cancelled',       label: 'Dibatalkan',          color: 'bg-red-100 text-red-600',      icon: XCircle },
-  { value: 'refund_requested', label: 'Refund Diminta',     color: 'bg-orange-100 text-orange-700', icon: RefreshCw },
-  { value: 'refund',          label: 'Refund Diproses',     color: 'bg-purple-100 text-purple-700', icon: RefreshCw },
-];
-
 const TYPE_ICONS: Record<string, typeof Plane> = { flight: Plane, hotel: Hotel, train: Train, insurance: Shield };
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
 
 function formatCurrency(n: number, currency: string = 'IDR') {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
@@ -74,16 +70,29 @@ function formatDate(d: string | Date) {
 
 export default function AdminBookingDetailClient({ booking }: { booking: Booking }) {
   const router = useRouter();
+  const bookingInfo = objectValue(booking.bookingData) || {};
+  const refundRequest = objectValue(bookingInfo.refundRequest) || {};
+  const savedRefundAmount = typeof refundRequest.amount === 'number' && Number.isFinite(refundRequest.amount)
+    ? refundRequest.amount
+    : null;
   const [status, setStatus] = useState(booking.status);
   const [updating, setUpdating] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
+  const [refundAmount, setRefundAmount] = useState(savedRefundAmount === null ? '' : String(savedRefundAmount));
 
-  const currentStatus = STATUS_OPTIONS.find(s => s.value === status) || { label: status, color: 'bg-slate-100 text-slate-700', icon: Clock };
+  const statusLabels: Record<string, string> = {
+    pending_payment: 'Menunggu pembayaran',
+    paid: 'Sudah dibayar',
+    issued: 'Tiket/voucher terbit',
+    payment_failed: 'Pembayaran gagal',
+    cancelled: 'Dibatalkan',
+    expired: 'Kedaluwarsa',
+    refund_requested: 'Menunggu review refund',
+    refund: 'Refund sedang diproses',
+  };
+  const currentStatusLabel = statusLabels[status] || status;
   const TypeIcon = TYPE_ICONS[booking.bookingType] || Plane;
-  const bookingInfo = booking.bookingData && typeof booking.bookingData === 'object' && !Array.isArray(booking.bookingData)
-    ? booking.bookingData as Record<string, unknown>
-    : {};
   const passengers: Passenger[] = Array.isArray(booking.passengerData) ? booking.passengerData : [];
   const rescheduleHistory: RescheduleHistoryEntry[] = Array.isArray(bookingInfo.rescheduleHistory)
     ? [...bookingInfo.rescheduleHistory].filter((entry): entry is RescheduleHistoryEntry => Boolean(entry && typeof entry === 'object' && !Array.isArray(entry))).reverse()
@@ -92,44 +101,40 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
     ? bookingInfo.flightRefundEstimate as { amount?: number | null; capturedAt?: string; source?: string }
     : null;
 
-  async function handleStatusChange(newStatus: string) {
-    if (newStatus === status || updating) return;
-    setUpdating(true);
-    setMessage('');
-    try {
-      const res = await fetch(`/api/bookings/${booking.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setStatus(newStatus);
-        setMessageType('success');
-        setMessage(`Status berhasil diubah menjadi "${STATUS_OPTIONS.find(s => s.value === newStatus)?.label || newStatus}".`);
-      } else {
-        setMessageType('error');
-        setMessage(json.message || 'Gagal mengupdate status.');
-      }
-    } catch {
-      setMessageType('error');
-      setMessage('Gagal menghubungi server.');
-    } finally {
-      setUpdating(false);
-    }
-  }
-
   async function handleProcessRefund() {
     if (updating) return;
+    if (status !== 'refund_requested') {
+      setMessageType('error');
+      setMessage('Refund hanya dapat diproses dari permintaan yang menunggu review.');
+      return;
+    }
+
+    const amount = Number(refundAmount);
+    if (!refundAmount.trim() || !Number.isFinite(amount) || amount < 0 || amount > booking.totalAmount) {
+      setMessageType('error');
+      setMessage('Masukkan nominal refund yang valid, mulai dari Rp0 sampai total pembayaran.');
+      return;
+    }
+
+    if (!window.confirm(`Konfirmasi pengembalian dana sebesar ${formatCurrency(amount, booking.currency)} kepada pelanggan? Pastikan nominal sudah sesuai bukti vendor.`)) {
+      return;
+    }
+
     setUpdating(true);
     setMessage('');
     try {
-      const res = await fetch(`/api/bookings/${booking.id}/refund-execute`, { method: 'POST' });
+      const res = await fetch(`/api/bookings/${booking.id}/refund-execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      });
       const json = await res.json();
       if (json.success) {
         setStatus('cancelled');
         setMessageType('success');
-        setMessage('Refund berhasil diproses. Booking kini berstatus Dibatalkan.');
+        setMessage(json.data?.noRefund
+          ? 'Permintaan ditutup dengan nominal Rp0. Tidak ada dana yang dikirim.'
+          : 'Refund berhasil dikirim ke Midtrans dan pesanan ditandai dibatalkan.');
         router.refresh();
       } else {
         setMessageType('error');
@@ -182,6 +187,23 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
             <li>Jumlah diterima: <span className="font-bold">{formatCurrency(booking.totalAmount, booking.currency)}</span></li>
           </ul>
         </div>
+      )}
+
+      {status === 'refund_requested' && (
+        <section className="rounded-2xl border border-orange-200 bg-orange-50 p-5 space-y-3">
+          <div className="flex items-start gap-3">
+            <Banknote className="w-5 h-5 mt-0.5 text-orange-700" />
+            <div>
+              <h2 className="font-bold text-orange-950">Permintaan refund menunggu pemeriksaan</h2>
+              <p className="mt-1 text-sm text-orange-900">
+                Cocokkan nominal dengan hasil pembatalan vendor dan bukti pembayaran sebelum mengirim dana.
+              </p>
+              {typeof refundRequest.reason === 'string' && refundRequest.reason && (
+                <p className="mt-2 text-sm text-orange-900"><strong>Alasan pelanggan:</strong> {refundRequest.reason}</p>
+              )}
+            </div>
+          </div>
+        </section>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -250,8 +272,8 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
                 <div className="text-right">
                   <p className="text-[10px] text-slate-400 font-bold tracking-widest uppercase">Total</p>
                   <p className="text-2xl font-black text-white mt-1">{formatCurrency(booking.totalAmount, booking.currency)}</p>
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mt-2 ${currentStatus.color}`}>
-                    <currentStatus.icon className="w-3.5 h-3.5" />{currentStatus.label}
+                  <span className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-white mt-2">
+                    {currentStatusLabel}
                   </span>
                 </div>
               </div>
@@ -322,41 +344,49 @@ export default function AdminBookingDetailClient({ booking }: { booking: Booking
         <div className="space-y-6">
           {/* Status Actions */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-            <h3 className="font-bold text-brand-ink">Ubah Status</h3>
-            <div className="space-y-2">
-              {STATUS_OPTIONS.map(opt => {
-                const isActive = status === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    onClick={() => handleStatusChange(opt.value)}
-                    disabled={isActive || updating}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${
-                      isActive
-                        ? `${opt.color} cursor-default`
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                    } ${updating && !isActive ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <opt.icon className="w-4 h-4" />
-                    {opt.label}
-                    {isActive && <span className="ml-auto text-xs font-bold uppercase">Aktif</span>}
-                  </button>
-                );
-              })}
+            <h3 className="font-bold text-brand-ink">Status pesanan</h3>
+            <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+              <Clock className="w-4 h-4 text-slate-500" />
+              {currentStatusLabel}
             </div>
+            <p className="text-xs leading-relaxed text-slate-500">
+              Status mengikuti pembayaran dan konfirmasi layanan. Jangan mengubahnya manual agar catatan pembayaran, tiket, dan refund tetap sinkron.
+            </p>
           </div>
 
           {/* Quick Actions */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-3">
             <h3 className="font-bold text-brand-ink">Aksi Cepat</h3>
             {status === 'refund_requested' && (
-              <button
-                onClick={handleProcessRefund}
-                disabled={updating}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 transition-all disabled:opacity-50"
-              >
-                <RefreshCw className="w-4 h-4" /> {updating ? 'Memproses...' : 'Proses Refund (Eksekusi Midtrans)'}
-              </button>
+              <div className="space-y-2">
+                <label htmlFor="refund-amount" className="block text-xs font-semibold text-slate-600">
+                  Nominal refund yang sudah diverifikasi
+                </label>
+                <input
+                  id="refund-amount"
+                  type="number"
+                  min="0"
+                  max={booking.totalAmount}
+                  step="1"
+                  value={refundAmount}
+                  onChange={(event) => setRefundAmount(event.target.value)}
+                  readOnly={savedRefundAmount !== null}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-800 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100 read-only:bg-slate-50"
+                  aria-describedby="refund-amount-help"
+                />
+                <p id="refund-amount-help" className="text-xs leading-relaxed text-slate-500">
+                  {savedRefundAmount !== null
+                    ? 'Nominal dari permintaan vendor tersimpan. Periksa kembali bukti vendor sebelum memproses.'
+                    : `Periksa nominal di bukti vendor. Nilai maksimal ${formatCurrency(booking.totalAmount, booking.currency)}.`}
+                </p>
+                <button
+                  onClick={handleProcessRefund}
+                  disabled={updating}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-purple-700 text-white text-sm font-semibold hover:bg-purple-800 transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className="w-4 h-4" /> {updating ? 'Mengirim refund...' : 'Verifikasi dan proses refund'}
+                </button>
+              </div>
             )}
             <Link
               href={`/bookings/${booking.id}`}

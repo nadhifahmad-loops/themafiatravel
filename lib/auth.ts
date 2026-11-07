@@ -42,28 +42,17 @@ export const authOptions: NextAuthOptions = {
         code: { label: 'Code', type: 'text' },
       },
       async authorize(credentials, req) {
-        console.log('[Auth] authorize called', { email: credentials?.email });
         if (!credentials?.email || !credentials?.password) {
-          console.log('[Auth] missing credentials');
           return null;
         }
 
         const email = normalizeEmail(credentials.email);
         const ip = getRequestIp(req?.headers);
-        console.log('[Auth] ip:', ip);
 
         const perAccount = await checkRateLimit(`login:${ip}:${email}`, 'login');
-        console.log('[Auth] perAccount:', perAccount);
-        if (!perAccount.allowed) {
-          console.log('[Auth] rate limited (account)');
-          return null;
-        }
+        if (!perAccount.allowed) return null;
         const perIp = await checkRateLimit(`login-ip:${ip}`, 'loginIp');
-        console.log('[Auth] perIp:', perIp);
-        if (!perIp.allowed) {
-          console.log('[Auth] rate limited (IP)');
-          return null;
-        }
+        if (!perIp.allowed) return null;
 
         const user = await prisma.user.findUnique({
           where: { email },
@@ -78,18 +67,10 @@ export const authOptions: NextAuthOptions = {
             twoFactorBackupCodes: true,
           },
         });
-        console.log('[Auth] user found:', !!user, 'hasPassword:', !!user?.password);
-        if (!user || !user.password) {
-          console.log('[Auth] no user or no password');
-          return null;
-        }
+        if (!user || !user.password) return null;
 
         const valid = await bcrypt.compare(credentials.password, user.password);
-        console.log('[Auth] password valid:', valid, 'inputLen:', credentials.password?.length, 'hashLen:', user.password?.length);
-        if (!valid) {
-          console.log('[Auth] password mismatch');
-          return null;
-        }
+        if (!valid) return null;
 
         if (user.twoFactorEnabled && user.twoFactorSecret) {
           const code = typeof credentials.code === 'string' ? credentials.code : '';
@@ -169,12 +150,7 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider === 'google' && user?.id && user.email) {
         const googleProfile = profile as { email_verified?: unknown } | undefined;
         if (googleProfile?.email_verified === true) {
-          try {
-            await linkGuestBookingsToUser(user.email, user.id);
-          } catch (error) {
-            console.error('[Guest Booking Claim Error]', error);
-            throw error;
-          }
+          await linkGuestBookingsToUser(user.email, user.id);
         }
       }
 

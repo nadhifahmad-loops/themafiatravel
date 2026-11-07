@@ -2,7 +2,6 @@
 import { Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import Link from 'next/link';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
 import CheckoutNavbar from '@/components/layout/CheckoutNavbar';
@@ -16,6 +15,7 @@ import CouponInput from '@/components/checkout/CouponInput';
 import DatePickerField from '@/components/checkout/DatePickerField';
 import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { buildCheckoutCallbackUrl } from '@/lib/checkout-utils';
@@ -41,6 +41,7 @@ function InsuranceCheckoutContent() {
   const isGuest = status !== 'authenticated';
   // Callback agar guest kembali ke halaman checkout ini setelah login/register.
   const checkoutCallbackUrl = buildCheckoutCallbackUrl(pathname, sp.toString());
+  const { openLogin, openRegister } = useAuthModal();
 
   const productCode  = sp.get('product_code') || '';
   const packageId    = sp.get('package') || '1';
@@ -266,7 +267,7 @@ const [discountAmount, setDiscountAmount] = useState(0);
                 <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-sm">?</div>
                 <div>
                   <p className="text-sm font-semibold text-slate-700">Belum punya akun?</p>
-                  <p className="text-xs text-slate-400"><Link href={`/login?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">Masuk</Link> atau <Link href={`/register?callbackUrl=${checkoutCallbackUrl}`} className="text-slate-600 underline">daftar</Link> untuk melihat riwayat polis.</p>
+                  <p className="text-xs text-slate-400"><button type="button" onClick={() => openLogin({ callbackUrl: checkoutCallbackUrl })} className="text-slate-600 underline">Masuk</button> atau <button type="button" onClick={() => openRegister({ callbackUrl: checkoutCallbackUrl })} className="text-slate-600 underline">daftar</button> untuk melihat riwayat polis.</p>
                 </div>
               </div>
             </div>

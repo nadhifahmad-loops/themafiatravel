@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { PAYMENT_WINDOW_HOURS } from '@/lib/payment-window';
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
-const IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === 'true';
+const IS_PRODUCTION = process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === 'true';
 const BASE_URL = IS_PRODUCTION
   ? 'https://app.midtrans.com/snap/v1'
   : 'https://app.sandbox.midtrans.com/snap/v1';

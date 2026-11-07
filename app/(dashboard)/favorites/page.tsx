@@ -19,6 +19,7 @@ import { useToast } from '@/contexts/ToastContext';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import CollectionFormModal from '@/components/favorite/CollectionFormModal';
 import FavoriteRow, { TYPE_META, collectionGradient } from '@/components/favorite/FavoriteRow';
+import AccountSidebar from '@/components/account/AccountSidebar';
 import { airportCity, STATION_COORDS } from '@/lib/geo';
 
 type TypeFilter = 'flight' | 'hotel' | 'train';
@@ -359,8 +360,14 @@ export default function FavoritesPage() {
 
   return (
     <div className="min-h-screen bg-brand-bgLight">
-      <div className="pt-24 pb-16 px-4">
-        <div className="max-w-5xl mx-auto">
+      <div className="pt-[64px] md:pt-20 pb-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-6 lg:gap-8">
+          <AccountSidebar />
+          <div className="flex-1 min-w-0">
+          <div className="mb-5 sm:mb-6">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-brand-ink tracking-tight">{t.title}</h1>
+            <p className="text-sm text-brand-neutral mt-1">{t.subtitle}</p>
+          </div>
           {/* ── SECTION KOLEKSI ── */}
           <section className="pt-2 pb-6">
             <h2 className="text-sm font-black text-slate-800">{tCol.title}</h2>
@@ -640,6 +647,7 @@ export default function FavoritesPage() {
                 </div>
               )}
             </section>
+          </div>
           </div>
         </div>
       </div>

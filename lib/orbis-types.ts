@@ -8,6 +8,20 @@
 export interface OrbisError extends Error {
   orbisCode?: number;
   orbisResponse?: unknown;
+  orbisRequest?: {
+    method: 'POST';
+    url: string;
+    action: string;
+    headers: {
+      Accept: string;
+      'Content-Type': string;
+      action: string;
+      signature: '[REDACTED]';
+    };
+    body: object;
+  };
+  orbisRawResponse?: unknown;
+  orbisHttpStatus?: number;
 }
 
 /** Objek bebas berisi data penyusun payload Orbis (contacts, passengers, booker, dsb). */

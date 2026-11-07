@@ -38,7 +38,11 @@ export function handleOrbisError(error: unknown, context: string, emptyData: unk
   const isHotelWebserviceDown = orbisCode === 9952 || msg.toLowerCase().includes('connection error to hotel webservice');
   if (isHotelWebserviceDown) {
     console.log(`[${context}] Hotel Webservice Orbis tidak dapat dihubungi (code=9952) walau setelah retry.`);
-    return apiError('Layanan pencarian hotel sedang mengalami gangguan koneksi ke vendor. Silakan coba lagi dalam beberapa saat.', 503);
+    return apiError(
+      'Penyedia pencarian hotel sedang mengalami gangguan koneksi. Data pencarian Anda tidak hilang; silakan coba lagi beberapa saat.',
+      503,
+      { code: 'HOTEL_PROVIDER_UNAVAILABLE' },
+    );
   }
 
   const isNotAllowed = orbisCode === 4015 || msg.includes('4015') || msg.toLowerCase().includes('not allowed');
@@ -211,18 +215,52 @@ export const flightBookSchema = z.object({
 });
 
 // ─── Hotel ───────────────────────────────────────────────────────────────────
+const hotelSearchDateSchema = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal harus berformat YYYY-MM-DD')
+  .refine((value) => {
+    const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+    return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+  }, 'Tanggal tidak valid');
+
+// Request examples use JSON numbers, while query-string callers may send the
+// same integer values as strings. Reject blanks, decimals, and other coercions.
+const hotelSearchIntegerSchema = (min: number, max: number) => z.preprocess((value) => {
+  if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return value;
+  return Number(value);
+}, z.number().int().min(min).max(max));
+
 export const hotelSearchSchema = z.object({
   destination_id: z.string().min(1, 'destination_id wajib diisi'),
-  checkin_date: z.string().min(1, 'Tanggal check-in wajib diisi'),
-  checkout_date: z.string().min(1, 'Tanggal check-out wajib diisi'),
-  search_name: z.string().optional(),
-  hotel_id: z.string().optional(),
-  adult: z.union([z.number(), z.string()]).optional(),
-  child: z.union([z.number(), z.string()]).optional(),
-  child_ages: z.array(z.number()).optional(),
-  room: z.union([z.number(), z.string()]).optional(),
-  nationality: z.string().optional(),
-}).passthrough();
+  checkin_date: hotelSearchDateSchema,
+  checkout_date: hotelSearchDateSchema,
+  adult: hotelSearchIntegerSchema(1, 9),
+  child: hotelSearchIntegerSchema(0, 9),
+  child_ages: z.array(z.number().int().min(0).max(12)),
+  room: hotelSearchIntegerSchema(1, 9),
+  nationality: z.string().regex(/^[a-z]{2}$/i, 'nationality harus berupa kode negara 2 huruf').transform((value) => value.toUpperCase()),
+}).passthrough().superRefine((value, ctx) => {
+  if (value.checkout_date <= value.checkin_date) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['checkout_date'],
+      message: 'Tanggal check-out harus setelah tanggal check-in',
+    });
+  }
+  if (value.room > value.adult) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['room'],
+      message: 'Jumlah kamar tidak boleh melebihi jumlah dewasa',
+    });
+  }
+  if (value.child_ages.length !== value.child) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['child_ages'],
+      message: 'Jumlah umur anak harus sama dengan jumlah anak',
+    });
+  }
+});
 
 // Hotel Search Detail (§3.5) — mirip search tapi hotel_id wajib
 export const hotelDetailSchema = z.object({
@@ -230,7 +268,6 @@ export const hotelDetailSchema = z.object({
   checkout_date: z.string().min(1, 'Tanggal check-out wajib diisi'),
   destination_id: z.string().min(1, 'destination_id wajib diisi'),
   hotel_id: z.string().min(1, 'hotel_id wajib diisi untuk detail hotel'),
-  search_name: z.string().optional(),
   adult: z.union([z.number(), z.string()]).optional(),
   child: z.union([z.number(), z.string()]).optional(),
   child_ages: z.array(z.number()).optional(),
@@ -268,7 +305,6 @@ export const hotelBookSchema = z.object({
     room: z.union([z.number(), z.string()]).optional(),
     nationality: z.string().optional(),
     hotel_id: z.string().optional(),
-    search_name: z.string().optional(),
     // Hotel detail fields — dari frontend checkout
     meal_type: z.string().optional(),
     room_description: z.string().optional(),
@@ -302,6 +338,7 @@ export const trainBookSchema = z.object({
   schedules: z.array(trainScheduleSchema).min(1, 'Data jadwal wajib diisi'),
   booker: bookerSchema.passthrough(),
   total_amount: z.number().positive('total_amount harus positif'),
+  base_amount: z.number().positive('base_amount harus positif').optional(),
   origin: z.string().optional(),
   destination: z.string().optional(),
   departure_date: z.string().optional(),

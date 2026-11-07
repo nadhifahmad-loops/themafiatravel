@@ -13,7 +13,7 @@ export const metadata = {
 export default async function AuditLogsPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
-    redirect('/login?callbackUrl=/admin/audit-logs&error=Unauthorized');
+    redirect('/admin/login?callbackUrl=/admin/audit-logs&error=Unauthorized');
   }
 
   const admin = await prisma.user.findUnique({
@@ -22,7 +22,7 @@ export default async function AuditLogsPage() {
   });
 
   if (!admin || admin.role !== 'admin') {
-    redirect('/login?callbackUrl=/admin/audit-logs&error=Unauthorized');
+    redirect('/admin/login?callbackUrl=/admin/audit-logs&error=Unauthorized');
   }
 
   const [logs, actions] = await Promise.all([

@@ -7,9 +7,9 @@ import { bookingStore } from '@/lib/store';
 // GET /api/train/booking?orderId=xxx  → ambil dari DB + detail KAI
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const userId = session?.user?.id;
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const userId = session.user.id!;
   const { searchParams } = new URL(req.url);
   const orderId = searchParams.get('orderId');
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       // Ambil booking spesifik
       const booking = await bookingStore.findById(orderId);
       if (!booking) return NextResponse.json({ success: false, error: 'Booking tidak ditemukan' }, { status: 404 });
-      if (booking.userId && booking.userId !== userId) return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      if (booking.userId !== userId) return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
 
       // Ambil detail live dari KAI jika ada orderNumber
       let kaiDetail: any = null;

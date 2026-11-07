@@ -279,9 +279,10 @@ function getAircraftName(code: string | undefined) {
 }
 
 function getCarrierDisplayName(code: string | undefined, name: string | undefined, fallback: string, language: string) {
-  const mappedName = CARRIER_CODE_TO_AIRLINE[code || ''];
+  const mappedName = CARRIER_CODE_TO_AIRLINE[(code || '').toUpperCase()];
   if (mappedName) return mappedName;
   const cleanName = name?.trim();
+  if (cleanName && /air\s*asia/i.test(cleanName)) return 'AirAsia';
   if (cleanName && !/^[A-Z0-9]{2,3}[-\s]?\d+$/i.test(cleanName)) return cleanName;
   return fallback || (language === 'EN' ? 'Airline' : 'Maskapai');
 }

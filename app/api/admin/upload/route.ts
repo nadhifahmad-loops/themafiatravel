@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { saveUploadedImage, StorageNotConfiguredError } from '@/lib/upload-storage';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
@@ -37,14 +36,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Ukuran file maksimal 5MB.' }, { status: 400 });
   }
 
-  const ext = file.name.split('.').pop() || 'jpg';
-  const filename = `banner-${Date.now()}.${ext}`;
-  const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'banners');
-  const filepath = path.join(uploadDir, filename);
-
-  await mkdir(uploadDir, { recursive: true });
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(filepath, buffer);
-
-  return NextResponse.json({ url: `/uploads/banners/${filename}` });
+  try {
+    const url = await saveUploadedImage(file, 'banners');
+    return NextResponse.json({ url });
+  } catch (error) {
+    if (error instanceof StorageNotConfiguredError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
+    console.error('[Admin Upload Error]', error);
+    return NextResponse.json({ error: 'Gagal mengunggah gambar.' }, { status: 500 });
+  }
 }

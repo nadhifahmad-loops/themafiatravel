@@ -1,17 +1,21 @@
-// lib/ticket-verify.ts
-// Fungsi verifikasi dokumen yang aman dipakai di server maupun client.
-// Tidak boleh mengimpor modul Node apa pun.
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 export function genVerificationHash(id: string): string {
-  let hash = 0;
-  const str = `TMT-VERIFY-${id}-2024`;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
+  const secret = process.env.TICKET_VERIFY_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!secret || Buffer.byteLength(secret) < 32) {
+    throw new Error('Ticket verification requires a secret with at least 32 bytes.');
   }
-  const hex = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
-  return `TMT-${hex.slice(0, 4)}-${hex.slice(4)}`;
+
+  const signature = createHmac('sha256', secret).update(`TMT-VERIFY-${id}`).digest('hex').slice(0, 32);
+  return `TMT-${signature.toUpperCase()}`;
+}
+
+export function isValidVerificationHash(id: string, candidate: string): boolean {
+  if (!/^TMT-[A-F0-9]{32}$/i.test(candidate)) return false;
+
+  const expected = Buffer.from(genVerificationHash(id), 'ascii');
+  const received = Buffer.from(candidate.toUpperCase(), 'ascii');
+  return timingSafeEqual(expected, received);
 }
 
 export function verifyUrl(id: string): string {

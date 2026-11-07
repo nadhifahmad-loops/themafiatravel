@@ -8,9 +8,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
-// Nilai saja (bukan komponen) — LoginModalContext hanya meng-import tipe dari
+// Nilai saja (bukan komponen) — AuthModalContext hanya meng-import tipe dari
 // file ini, jadi tidak ada circular dependency runtime.
-import { PENDING_FAVORITE_KEY } from '@/contexts/LoginModalContext';
+import { PENDING_FAVORITE_KEY } from '@/contexts/AuthModalContext';
 
 export type FavoriteItem = {
   id: string;
@@ -132,7 +132,7 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
 
   // Aksi "simpan favorit" yang ditunda: guest menekan bookmark → popup login →
   // login sukses → halaman reload dengan sesi terautentikasi → payload dari
-  // sessionStorage (lihat LoginModalContext) dieksekusi DI SINI, sekali saja.
+  // sessionStorage (lihat AuthModalContext) dieksekusi DI SINI, sekali saja.
   // Payload dihapus dari storage lebih dulu agar aman terhadap double-invoke
   // StrictMode dan navigasi ganda.
   useEffect(() => {

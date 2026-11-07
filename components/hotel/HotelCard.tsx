@@ -1,29 +1,54 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { i18n } from '@/lib/i18n';
+import { i18n, tpl } from '@/lib/i18n';
 import FavoriteButton from '@/components/favorite/FavoriteButton';
 
-function getLowestPrice(prices: any): { price: number; provider: string; mealType: string } {
-  if (!prices) return { price: 0, provider: '', mealType: '' };
+type HotelPriceOffer = {
+  price?: number | string;
+  prices?: { price_total?: number | string };
+  meal_type?: string;
+};
+
+type HotelSearchContext = {
+  checkin_date?: string;
+  checkout_date?: string;
+  destination_id?: string;
+  adult?: number;
+  child?: number;
+  child_ages?: number[];
+  room?: number;
+  nationality?: string;
+  q?: string;
+};
+
+function getLowestPrice(prices: unknown): { price: number; mealType: string; offers: number } {
+  if (!prices || typeof prices !== 'object' || Array.isArray(prices)) {
+    return { price: 0, mealType: '', offers: 0 };
+  }
+
   let lowest = Infinity;
-  let lowestProvider = '';
   let lowestMeal = '';
-  Object.entries(prices).forEach(([provider, p]: any) => {
-    if (p?.price && p.price < lowest) {
-      lowest = p.price;
-      lowestProvider = provider;
-      lowestMeal = p.meal_type || '';
+  let offers = 0;
+
+  Object.values(prices as Record<string, HotelPriceOffer>).forEach((offer) => {
+    const price = Number(offer?.price ?? offer?.prices?.price_total);
+    if (Number.isFinite(price) && price > 0) {
+      offers += 1;
+      if (price < lowest) {
+        lowest = price;
+        lowestMeal = offer.meal_type || '';
+      }
     }
   });
-  return { price: lowest === Infinity ? 0 : lowest, provider: lowestProvider, mealType: lowestMeal };
+
+  return { price: lowest === Infinity ? 0 : lowest, mealType: lowestMeal, offers };
 }
 
 function Stars({ n }: { n: number }) {
   if (!n || n < 1) return null;
   return (
-    <div className="flex gap-0.5">
+    <div className="flex gap-0.5" aria-label={`${n} bintang`}>
       {Array.from({ length: 5 }, (_, i) => (
         <i key={i} className={`fa-solid fa-star text-[11px] ${i < n ? 'text-amber-400' : 'text-slate-200'}`}></i>
       ))}
@@ -35,21 +60,21 @@ function PriceTag({ price, nights }: { price: number; nights: number }) {
   const { language } = useLanguage();
   const t = i18n.hotelSearch[language];
   const tc = i18n.common[language];
-  if (price <= 0) return <span className="text-sm text-slate-400 italic">Harga tidak tersedia</span>;
+  if (price <= 0) return <span className="text-sm italic text-slate-400">{t.priceUnavailable}</span>;
   const perNight = Math.round(price / nights);
   return (
-    <div className="flex flex-col items-end">
+    <div className="flex flex-col sm:items-end">
       <span className="font-black text-orange-600 text-2xl leading-none">
         IDR {perNight.toLocaleString('id-ID')}
       </span>
-      <span className="text-[10px] text-slate-400 font-semibold mt-0.5">{t.perNight} · {nights} {tc.night}</span>
+      <span className="text-[10px] text-slate-400 font-semibold mt-1">{t.perNight} · {nights} {tc.night}</span>
     </div>
   );
 }
 
-function HotelMetaChip({ icon, label, accent }: { icon: string; label: string; accent: string }) {
+function MetaChip({ icon, label, accent }: { icon: string; label: string; accent: string }) {
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${accent}`}>
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-full border ${accent}`}>
       <i className={`fa-solid ${icon} text-[9px]`} />
       {label}
     </span>
@@ -57,8 +82,8 @@ function HotelMetaChip({ icon, label, accent }: { icon: string; label: string; a
 }
 
 export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest = false }: {
-  hotel: any;
-  searchParams: any;
+  hotel: Record<string, unknown>;
+  searchParams?: HotelSearchContext | null;
   nights?: number;
   isCheapest?: boolean;
 }) {
@@ -66,41 +91,28 @@ export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest 
   const t = i18n.hotelSearch[language];
   const tc = i18n.common[language];
   const router = useRouter();
-  const [imgErr, setImgErr] = useState(false);
-  const { price, mealType } = getLowestPrice(hotel.prices);
-  const image = !imgErr ? hotel.images?.[0]?.url : null;
-  const rating = parseInt(hotel.rating) || 0;
-  const isWithMeal = mealType && mealType !== 'ROOM ONLY' && mealType !== 'RO' && mealType !== 'Room Only';
-  const isConfirmed = hotel.state === 'confirm';
-
-  // Metadata display untuk kartu favorit (bintang, skor, jumlah ulasan).
-  const rawRating = Number(hotel.rating) || 0;
-  const favStars =
-    Number((hotel as any).star_rating ?? (hotel as any).stars ?? (hotel as any).star ?? 0) ||
-    (rawRating > 0 && rawRating <= 5 ? Math.round(rawRating) : 0);
-  const favScore =
-    Number((hotel as any).review_score ?? (hotel as any).score ?? (hotel as any).guest_rating ?? 0) ||
-    (rawRating > 5 ? rawRating : 0);
-  const favReviews =
-    Number(
-      (hotel as any).review_count ??
-        (hotel as any).reviews ??
-        (hotel as any).total_reviews ??
-        (hotel as any).rating_count ??
-        0
-    ) || 0;
+  const { price, mealType, offers } = getLowestPrice(hotel.prices);
+  const rating = Number(hotel.rating) || 0;
+  const stars = rating > 0 && rating <= 5 ? Math.round(rating) : 0;
+  const isWithMeal = Boolean(mealType) && !/^(RO|ROOM ONLY)$/i.test(mealType.trim());
+  const location = hotel.location as { city?: unknown; country_code?: unknown } | undefined;
+  const city = typeof hotel.city === 'string' ? hotel.city : typeof location?.city === 'string' ? location.city : '';
+  const countryCode = typeof location?.country_code === 'string' ? location.country_code : '';
+  const destination = [city, countryCode].filter(Boolean).join(', ') || searchParams?.q || '';
+  const rawName = hotel.name ?? hotel.hotel_name;
+  const hotelName = typeof rawName === 'string' && rawName.trim() ? rawName : 'Hotel';
 
   const handleSelect = () => {
     const q = new URLSearchParams({
-      hotel_id: hotel.id,
-      checkin_date: searchParams.checkin_date,
-      checkout_date: searchParams.checkout_date,
-      destination_id: searchParams.destination_id,
-      adult: String(searchParams.adult),
-      child: String(searchParams.child || 0),
-      room: String(searchParams.room),
-      nationality: searchParams.nationality || 'ID',
-      search_name: searchParams.search_name || '',
+      hotel_id: String(hotel.id ?? ''),
+      checkin_date: searchParams?.checkin_date || '',
+      checkout_date: searchParams?.checkout_date || '',
+      destination_id: searchParams?.destination_id || '',
+      adult: String(searchParams?.adult ?? 2),
+      child: String(searchParams?.child ?? 0),
+      child_ages: JSON.stringify(searchParams?.child_ages || []),
+      room: String(searchParams?.room ?? 1),
+      nationality: searchParams?.nationality || 'ID',
     }).toString();
     router.push(`/hotel/${hotel.id}?${q}`);
   };
@@ -108,134 +120,100 @@ export default function HotelCard({ hotel, searchParams, nights = 1, isCheapest 
   return (
     <article
       onClick={handleSelect}
-      className={`bg-white rounded-2xl border shadow-card overflow-hidden flex flex-col md:flex-row hover:shadow-lg transition-all duration-300 group cursor-pointer ${isCheapest ? 'border-orange-400 ring-2 ring-orange-400/30' : 'border-slate-100 hover:border-orange-200'}`}
+      className={`group cursor-pointer overflow-hidden rounded-2xl border bg-white shadow-card transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${
+        isCheapest ? 'border-orange-300' : 'border-slate-100 hover:border-slate-200'
+      }`}
     >
-      {/* ── IMAGE ── */}
-      <div className="md:w-[260px] lg:w-[280px] relative h-[220px] md:h-auto bg-slate-100 overflow-hidden shrink-0">
-        {image ? (
-          <img
-            src={image}
-            alt={hotel.name}
-            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            onError={() => setImgErr(true)}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-3 bg-gradient-to-br from-slate-100 to-slate-50">
-            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm">
-              <i className="fa-solid fa-hotel text-3xl text-slate-300"></i>
+      <div className="flex flex-col gap-4 p-4 sm:p-5 md:flex-row md:items-center md:gap-5">
+        {/* Identitas hotel */}
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-500 ring-1 ring-orange-100">
+            <i className="fa-solid fa-hotel text-base" aria-hidden="true" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="truncate text-base font-black leading-tight text-brand-ink sm:text-lg">
+                    {hotelName}
+                  </h3>
+                  {isCheapest && (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                      <i className="fa-solid fa-tags text-[9px]" aria-hidden="true" />
+                      {t.cheapest}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Stars n={stars} />
+                  {rating > 0 && (
+                    <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">
+                      {rating.toFixed(1)}
+                    </span>
+                  )}
+                  {destination && (
+                    <span className="flex min-w-0 items-center gap-1 text-[11px] font-medium text-slate-400">
+                      <i className="fa-solid fa-location-dot text-[9px] text-slate-300" aria-hidden="true" />
+                      <span className="truncate">{destination}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <FavoriteButton
+                entityType="hotel"
+                dedupeKey={`hotel:${hotel.id}:${searchParams?.checkin_date || ''}`}
+                title={hotelName}
+                subtitle={destination}
+                price={price || null}
+                searchParams={{
+                  ...(searchParams || {}),
+                  _stars: stars,
+                  _score: rating > 5 ? rating : 0,
+                }}
+                className="shrink-0"
+                iconSize="sm"
+              />
             </div>
-            <span className="text-xs text-slate-400 font-semibold">Foto tidak tersedia</span>
-          </div>
-        )}
-        {/* Overlay gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
 
-        {/* Meal badge */}
-        {isWithMeal && (
-          <div className="absolute top-3 left-3">
-            <span className="bg-emerald-500 text-white text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
-              <i className="fa-solid fa-utensils text-[8px]"></i> Sarapan
-            </span>
-          </div>
-        )}
-
-        {/* Status badge — digeser ke kiri agar tidak bertabrakan dengan ikon favorit */}
-        {!isConfirmed && (
-          <div className="absolute top-3 right-14 z-10">
-            <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">Draft</span>
-          </div>
-        )}
-
-        {/* Simpan hotel ini sebagai favorit */}
-        <FavoriteButton
-          entityType="hotel"
-          dedupeKey={`hotel:${hotel.id}:${searchParams?.checkin_date || ''}`}
-          title={hotel.name || 'Hotel'}
-          subtitle={hotel.location?.city || searchParams?.q || ''}
-          price={price || null}
-          image={hotel.images?.[0]?.url || null}
-          searchParams={{
-            ...(searchParams || {}),
-            _stars: favStars,
-            _score: favScore,
-            _reviews: favReviews,
-            _country: hotel.location?.country_code || '',
-          }}
-          className="absolute top-3 right-3 z-10"
-        />
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-          <div className="rounded-full bg-white/90 backdrop-blur-sm px-3 py-1 text-[10px] font-black text-slate-700 shadow-sm">
-            {hotel.location?.city || 'Lokasi populer'}
-          </div>
-          {isCheapest && (
-            <div className="rounded-full bg-orange-500/90 px-3 py-1 text-[10px] font-black text-white shadow-sm">
-              Best Price
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── CONTENT ── */}
-      <div className="flex-1 p-5 flex flex-col min-w-0">
-
-        {/* Top: name + location */}
-        <div className="mb-3">
-          <div className="flex items-start justify-between gap-3 mb-1.5">
-            <h3 className="font-black text-brand-ink text-lg leading-tight truncate flex-1">
-              {hotel.name}
-            </h3>
-            {rating > 0 && (
-              <span className="shrink-0 bg-blue-600 text-white text-xs font-black px-2 py-0.5 rounded-lg">
-                {rating}.0
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Stars n={rating} />
-            {hotel.location?.city && (
-              <span className="flex items-center gap-1 text-xs text-slate-400 font-medium">
-                <i className="fa-solid fa-location-dot text-slate-300 text-[10px]"></i>
-                {[hotel.location.city, hotel.location.country_code].filter(Boolean).join(', ')}
-              </span>
+            {(isWithMeal || offers > 1) && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {isWithMeal && (
+                  <MetaChip icon="fa-utensils" label={t.includesMeal} accent="text-emerald-700 bg-emerald-50 border-emerald-100" />
+                )}
+                {offers > 1 && (
+                  <MetaChip icon="fa-tags" label={tpl(t.offersCount, { count: offers })} accent="text-violet-700 bg-violet-50 border-violet-100" />
+                )}
+              </div>
             )}
           </div>
         </div>
 
-        {/* Amenity chips */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          <HotelMetaChip icon="fa-wifi" label="Wi-Fi" accent="text-slate-600 bg-slate-50 border-slate-100" />
-          {isWithMeal && (
-            <HotelMetaChip icon="fa-mug-hot" label="Sarapan" accent="text-emerald-600 bg-emerald-50 border-emerald-100" />
-          )}
-          {isConfirmed && (
-            <HotelMetaChip icon="fa-shield-check" label="Terverifikasi" accent="text-blue-600 bg-blue-50 border-blue-100" />
-          )}
-          {Object.keys(hotel.prices || {}).length > 1 && (
-            <HotelMetaChip icon="fa-tags" label={`${Object.keys(hotel.prices).length} penawaran`} accent="text-purple-600 bg-purple-50 border-purple-100" />
-          )}
-        </div>
-
-        {/* Bottom: price + CTA */}
-        <div className="mt-auto flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 pt-4 border-t border-slate-100">
-          <div className="flex flex-col">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Mulai dari</span>
+        {/* Harga + CTA */}
+        <div className="flex shrink-0 flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between md:w-56 md:flex-col md:items-end md:border-l md:border-t-0 md:pl-5 md:pt-0">
+          <div className="min-w-0 md:text-right">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              {t.landing.startingFrom}
+            </p>
             <PriceTag price={price} nights={nights} />
             {price > 0 && (
-              <span className="text-[10px] text-slate-400 mt-0.5">
+              <p className="mt-1 text-[10px] text-slate-400">
                 {tc.total} IDR {price.toLocaleString('id-ID')} · {nights} {tc.night}
-              </span>
+              </p>
             )}
           </div>
+
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               handleSelect();
             }}
-            className="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm px-5 py-2.5 rounded-xl transition-all active:scale-95 shadow-sm shadow-orange-200 group-hover:shadow-md group-hover:shadow-orange-200 shrink-0 flex items-center justify-center gap-2"
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-orange-700 active:scale-95 sm:w-auto"
           >
             {t.selectHotel}
-            <i className="fa-solid fa-arrow-right text-xs"></i>
+            <i className="fa-solid fa-arrow-right text-xs" aria-hidden="true" />
           </button>
         </div>
       </div>

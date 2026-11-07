@@ -5,8 +5,6 @@ import { usePathname } from 'next/navigation';
 import UnifiedNavbar from '@/components/layout/UnifiedNavbar';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { FavoritesProvider } from '@/contexts/FavoritesContext';
-import { LoginModalProvider } from '@/contexts/LoginModalContext';
-import LoginModal from '@/components/auth/LoginModal';
 import { i18n } from '@/lib/i18n';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -34,18 +32,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   );
 
   return (
-    <LoginModalProvider>
-      <FavoritesProvider>
-        <div className="min-h-screen bg-brand-bgLight">
-          <UnifiedNavbar user={session?.user || null} />
-          {/* UnifiedNavbar sengaja tidak dirender di /checkout (lihat UnifiedNavbar),
-              tapi halaman checkout punya header sticky milik sendiri (CheckoutNavbar)
-              yang ikut alur dokumen. Padding 36px yang selama ini tetap ditanam
-              menyisakan ruang kosong nyangkut di atas — jadi dibatalkan di sana. */}
-          <main className={pathname?.includes('/checkout') ? '' : 'pt-[36px]'}>{children}</main>
-        </div>
-        <LoginModal />
-      </FavoritesProvider>
-    </LoginModalProvider>
+    <FavoritesProvider>
+      <div className="min-h-screen bg-brand-bgLight">
+        <UnifiedNavbar user={session?.user || null} />
+        {/* UnifiedNavbar sengaja tidak dirender di /checkout (lihat UnifiedNavbar),
+            tapi halaman checkout punya header sticky milik sendiri (CheckoutNavbar)
+            yang ikut alur dokumen. Padding 36px yang selama ini tetap ditanam
+            menyisakan ruang kosong nyangkut di atas — jadi dibatalkan di sana. */}
+        <main className={pathname?.includes('/checkout') ? '' : 'pt-[36px]'}>{children}</main>
+      </div>
+    </FavoritesProvider>
   );
 }

@@ -29,6 +29,16 @@ export const PROVIDER_ID_TO_LABEL: Record<string, string> = Object.fromEntries(
   FLIGHT_PROVIDERS.map(p => [p.id, p.label])
 );
 
+// Kelompok maskapai yang tampil sebagai satu entitas di UI walaupun
+// memiliki beberapa kode IATA (mis. Indonesia AirAsia, AirAsia X, Thai AirAsia).
+export const AIRLINE_GROUPS: Record<string, string[]> = {
+  AirAsia: ['AK', 'QZ', 'XT', 'D7', 'FD', 'XJ', 'Z2', 'KT', 'I5'],
+};
+
+const GROUPED_CARRIER_CODES: Record<string, string> = Object.fromEntries(
+  Object.entries(AIRLINE_GROUPS).flatMap(([name, codes]) => codes.map(code => [code, name]))
+);
+
 // Map agar mudah lookup nama maskapai dari carrier code
 export const CARRIER_CODE_TO_AIRLINE: Record<string, string> = {
   // Indonesia
@@ -37,14 +47,14 @@ export const CARRIER_CODE_TO_AIRLINE: Record<string, string> = {
   ID: 'Batik Air',
   GA: 'Garuda Indonesia',
   AK: 'AirAsia',
-  QZ: 'AirAsia Indonesia',
-  XT: 'AirAsia X',
+  QZ: 'AirAsia',
+  XT: 'AirAsia',
   SJ: 'Sriwijaya Air',
   IN: 'Nam Air',
   IW: 'Wings Air',
   BI: 'Brunei Airlines',
   // Malaysia
-  OD: 'AirAsia X Malaysia',
+  OD: 'Batik Air Malaysia',
   MH: 'Malaysia Airlines',
   FY: 'Firefly',
   // Singapore
@@ -54,13 +64,17 @@ export const CARRIER_CODE_TO_AIRLINE: Record<string, string> = {
   TG: 'Thai Airways',
   SL: 'Thai Lion Air',
   WE: 'Thai VietJet Air',
-  FD: 'Thai AirAsia',
+  FD: 'AirAsia',
+  D7: 'AirAsia',
+  XJ: 'AirAsia',
+  KT: 'AirAsia',
+  I5: 'AirAsia',
   // Vietnam
   VJ: 'VietJet Air',
   VN: 'Vietnam Airlines',
   // Philippines
   PR: 'Philippine Airlines',
-  Z2: 'Philippines AirAsia',
+  Z2: 'AirAsia',
   '5J': 'Cebu Pacific',
   // Hong Kong
   CX: 'Cathay Pacific',
@@ -115,3 +129,13 @@ export const CARRIER_CODE_TO_AIRLINE: Record<string, string> = {
   VA: 'Virgin Australia',
   JQ: 'Jetstar Airways',
 };
+
+// Nama tampilan kanonik untuk sebuah carrier code.
+export function getAirlineDisplayName(code?: string, fallbackName?: string): string {
+  const upper = (code || '').trim().toUpperCase();
+  if (upper && GROUPED_CARRIER_CODES[upper]) return GROUPED_CARRIER_CODES[upper];
+  if (upper && CARRIER_CODE_TO_AIRLINE[upper]) return CARRIER_CODE_TO_AIRLINE[upper];
+  const cleanName = fallbackName?.replace(/\s+/g, ' ').trim();
+  if (cleanName && /air\s*asia/i.test(cleanName)) return 'AirAsia';
+  return cleanName || upper || 'Maskapai';
+}

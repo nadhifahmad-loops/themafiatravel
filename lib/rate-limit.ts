@@ -14,6 +14,10 @@ function getRedisClient(): Redis | null {
     redisClient = new Redis(redisUrl, {
       maxRetriesPerRequest: 1,
       enableReadyCheck: false,
+      // Gagal cepat saat Redis tidak terjangkau agar request tidak tertahan;
+      // limiter otomatis turun ke in-memory (insuranceLimiter).
+      connectTimeout: 2000,
+      commandTimeout: 500,
     });
     redisClient.on('error', () => {
       redisClient = null;
@@ -38,6 +42,9 @@ function getLimiter(key: string, points: number, duration: number): RateLimiterA
         points,
         duration,
         keyPrefix: `ratelimit:${key}`,
+        // Jika Redis down / URL salah, jangan blokir semua request (login,
+        // search, booking): turun ke limiter in-memory per instance.
+        insuranceLimiter: new RateLimiterMemory({ points, duration }),
       }));
     } else {
       rateLimiters.set(key, new RateLimiterMemory({
@@ -70,10 +77,18 @@ export async function checkRateLimit(
     await limiter.consume(identifier);
     return { allowed: true };
   } catch (rejRes) {
+    // `rate-limiter-flexible` melempar RateLimiterRes saat kuota habis, tetapi
+    // melempar Error biasa saat store (Redis) bermasalah. Error infrastruktur
+    // tidak boleh dianggap "kena limit" — kalau tidak, satu gangguan Redis
+    // menolak seluruh login/search/booking.
+    if (rejRes instanceof Error) {
+      console.error('[RateLimit] Store error, request dilewatkan:', rejRes.message);
+      return { allowed: true };
+    }
     const msBeforeNext = (rejRes as { msBeforeNext?: number })?.msBeforeNext ?? 0;
     return {
       allowed: false,
-      retryAfter: Math.ceil(msBeforeNext / 1000),
+      retryAfter: Math.max(1, Math.ceil(msBeforeNext / 1000)),
     };
   }
 }

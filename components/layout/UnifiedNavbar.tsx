@@ -8,6 +8,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import LogoutConfirmButton from '@/components/auth/LogoutConfirmButton';
 import LanguageToggle from '@/components/layout/LanguageToggle';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 
 interface Props {
   user: {
@@ -23,7 +24,9 @@ interface Props {
 export default function UnifiedNavbar({ user, showLanguageToggle = true, transparent = false }: Props) {
   const pathname = usePathname();
   const { language, setLanguage } = useLanguage();
+  const { openLogin, openRegister } = useAuthModal();
   const t = i18n.navbar[language];
+  const accountMenu = i18n.accountSidebar[language];
   const languageToggleVisible =
     showLanguageToggle &&
     !pathname?.includes('/checkout') &&
@@ -61,7 +64,6 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true, transpa
     { label: t.trains, href: '/train/search', icon: 'fa-train' },
     { label: t.insurance, href: '/insurance/search', icon: 'fa-shield-halved' },
     { label: t.discount, href: '/discount', icon: 'fa-percent' },
-    { label: t.aboutUs, href: '/about', icon: 'fa-building' },
   ];
 
   const isActive = (href: string) => pathname?.startsWith(href);
@@ -98,21 +100,25 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true, transpa
               <p className="text-xs text-white/75 truncate mt-0.5">{user.email}</p>
             </div>
             <div className="p-1.5">
-              <Link href="/account" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-brand-blue/5 transition-all group">
-                <i className="fa-solid fa-user text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
-                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{t.account}</span>
-              </Link>
               <Link href="/bookings" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-brand-blue/5 transition-all group">
                 <i className="fa-solid fa-ticket text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
-                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{t.myBookings}</span>
-              </Link>
-              <Link href="/favorites" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-brand-blue/5 transition-all group">
-                <i className="fa-solid fa-bookmark text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
-                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{t.favorites}</span>
+                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{accountMenu.bookings}</span>
               </Link>
               <Link href="/refunds" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-brand-blue/5 transition-all group">
                 <i className="fa-solid fa-rotate-left text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
-                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{t.refund}</span>
+                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{accountMenu.refunds}</span>
+              </Link>
+              <Link href="/favorites" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-brand-blue/5 transition-all group">
+                <i className="fa-solid fa-bookmark text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
+                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{accountMenu.favorites}</span>
+              </Link>
+              <Link href="/account/passengers" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-brand-blue/5 transition-all group">
+                <i className="fa-solid fa-address-card text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
+                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{accountMenu.passengers}</span>
+              </Link>
+              <Link href="/account" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-brand-blue/5 transition-all group">
+                <i className="fa-solid fa-user text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
+                <span className="text-[13px] font-medium text-slate-600 group-hover:text-slate-900 transition-colors">{accountMenu.profile}</span>
               </Link>
             </div>
             <div className="border-t border-slate-100 p-1.5">
@@ -132,12 +138,13 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true, transpa
     </>
   ) : (
     <>
-      <Link href="/register" className={`hidden md:flex items-center px-4 py-1.5 rounded-full text-[12px] font-bold border transition-all duration-200 ${overHero ? 'border-white/50 text-white hover:bg-white/10 hover:border-white' : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-brand-blue'}`}>
-        {t.register}
-      </Link>
-      <Link href="/login" className="hidden md:flex items-center px-4 py-1.5 rounded-full text-[12px] font-bold bg-brand-blue hover:bg-[#28708f] text-white shadow-sm shadow-brand-blue/20 transition-all duration-200">
+      <button type="button" onClick={() => openLogin()} className="hidden md:flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[12px] font-bold bg-brand-blue hover:bg-[#28708f] text-white shadow-sm shadow-brand-blue/20 transition-all duration-200">
         {t.login}
-      </Link>
+        <i className="fa-solid fa-right-to-bracket text-[10px] leading-none"></i>
+      </button>
+      <button type="button" onClick={() => openRegister()} className={`hidden md:flex items-center px-4 py-1.5 rounded-full text-[12px] font-bold border transition-all duration-200 ${overHero ? 'border-white/50 text-white hover:bg-white/10 hover:border-white' : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-brand-blue'}`}>
+        {t.register}
+      </button>
     </>
   );
 
@@ -164,7 +171,9 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true, transpa
             {/* RIGHT: UTILITY CLUSTER */}
             <div className="flex items-center gap-3 md:gap-4">
               {languageToggleVisible && (
-                <LanguageToggle className="hidden lg:inline-flex" overHero={overHero} />
+                <div className="hidden xl:block">
+                  <LanguageToggle overHero={overHero} />
+                </div>
               )}
 
               {!user && (
@@ -301,21 +310,25 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true, transpa
 
               {/* Menu items */}
               <div className="rounded-2xl border border-slate-100 bg-white overflow-hidden divide-y divide-slate-100 shadow-sm">
-                <Link href="/account" onClick={() => setIsMobileOpen(false)} className="flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group">
-                  <i className="fa-solid fa-user-gear text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
-                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{t.account}</span>
-                </Link>
                 <Link href="/bookings" onClick={() => setIsMobileOpen(false)} className="flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group">
                   <i className="fa-solid fa-ticket text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
-                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{t.myBookings}</span>
-                </Link>
-                <Link href="/favorites" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${isActive('/favorites') ? 'bg-brand-blue/5' : ''}`}>
-                  <i className="fa-solid fa-bookmark text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
-                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{t.favorites}</span>
+                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{accountMenu.bookings}</span>
                 </Link>
                 <Link href="/refunds" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${isActive('/refunds') ? 'bg-brand-blue/5' : ''}`}>
                   <i className="fa-solid fa-rotate-left text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
-                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{t.refund}</span>
+                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{accountMenu.refunds}</span>
+                </Link>
+                <Link href="/favorites" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${isActive('/favorites') ? 'bg-brand-blue/5' : ''}`}>
+                  <i className="fa-solid fa-bookmark text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
+                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{accountMenu.favorites}</span>
+                </Link>
+                <Link href="/account/passengers" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${isActive('/account/passengers') ? 'bg-brand-blue/5' : ''}`}>
+                  <i className="fa-solid fa-address-card text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
+                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{accountMenu.passengers}</span>
+                </Link>
+                <Link href="/account" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${pathname === '/account' ? 'bg-brand-blue/5' : ''}`}>
+                  <i className="fa-solid fa-user-gear text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
+                  <span className="text-[13px] font-bold text-slate-600 group-hover:text-brand-blue transition-colors">{accountMenu.profile}</span>
                 </Link>
                 <Link href="/help" onClick={() => setIsMobileOpen(false)} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-brand-blue/5 transition-all group ${isActive('/help') ? 'bg-brand-blue/5' : ''}`}>
                   <i className="fa-solid fa-circle-question text-slate-400 group-hover:text-brand-blue text-sm w-5 text-center"></i>
@@ -420,12 +433,13 @@ export default function UnifiedNavbar({ user, showLanguageToggle = true, transpa
               )}
 
               <div className="mt-6 space-y-3">
-                <Link href="/login" className="w-full flex items-center justify-center py-3.5 rounded-full bg-brand-blue text-white text-sm font-bold shadow-lg shadow-brand-blue/20">
+                <button type="button" onClick={() => { setIsMobileOpen(false); openLogin(); }} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full bg-brand-blue text-white text-sm font-bold shadow-lg shadow-brand-blue/20">
                   {t.login}
-                </Link>
-                <Link href="/register" className="w-full flex items-center justify-center py-3.5 rounded-full border border-slate-200 text-sm font-bold text-slate-700">
+                  <i className="fa-solid fa-right-to-bracket text-xs leading-none"></i>
+                </button>
+                <button type="button" onClick={() => { setIsMobileOpen(false); openRegister(); }} className="w-full flex items-center justify-center py-3.5 rounded-full border border-slate-200 text-sm font-bold text-slate-700">
                   {t.register}
-                </Link>
+                </button>
               </div>
             </div>
           )}

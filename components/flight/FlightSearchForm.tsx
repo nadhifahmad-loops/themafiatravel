@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { id as dateFnsId, enUS as dateFnsEnUS } from 'date-fns/locale';
 import { CalendarField, CalendarRangeField } from '@/components/common/CalendarField';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -49,7 +49,7 @@ function parseLocalDate(value: string): Date {
 
 declare global { interface Window { mafiaAirports?: Airport[]; } }
 
-function FloatingPanel({ triggerRef, open, onClose, children, className, align = 'left', dropUp = false }: {
+function FloatingPanel({ triggerRef, open, onClose, children, className, align = 'left', dropUp = false, maxWidth = 360 }: {
   triggerRef: React.RefObject<HTMLDivElement | null>;
   open: boolean;
   onClose: () => void;
@@ -57,6 +57,7 @@ function FloatingPanel({ triggerRef, open, onClose, children, className, align =
   className?: string;
   align?: 'left' | 'right';
   dropUp?: boolean;
+  maxWidth?: number;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
@@ -106,7 +107,7 @@ function FloatingPanel({ triggerRef, open, onClose, children, className, align =
         left: align === 'right' ? undefined : pos.left,
         right: align === 'right' ? `calc(100vw - ${pos.left}px)` : undefined,
         width: pos.width,
-        maxWidth: 360,
+        maxWidth,
       }}
     >
       {children}
@@ -297,7 +298,12 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
   const [swapRotation, setSwapRotation] = useState(0);
 
   const [startDate, setStartDate] = useState<Date | null>(() => initialData?.departure_date ? parseLocalDate(initialData.departure_date) : new Date(new Date().setDate(new Date().getDate() + 1)));
-  const [endDate, setEndDate] = useState<Date | null>(() => initialData?.return_date ? parseLocalDate(initialData.return_date) : null);
+  const [endDate, setEndDate] = useState<Date | null>(() => {
+    if (initialData?.return_date) return parseLocalDate(initialData.return_date);
+    if (initialDirection !== 'RT') return null;
+    const dep = initialData?.departure_date ? parseLocalDate(initialData.departure_date) : new Date(new Date().setDate(new Date().getDate() + 1));
+    return addDays(dep, 1);
+  });
   const [tomorrow] = useState(() => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+1); return d; });
   const [legs, setLegs] = useState<Leg[]>(() => {
     if (initialData?.routes && initialData.routes.length >= 2) return initialData.routes.map(r => ({ origin: r.origin || 'CGK', destination: r.destination || 'DPS', date: r.departure_date ? parseLocalDate(r.departure_date) : new Date(new Date().setDate(new Date().getDate()+1)) }));
@@ -358,7 +364,12 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
   const toggleGroup = (
     <div className={`grid w-full grid-cols-3 gap-1 rounded-lg p-1 sm:flex sm:w-fit ${vToggle(variant)}`}>
       {([ { id: 'OW', l: tf.oneWay }, { id: 'RT', l: tf.roundTrip }, { id: 'Multi', l: tf.multiCity } ] as Array<{ id: SearchPayload['direction']; l: string }>).map(t => (
-        <button key={t.id} type="button" aria-pressed={tripType === t.id} onClick={() => { setTripType(t.id); setErrors({}); }} className={`min-h-11 px-2 sm:px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${tripType === t.id ? 'bg-sky-600 text-white shadow-sm' : vToggleIdle(variant)}`}>{t.l}</button>
+        <button key={t.id} type="button" aria-pressed={tripType === t.id} onClick={() => {
+          setTripType(t.id);
+          setErrors({});
+          // Mode pulang-pergi: isi tanggal pulang H+1 agar range tidak kosong.
+          if (t.id === 'RT' && startDate && (!endDate || endDate <= startDate)) setEndDate(addDays(startDate, 1));
+        }} className={`min-h-11 px-2 sm:px-4 rounded-md text-xs font-semibold transition-all whitespace-nowrap ${tripType === t.id ? 'bg-sky-600 text-white shadow-sm' : vToggleIdle(variant)}`}>{t.l}</button>
       ))}
     </div>
   );
@@ -382,7 +393,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
         </div>
         <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${openPax ? 'rotate-180' : ''} ${vChevron(variant)}`}></i>
       </div>
-      <FloatingPanel triggerRef={paxRef} open={openPax} onClose={() => setOpenPax(false)} align="right" className={`w-full lg:w-[320px] rounded-xl p-3 flex flex-col gap-3 ${vPanel(variant)}`}>
+      <FloatingPanel triggerRef={paxRef} open={openPax} onClose={() => setOpenPax(false)} align="right" maxWidth={480} className={`w-full rounded-xl p-3 flex flex-col gap-3 ${vPanel(variant)}`}>
         {[
           { k: 'adult', l: tf.adult, desc: tf.adultAge, i: 'fa-user' },
           { k: 'child', l: tf.child, desc: tf.childAge, i: 'fa-child' },
@@ -460,7 +471,7 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
         <h3 className={vFormHeading(variant)}>{tf.tripTypeLabel}</h3>
         {toggleGroup}
       </section>
-      <div className="grid grid-cols-2 gap-3 lg:w-[360px] xl:w-[400px]">
+      <div className="grid grid-cols-2 gap-3 lg:w-[460px] lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] xl:w-[520px]">
         {travelerControl}
         {cabinControl}
       </div>
@@ -560,6 +571,12 @@ export default function FlightSearchForm({ onSearch, loading, initialData, varia
               startDate={startDate}
               endDate={endDate}
               onChange={(r) => { clearError('departure'); clearError('return'); clearError('returnAfter'); setStartDate(r.from); setEndDate(r.to); }}
+              onOpenChange={(o) => {
+                // Ditutup tanpa memilih tanggal pulang: pakai default H+1.
+                if (!o && tripType === 'RT' && startDate) {
+                  setEndDate(prev => (prev && prev > startDate ? prev : addDays(startDate, 1)));
+                }
+              }}
               minDate={tomorrow}
               defaultMonth={startDate ?? tomorrow}
             >

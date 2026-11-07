@@ -14,7 +14,7 @@ import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { useFavorites, type FavoriteItem, type NewFavorite } from '@/contexts/FavoritesContext';
-import { useLoginModal } from '@/contexts/LoginModalContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 import { useToast } from '@/contexts/ToastContext';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
@@ -65,7 +65,7 @@ export default function FavoriteButton({
     assignToCollection,
     createCollection,
   } = useFavorites();
-  const { openLogin } = useLoginModal();
+  const { openLogin } = useAuthModal();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -96,7 +96,7 @@ export default function FavoriteButton({
     if (status !== 'authenticated') {
       // Guest: popup login di tempat. Payload disimpan sebagai aksi pending
       // dan dijalankan FavoritesProvider setelah login sukses (lihat LoginModal).
-      openLogin(payload);
+      openLogin({ pendingFavorite: payload });
       return;
     }
 

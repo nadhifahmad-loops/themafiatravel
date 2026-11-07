@@ -337,7 +337,7 @@ export default function ReschedulePanel({
         </div>
         <h2 className="text-sm font-bold text-brand-ink">Belum ada penerbangan yang bisa di-reschedule</h2>
         <p className="mx-auto mt-1.5 max-w-lg text-xs leading-relaxed text-slate-500">
-          Perubahan jadwal online saat ini tersedia untuk tiket pesawat aktif. Untuk kereta, hotel, dan asuransi, silakan hubungi layanan pelanggan.
+          Perubahan jadwal online hanya tersedia untuk tiket pesawat aktif. Hotel tidak memiliki fitur reschedule pada API vendor; gunakan pembatalan/refund atau hubungi layanan pelanggan.
         </p>
       </div>
     );
@@ -345,6 +345,12 @@ export default function ReschedulePanel({
 
   return (
     <div className="space-y-4">
+      <div className="flex items-start gap-2.5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-relaxed text-blue-800">
+        <Plane className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+        <p>
+          Reschedule online hanya berlaku untuk tiket pesawat. Hotel tidak memiliki endpoint reschedule pada API vendor, sehingga perubahan tanggal mengikuti kebijakan pembatalan lalu pesan ulang.
+        </p>
+      </div>
       {eligibleBookings.map((booking) => {
         const providerBookings = getAirlineProviderBookings(booking);
         const departed = hasFlightDeparted(booking);

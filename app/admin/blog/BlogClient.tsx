@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Pen, Plus, Pencil, Trash2, X, Upload, ToggleLeft, ToggleRight, ArrowUp, ArrowDown, Eye, EyeOff, Image } from 'lucide-react';
+import { Pen, Plus, Pencil, Trash2, X, Upload, ToggleLeft, ToggleRight, ArrowUp, ArrowDown, Eye, EyeOff, Image as ImageIcon } from 'lucide-react';
 import ImageNext from 'next/image';
 
 interface BlogPost {
@@ -247,7 +247,7 @@ export default function BlogClient() {
                           </div>
                         ) : (
                           <div className="w-16 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-                            <Image className="w-4 h-4 text-slate-400" />
+                            <ImageIcon className="w-4 h-4 text-slate-400" />
                           </div>
                         )}
                         <div className="min-w-0">

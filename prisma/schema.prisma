@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -13,29 +13,30 @@ datasource db {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  password      String?
-  phone         String?
-  image         String?
-  role          String    @default("user")
-  twoFactorEnabled Boolean @default(false)
-  twoFactorSecret String?
-  twoFactorBackupCodes Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-    accounts      Account[]
-    sessions      Session[]
-    bookings      Booking[]
-    passwordResets PasswordReset[]
-    adminNotificationReads AdminNotificationRead[]
-    customerNotificationReads CustomerNotificationRead[]
-    couponUsages   CouponUsage[]
-    favorites      Favorite[]
-    collections    Collection[]
-  }
+  id                        String                     @id @default(cuid())
+  name                      String?
+  email                     String                     @unique
+  emailVerified             DateTime?
+  password                  String?
+  phone                     String?
+  image                     String?
+  role                      String                     @default("user")
+  twoFactorEnabled          Boolean                    @default(false)
+  twoFactorSecret           String?
+  twoFactorBackupCodes      Json?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  accounts                  Account[]
+  sessions                  Session[]
+  bookings                  Booking[]
+  passwordResets            PasswordReset[]
+  adminNotificationReads    AdminNotificationRead[]
+  customerNotificationReads CustomerNotificationRead[]
+  couponUsages              CouponUsage[]
+  favorites                 Favorite[]
+  collections               Collection[]
+  savedPassengers           SavedPassenger[]
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COLLECTIONS (pengelompok favorit milik user — menghapus koleksi TIDAK
@@ -43,7 +44,7 @@ model User {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Collection {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   userId     String
   name       String
   coverImage String? // cover kustom pilihan user (null = gradasi default)
@@ -85,6 +86,35 @@ model Favorite {
   @@unique([userId, entityType, dedupeKey])
   @@index([userId])
   @@index([collectionId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAVED PASSENGERS (data penumpang tersimpan milik user login)
+// Hanya dipakai untuk mengisi form checkout pesawat/kereta. Dikelola dari
+// halaman akun; checkout tidak menyimpan data secara otomatis.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SavedPassenger {
+  id                  String    @id @default(cuid())
+  userId              String
+  title               String
+  firstName           String
+  lastName            String
+  birthDate           DateTime  @db.Date
+  gender              String?
+  nationalityCode     String    @default("ID")
+  // 'ktp' | 'passport' | 'sim' | 'other'
+  identityType        String
+  identityNumber      String
+  identityExpDate     DateTime? @db.Date
+  identityCountryCode String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, identityType, identityNumber])
 }
 
 model Account {
@@ -132,83 +162,83 @@ model OrbisSession {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Booking {
-  id              String   @id                    // Format: TMT-FLT-xxx / TMT-HTL-xxx / ...
-  
+  id String @id // Format: TMT-FLT-xxx / TMT-HTL-xxx / ...
+
   // ✅ PERBAIKAN: userId dan relasi user dibuat opsional (?) agar Guest bisa booking
-  userId          String?
-  
-  orderNumber     String   @unique                // Nomor order dari Orbis (misal: AL.210421452972)
-  bookingType     String                          // flight | hotel | train | insurance
-  status          String   @default("pending_payment")
+  userId String?
+
+  orderNumber String @unique // Nomor order dari Orbis (misal: AL.210421452972)
+  bookingType String // flight | hotel | train | insurance
+  status      String @default("pending_payment")
 
   // ── Keuangan ──────────────────────────────────────────────────────────────
-  totalAmount     Float
-  currency        String   @default("IDR")
-  couponId        Int?
-  couponCode      String?
-  discountAmount  Float    @default(0)
+  totalAmount    Float
+  currency       String  @default("IDR")
+  couponId       Int?
+  couponCode     String?
+  discountAmount Float   @default(0)
 
   // ── Midtrans Payment ──────────────────────────────────────────────────────
-  snapToken       String?                         // Token Snap Midtrans
-  snapRedirectUrl String?                         // URL redirect halaman bayar Midtrans
-  paymentId       String?                         // ID transaksi Midtrans (dari webhook)
-  paymentStatus   String?                         // Status dari Midtrans (settlement, pending, dll)
-  paymentType     String?                         // Metode bayar (credit_card, gopay, dll)
-  paidAt          DateTime?                       // Timestamp lunas
+  snapToken       String? // Token Snap Midtrans
+  snapRedirectUrl String? // URL redirect halaman bayar Midtrans
+  paymentId       String? // ID transaksi Midtrans (dari webhook)
+  paymentStatus   String? // Status dari Midtrans (settlement, pending, dll)
+  paymentType     String? // Metode bayar (credit_card, gopay, dll)
+  paidAt          DateTime? // Timestamp lunas
 
   // ── Data Generik (Hotel) ──────────────────────────────────────────────────
-  hotelName       String?                         // Nama hotel — khusus bookingType=hotel
-  checkinDate     DateTime?                       // Tanggal check-in hotel
-  checkoutDate    DateTime?                       // Tanggal check-out hotel
+  hotelName    String? // Nama hotel — khusus bookingType=hotel
+  checkinDate  DateTime? // Tanggal check-in hotel
+  checkoutDate DateTime? // Tanggal check-out hotel
 
   // ── Data Hotel Detail (§3.5 — dari search_data saat booking) ──────────────
-  destinationId   String?                         // Destination code (misal: "SG7355")
-  hotelIdOrbis    String?                         // Orbis hotel ID (misal: "2252")
-  roomCount       Int?                            // Jumlah kamar yang dipesan
-  adultCount      Int?                            // Jumlah dewasa
-  childCount      Int?                            // Jumlah anak
-  nationality     String?                         // Kode negara tamu (misal: "ID", "SG")
-  mealType        String?                         // Tipe meal: "Room Only", "Breakfast", dll
-  roomDescription String?                         // Nama tipe kamar (misal: "Deluxe Room")
-  priceCode       String?                         // Orbis price_code untuk cancel/refund
-  originalPrice   Float?                          // Harga sebelum markup (audit trail)
-  nights          Int?                            // Jumlah malam menginap
+  destinationId   String? // Destination code (misal: "SG7355")
+  hotelIdOrbis    String? // Orbis hotel ID (misal: "2252")
+  roomCount       Int? // Jumlah kamar yang dipesan
+  adultCount      Int? // Jumlah dewasa
+  childCount      Int? // Jumlah anak
+  nationality     String? // Kode negara tamu (misal: "ID", "SG")
+  mealType        String? // Tipe meal: "Room Only", "Breakfast", dll
+  roomDescription String? // Nama tipe kamar (misal: "Deluxe Room")
+  priceCode       String? // Orbis price_code untuk cancel/refund
+  originalPrice   Float? // Harga sebelum markup (audit trail)
+  nights          Int? // Jumlah malam menginap
 
   // ── Data Penerbangan & Kereta ─────────────────────────────────────────────
-  routeLabel      String?                         // Label rute: "CGK → SUB" (flight/train)
-  origin          String?                         // Kode bandara/stasiun asal  (misal: "CGK")
-  destination     String?                         // Kode bandara/stasiun tujuan (misal: "SUB")
-  departureDate   DateTime?                       // Tanggal + jam keberangkatan
-  flightNumber    String?                         // Nomor penerbangan (misal: "QG 123")
-  airlineName     String?                         // Nama maskapai (misal: "Citilink")
+  routeLabel    String? // Label rute: "CGK → SUB" (flight/train)
+  origin        String? // Kode bandara/stasiun asal  (misal: "CGK")
+  destination   String? // Kode bandara/stasiun tujuan (misal: "SUB")
+  departureDate DateTime? // Tanggal + jam keberangkatan
+  flightNumber  String? // Nomor penerbangan (misal: "QG 123")
+  airlineName   String? // Nama maskapai (misal: "Citilink")
 
   // ── Data Orbis ────────────────────────────────────────────────────────────
-  pnr             String?                         // PNR maskapai / kode booking Orbis
-  provider        String?                         // Provider Orbis (citilink, garuda, sia, dll)
+  pnr      String? // PNR maskapai / kode booking Orbis
+  provider String? // Provider Orbis (citilink, garuda, sia, dll)
 
   // ── Data JSON (fleksibel) ─────────────────────────────────────────────────
-  passengerData   Json?                           // Array data penumpang lengkap
-  bookingData     Json?                           // Full response dari commit_booking Orbis
+  passengerData Json? // Array data penumpang lengkap
+  bookingData   Json? // Full response dari commit_booking Orbis
 
   // ── Pembatalan ────────────────────────────────────────────────────────────
-  cancelledAt     DateTime?                       // Timestamp saat dibatalkan
-  cancelReason    String?                         // Alasan pembatalan (teks bebas)
-  cancelType      String?                         // 'void' | 'refund'
+  cancelledAt  DateTime? // Timestamp saat dibatalkan
+  cancelReason String? // Alasan pembatalan (teks bebas)
+  cancelType   String? // 'void' | 'refund'
 
   // ── Timestamps ────────────────────────────────────────────────────────────
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // ── Relations ─────────────────────────────────────────────────────────────
-  
+
   // ✅ PERBAIKAN: User diberi tanda tanya (?)
   // FIX (Bug #5): sebelumnya relasi ini tidak punya `onDelete`, padahal komentar di
   // app/api/user/delete/route.ts mengasumsikan cascade delete akan terjadi otomatis.
   // Karena `userId` opsional, hapus user seharusnya melepas kepemilikan booking
   // (bukan menghapus booking-nya — riwayat transaksi harus tetap ada untuk audit/pajak),
   // jadi dipakai SetNull, bukan Cascade.
-  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  payments        Payment[]
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payments Payment[]
 
   // ── Indexes ───────────────────────────────────────────────────────────────
   @@index([userId])
@@ -223,22 +253,22 @@ model Booking {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Payment {
-  id               String   @id @default(cuid())
-  bookingId        String                         // FK ke Booking.id
-  orderId          String   @unique               // order_id yang dikirim ke Midtrans
+  id               String    @id @default(cuid())
+  bookingId        String // FK ke Booking.id
+  orderId          String    @unique // order_id yang dikirim ke Midtrans
   amount           Float
-  currency         String   @default("IDR")
-  status           String   @default("pending")   // pending | settlement | deny | cancel | expire
-  paymentType      String?                        // credit_card | gopay | shopeepay | va | dll
+  currency         String    @default("IDR")
+  status           String    @default("pending") // pending | settlement | deny | cancel | expire
+  paymentType      String? // credit_card | gopay | shopeepay | va | dll
   snapToken        String?
   snapRedirectUrl  String?
-  midtransResponse Json?                          // Full notification body dari Midtrans webhook
+  midtransResponse Json? // Full notification body dari Midtrans webhook
   paidAt           DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   // ── Relations ─────────────────────────────────────────────────────────────
-  booking          Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
 }
@@ -249,17 +279,17 @@ model Payment {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model MarkupSetting {
-  key              String   @id                    // e.g. "default"
-  flight           Float    @default(50000)        // Rp flat per pax
-  flight_type      String   @default("flat")       // "flat" atau "percent"
-  hotel            Float    @default(10)           // % dari harga kamar
-  hotel_type       String   @default("percent")    // "flat" atau "percent"
-  train            Float    @default(15000)        // Rp flat per tiket
-  train_type       String   @default("flat")       // "flat" atau "percent"
-  insurance        Float    @default(5)            // % dari premi
-  insurance_type   String   @default("percent")    // "flat" atau "percent"
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  key            String   @id // e.g. "default"
+  flight         Float    @default(50000) // Rp flat per pax
+  flight_type    String   @default("flat") // "flat" atau "percent"
+  hotel          Float    @default(10) // % dari harga kamar
+  hotel_type     String   @default("percent") // "flat" atau "percent"
+  train          Float    @default(15000) // Rp flat per tiket
+  train_type     String   @default("flat") // "flat" atau "percent"
+  insurance      Float    @default(5) // % dari premi
+  insurance_type String   @default("percent") // "flat" atau "percent"
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -267,16 +297,16 @@ model MarkupSetting {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model OtpVerification {
-  id           String   @id @default(cuid())
-  userId       String
-  phone        String                            // Nomor telepon yang akan diverifikasi
-  code         String                            // Kode OTP 6 digit
-  purpose      String   @default("phone_change") // phone_change, dll
-  attempts     Int      @default(0)              // Jumlah percobaan verifikasi
-  maxAttempts  Int      @default(5)
-  verified     Boolean  @default(false)
-  expiresAt    DateTime                          // OTP expired (5 menit)
-  createdAt    DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  phone       String // Nomor telepon yang akan diverifikasi
+  code        String // Kode OTP 6 digit
+  purpose     String   @default("phone_change") // phone_change, dll
+  attempts    Int      @default(0) // Jumlah percobaan verifikasi
+  maxAttempts Int      @default(5)
+  verified    Boolean  @default(false)
+  expiresAt   DateTime // OTP expired (5 menit)
+  createdAt   DateTime @default(now())
 
   @@index([userId, purpose])
 }
@@ -286,13 +316,13 @@ model OtpVerification {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model EmailVerification {
-  id           String   @id @default(cuid())
-  userId       String
-  newEmail     String                            // Email baru yang akan diverifikasi
-  token        String   @unique                  // Token unik untuk link verifikasi
-  verified     Boolean  @default(false)
-  expiresAt    DateTime                          // Token expired (1 jam)
-  createdAt    DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  newEmail  String // Email baru yang akan diverifikasi
+  token     String   @unique // Token unik untuk link verifikasi
+  verified  Boolean  @default(false)
+  expiresAt DateTime // Token expired (1 jam)
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([token])
@@ -305,9 +335,9 @@ model EmailVerification {
 model PasswordReset {
   id        String   @id @default(cuid())
   userId    String
-  token     String   @unique                      // Token unik untuk link reset
-  used      Boolean  @default(false)              // Sudah dipakai / dinonaktifkan
-  expiresAt DateTime                              // Token expired (1 jam)
+  token     String   @unique // Token unik untuk link reset
+  used      Boolean  @default(false) // Sudah dipakai / dinonaktifkan
+  expiresAt DateTime // Token expired (1 jam)
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -322,10 +352,10 @@ model PasswordReset {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model AdminNotificationRead {
-  id        String   @id @default(cuid())
-  userId    String
-  key       String                                // key notifikasi yang sudah dibaca
-  readAt    DateTime @default(now())
+  id     String   @id @default(cuid())
+  userId String
+  key    String // key notifikasi yang sudah dibaca
+  readAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -340,10 +370,10 @@ model AdminNotificationRead {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model CustomerNotificationRead {
-  id        String   @id @default(cuid())
-  userId    String
-  key       String
-  readAt    DateTime @default(now())
+  id     String   @id @default(cuid())
+  userId String
+  key    String
+  readAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -359,14 +389,14 @@ model CustomerNotificationRead {
 
 model AuditLog {
   id         String   @id @default(cuid())
-  adminId    String                             // ID admin yang melakukan aksi
-  adminEmail String                             // Snapshot email admin (tahan hapus)
-  action     String                             // user.role.update | user.delete | markup.update | ...
-  entityType String                             // user | markupSetting | ...
+  adminId    String // ID admin yang melakukan aksi
+  adminEmail String // Snapshot email admin (tahan hapus)
+  action     String // user.role.update | user.delete | markup.update | ...
+  entityType String // user | markupSetting | ...
   entityId   String?
-  before     Json?                              // Snapshot data sebelum aksi
-  after      Json?                              // Snapshot data sesudah aksi
-  metadata   Json?                              // Info tambahan (nama target, dll)
+  before     Json? // Snapshot data sebelum aksi
+  after      Json? // Snapshot data sesudah aksi
+  metadata   Json? // Info tambahan (nama target, dll)
   ip         String?
   createdAt  DateTime @default(now())
 
@@ -383,25 +413,25 @@ model AuditLog {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Coupon {
-  id              Int       @id @default(autoincrement())
-  code            String    @unique                    // Kode unik kupon (misal: HOTELBARU12)
-  name            String                               // Nama tampilan kupon
-  description     String?                              // Deskripsi singkat
-  type            String                               // 'percentage' | 'fixed'
-  value           Float                                // Nilai diskon (% atau Rp)
-  category        String   @default("all")             // all | flight | hotel | train | insurance | transfer | activity
-  minOrderAmount  Float    @default(0)                 // Minimum total belanja untuk pakai kupon
-  maxDiscount     Float?                               // Batas maksimal diskon (untuk tipe percentage)
-  maxUsage        Int?                                 // Batas total pemakaian kupon (null = unlimited)
-  usedCount       Int      @default(0)                 // Sudah dipakai berapa kali
-  isActive        Boolean  @default(true)              // Aktif atau tidak
-  isFeatured      Boolean  @default(false)             // Tampilkan di banner utama
-  startDate       DateTime?                            // Mulai berlaku
-  endDate         DateTime?                            // Berakhir berlaku
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             Int       @id @default(autoincrement())
+  code           String    @unique // Kode unik kupon (misal: HOTELBARU12)
+  name           String // Nama tampilan kupon
+  description    String? // Deskripsi singkat
+  type           String // 'percentage' | 'fixed'
+  value          Float // Nilai diskon (% atau Rp)
+  category       String    @default("all") // all | flight | hotel | train | insurance | transfer | activity
+  minOrderAmount Float     @default(0) // Minimum total belanja untuk pakai kupon
+  maxDiscount    Float? // Batas maksimal diskon (untuk tipe percentage)
+  maxUsage       Int? // Batas total pemakaian kupon (null = unlimited)
+  usedCount      Int       @default(0) // Sudah dipakai berapa kali
+  isActive       Boolean   @default(true) // Aktif atau tidak
+  isFeatured     Boolean   @default(false) // Tampilkan di banner utama
+  startDate      DateTime? // Mulai berlaku
+  endDate        DateTime? // Berakhir berlaku
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  usages          CouponUsage[]
+  usages CouponUsage[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -409,14 +439,14 @@ model Coupon {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model CouponUsage {
-  id              Int       @id @default(autoincrement())
-  couponId        Int
-  userId          String
-  bookingId       String?
-  usedAt          DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  couponId  Int
+  userId    String
+  bookingId String?
+  usedAt    DateTime @default(now())
 
-  coupon          Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([couponId, userId])
   @@index([couponId])
@@ -438,11 +468,11 @@ model SiteSetting {
 
 model Banner {
   id        Int      @id @default(autoincrement())
-  title     String                               // Judul banner (untuk alt text & admin)
-  imageUrl  String                               // Path gambar (misal: /uploads/banners/xxx.jpg)
-  link      String?                              // URL tujuan jika diklik (opsional)
-  sortOrder Int      @default(0)                 // Urutan tampil (ascending)
-  isActive  Boolean  @default(true)              // Aktif atau tidak
+  title     String // Judul banner (untuk alt text & admin)
+  imageUrl  String // Path gambar (misal: /uploads/banners/xxx.jpg)
+  link      String? // URL tujuan jika diklik (opsional)
+  sortOrder Int      @default(0) // Urutan tampil (ascending)
+  isActive  Boolean  @default(true) // Aktif atau tidak
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -455,26 +485,26 @@ model Banner {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model PromoRoute {
-  id            Int      @id @default(autoincrement())
-  service       String                               // 'flight' | 'hotel' | 'train'
-  titleId       String                               // Judul kartu (Bahasa Indonesia)
-  titleEn       String?                              // Judul kartu (EN) — fallback ke titleId
-  badgeId       String?                              // Badge/kategori (ID) mis. "Sekali Jalan"
-  badgeEn       String?                              // Badge (EN) — fallback ke badgeId
-  image         String                               // Path gambar (/images/... atau /uploads/...)
-  priceFrom     Int                                  // Angka rupiah; diformat di UI (tanpa label "mulai dari")
-  validUntil    DateTime?                            // Batas berlaku (null = tidak dibatasi)
-  origin        String?                              // flight & train: kode asal (mis. "CGK", "GMR")
-  destination   String?                              // flight & train: kode tujuan (mis. "JOG", "SGU")
-  airline       String?                              // flight: nama maskapai
-  airlineImg    String?                              // flight: path logo maskapai
-  destinationId String?                              // hotel: kode destinasi provider (wajib utk pencarian hotel)
-  q             String?                              // hotel: kata kunci pencarian
-  city          String?                              // hotel: label kota yang tampil di kartu
-  isActive      Boolean  @default(true)
-  sortOrder     Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id            Int       @id @default(autoincrement())
+  service       String // 'flight' | 'hotel' | 'train'
+  titleId       String // Judul kartu (Bahasa Indonesia)
+  titleEn       String? // Judul kartu (EN) — fallback ke titleId
+  badgeId       String? // Badge/kategori (ID) mis. "Sekali Jalan"
+  badgeEn       String? // Badge (EN) — fallback ke badgeId
+  image         String // Path gambar (/images/... atau /uploads/...)
+  priceFrom     Int // Angka rupiah; diformat di UI (tanpa label "mulai dari")
+  validUntil    DateTime? // Batas berlaku (null = tidak dibatasi)
+  origin        String? // flight & train: kode asal (mis. "CGK", "GMR")
+  destination   String? // flight & train: kode tujuan (mis. "JOG", "SGU")
+  airline       String? // flight: nama maskapai
+  airlineImg    String? // flight: path logo maskapai
+  destinationId String? // hotel: kode destinasi provider (wajib utk pencarian hotel)
+  q             String? // hotel: kata kunci pencarian
+  city          String? // hotel: label kota yang tampil di kartu
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([service, isActive, sortOrder])
   @@index([validUntil])
@@ -486,14 +516,14 @@ model PromoRoute {
 
 model Career {
   id           String   @id @default(cuid())
-  title        String                                     // Judul posisi
-  department   String                                     // Divisi (Engineering, Marketing, dll)
-  type         String   @default("full-time")             // full-time, part-time, freelance
-  location     String                                     // Lokasi kerja
-  description  String                                     // Deskripsi pekerjaan
-  requirements String                                     // Persyaratan (satu baris per poin, dipisah newline)
-  isActive     Boolean  @default(true)                    // Aktif atau tidak
-  sortOrder    Int      @default(0)                       // Urutan tampil
+  title        String // Judul posisi
+  department   String // Divisi (Engineering, Marketing, dll)
+  type         String   @default("full-time") // full-time, part-time, freelance
+  location     String // Lokasi kerja
+  description  String // Deskripsi pekerjaan
+  requirements String // Persyaratan (satu baris per poin, dipisah newline)
+  isActive     Boolean  @default(true) // Aktif atau tidak
+  sortOrder    Int      @default(0) // Urutan tampil
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -506,16 +536,16 @@ model Career {
 
 model BlogPost {
   id          String    @id @default(cuid())
-  title       String                                      // Judul artikel
-  slug        String    @unique                           // URL-friendly (misal: tips-liburan-bali)
-  excerpt     String                                      // Ringkasan singkat
-  content     String                                      // Konten artikel (markdown)
-  coverImage  String?                                     // Gambar sampul (opsional)
-  author      String    @default("Admin")                 // Nama penulis
-  category    String    @default("Travel Tips")           // Kategori artikel
-  isPublished Boolean   @default(false)                   // Terbit atau draft
-  publishedAt DateTime?                                   // Tanggal terbit (diisi saat publish)
-  sortOrder   Int       @default(0)                       // Urutan tampil
+  title       String // Judul artikel
+  slug        String    @unique // URL-friendly (misal: tips-liburan-bali)
+  excerpt     String // Ringkasan singkat
+  content     String // Konten artikel (markdown)
+  coverImage  String? // Gambar sampul (opsional)
+  author      String    @default("Admin") // Nama penulis
+  category    String    @default("Travel Tips") // Kategori artikel
+  isPublished Boolean   @default(false) // Terbit atau draft
+  publishedAt DateTime? // Tanggal terbit (diisi saat publish)
+  sortOrder   Int       @default(0) // Urutan tampil
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -545,13 +575,13 @@ model BlogPost {
 
 model IdempotencyKey {
   key         String   @id
-  bookingType String                            // flight | hotel | train | insurance
+  bookingType String // flight | hotel | train | insurance
   userId      String?
-  payloadHash String                            // sha256(canonicalJSON body request)
-  orderId     String?                           // Diisi sebelum Booking dibuat (penanda pemulihan)
-  status      String   @default("processing")   // processing | completed
-  response    Json?                             // Payload sukses yang sudah pernah dikirim
-  expiresAt   DateTime                          // processing: +10 mnt | completed: +24 jam
+  payloadHash String // sha256(canonicalJSON body request)
+  orderId     String? // Diisi sebelum Booking dibuat (penanda pemulihan)
+  status      String   @default("processing") // processing | completed
+  response    Json? // Payload sukses yang sudah pernah dikirim
+  expiresAt   DateTime // processing: +10 mnt | completed: +24 jam
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

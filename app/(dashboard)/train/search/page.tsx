@@ -451,7 +451,8 @@ function TrainSearchContent() {
       elapsed_time: journey.elapsed_time,
       cabin_class: journey.cabin_class,
       class_of_service: journey.class_of_service || '',
-      total_amount: String(Math.round(price)),
+      total_amount: String(Math.round(price * Number(searchMeta.adult || 1))),
+      base_amount: String(Math.round(price * Number(searchMeta.adult || 1))),
       adult: String(searchMeta.adult || '1'),
       infant: String(searchMeta.infant || '0'),
     }).toString();

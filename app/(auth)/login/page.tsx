@@ -1,91 +1,46 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { signIn, useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { safeCallbackUrl } from '@/lib/security';
+import { safeCallbackUrl } from '@/lib/safe-callback';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
+import { useAuthModal } from '@/contexts/AuthModalContext';
+import { useLoginAuth } from '@/components/auth/useLoginAuth';
 
 export default function LoginPage() {
   const { language } = useLanguage();
   const t = i18n.login[language];
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [requires2FA, setRequires2FA] = useState(false);
-  
+  const tm = i18n.loginModal[language];
+
   // Menangkap URL asal untuk redirect otomatis setelah login.
   // Sanitasi untuk mencegah open redirect (hanya URL internal yang diizinkan).
   const searchParams = useSearchParams();
   const rawCallback = searchParams.get('callbackUrl');
   const callbackUrl = safeCallbackUrl(rawCallback);
 
-  // ─── Pengaman ekstra: jika user SEBENARNYA sudah login (cookie sesi ada di browser)
-  // tapi navigasi gagal/terblokir, halaman login otomatis pindah ke callbackUrl.
-  // Menyembuhkan kasus "berhasil login tapi tidak redirect" tanpa restart server.
-  const { status: sessionStatus } = useSession();
-  useEffect(() => {
-    if (sessionStatus === 'authenticated') {
-      window.location.href = callbackUrl;
-    }
-  }, [sessionStatus, callbackUrl]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true); 
-    setError('');
-    
-    try {
-      // Timeout pengaman: jangan sampai spinner login muter selamanya
-      // (masalah umum signIn() client next-auth yang tidak pernah resolve).
-      const res = await Promise.race([
-        signIn('credentials', {
-          email,
-          password,
-          code,
-          redirect: false,
-        }),
-        new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 20000)
-        ),
-      ]);
-
-      if (res?.error === '2FA_REQUIRED') {
-        setRequires2FA(true);
-        setLoading(false);
-        return;
-      }
-
-      if (res?.error === 'INVALID_2FA') {
-        setError('Kode authenticator atau backup code salah atau tidak valid.');
-        setLoading(false);
-        return;
-      }
-
-      if (res?.error) {
-        setError(t.errorWrongCredentials);
-        setLoading(false);
-      } else {
-        // Tandai "baru saja login" untuk notifikasi selamat datang (Login sebagai ...)
-        sessionStorage.setItem('mt_welcome_pending', '1');
-        // Navigasi FULL (bukan router.push) agar cookie sesi terpasang dulu
-        // sehingga middleware selalu melihat token saat mengakses halaman tujuan.
-        // Menghindari bug next-auth v4 + Next 15/16 di mana token belum terlihat
-        // middleware pada navigasi client-side pertama → balik ke /login.
-        window.location.href = callbackUrl;
-      }
-    } catch (err) {
-      setError(err instanceof Error && err.message === 'timeout'
-        ? t.errorNetwork
-        : t.errorServer);
-      setLoading(false);
-    }
-  };
+  const { showSuccess } = useAuthModal();
+  const {
+    email,
+    setEmail,
+    password,
+    setPassword,
+    code,
+    handleCodeChange,
+    showPassword,
+    setShowPassword,
+    error,
+    loading,
+    requires2FA,
+    switchAccount,
+    handleSubmit,
+    handleGoogle,
+  } = useLoginAuth({
+    callbackUrl,
+    onSuccess: () => {
+      showSuccess({ callbackUrl, redirect: true, kind: 'login' });
+    },
+  });
 
   return (
     <div className="bg-brand-bgLight min-h-screen font-sans text-brand-ink flex flex-col selection:bg-brand-orange selection:text-white">
@@ -150,10 +105,7 @@ export default function LoginPage() {
               <div className="mb-6">
                 <button
                   type="button"
-                  onClick={() => {
-                    sessionStorage.setItem('mt_welcome_pending', '1');
-                    signIn('google', { callbackUrl });
-                  }}
+                  onClick={handleGoogle}
                   className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-slate-200 rounded-lg font-bold text-sm text-slate-700 hover:bg-slate-50 transition-all active:scale-95"
                 >
                   <Image src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" width={20} height={20} className="w-5 h-5" />
@@ -227,15 +179,15 @@ export default function LoginPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <i className="fa-solid fa-shield-halved text-orange-600"></i>
                       <span className="text-sm text-slate-600 truncate">
-                        Login sebagai <strong className="text-brand-ink">{email}</strong>
+                        {tm.loginAs} <strong className="text-brand-ink">{email}</strong>
                       </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => { setRequires2FA(false); setCode(''); setError(''); }}
+                      onClick={switchAccount}
                       className="text-xs font-bold text-orange-600 hover:underline underline-offset-4 whitespace-nowrap"
                     >
-                      Ganti akun
+                      {tm.switchAccount}
                     </button>
                   </div>
 
@@ -245,7 +197,7 @@ export default function LoginPage() {
                       type="text"
                       id="code"
                       value={code}
-                      onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                      onChange={e => handleCodeChange(e.target.value)}
                       required
                       disabled={loading}
                       autoFocus
@@ -261,7 +213,7 @@ export default function LoginPage() {
                     </label>
                   </div>
                   <p id="code-hint" className="text-xs text-slate-500">
-                    Masukkan kode 6 digit dari aplikasi authenticator atau backup code 8 digit. Backup code hanya bisa dipakai sekali.
+                    {tm.codeHint}
                   </p>
                 </div>
               )}

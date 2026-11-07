@@ -79,14 +79,8 @@ async function handleBook(args: {
     } = validation.data;
 
     // ── STEP 0: Price Revalidation (fail-closed) ──────────────────────────
-    // total_amount dikirim dari client — sebelumnya dipercaya mentah-mentah,
-    // artinya siapa pun bisa mengubahnya di request jadi lebih rendah dari
-    // premi asli sementara polis tetap diterbitkan dengan harga asli.
-    // Re-quote produk yang sama (sellInsurance) & bandingkan dengan premi riil.
-    // Perbandingan SATU ARAH (hanya cek batas bawah) — total_amount yang sah
-    // memang sudah termasuk biaya admin platform di atas premi dasar, jadi
-    // lebih tinggi itu wajar, lebih rendah itu indikasi manipulasi harga.
-    // Jika premi riil tidak bisa diverifikasi, booking DITOLAK (fail-closed).
+    // Re-quote produk dan cocokkan total premi seluruh peserta dengan subtotal
+    // dari checkout. Markup platform ditambahkan sesudah validasi ini.
     if (!product_code) {
       console.warn('[Insurance Book] Price revalidation gagal: product_code tidak dikirim.');
       return apiError('Data produk asuransi tidak lengkap untuk verifikasi harga. Silakan pilih ulang produk.', 422, { error: 'REVALIDATION_REQUIRED' });
@@ -107,12 +101,12 @@ async function handleBook(args: {
         type: body.type,
         productType: body.product_type,
       });
-      const realPrice = quote.price;
+      const realPrice = quote.price * paxCount;
 
-      const priceCheck = checkSubmittedPrice({ submitted: total_amount, refreshed: realPrice, lowerBoundOnly: true });
+      const priceCheck = checkSubmittedPrice({ submitted: total_amount, refreshed: realPrice });
 
       if (priceCheck.kind === 'changed') {
-        console.warn(`[Insurance Book] PRICE_CHANGED — submitted=${total_amount} realPrice=${realPrice}`);
+        console.warn(`[Insurance Book] PRICE_CHANGED — submitted=${total_amount} realTotal=${realPrice}`);
         return apiError(priceCheck.message || 'Harga premi telah berubah. Silakan pilih ulang produk asuransi.', 409, {
           error: 'PRICE_CHANGED',
           originalPrice: priceCheck.originalPrice,
@@ -120,7 +114,7 @@ async function handleBook(args: {
         });
       }
       if (priceCheck.kind === 'unverifiable') {
-        console.warn(`[Insurance Book] PRICE_UNVERIFIABLE — submitted=${total_amount} realPrice=${realPrice}`);
+        console.warn(`[Insurance Book] PRICE_UNVERIFIABLE — submitted=${total_amount} realTotal=${realPrice}`);
         return apiError('Harga premi tidak dapat diverifikasi saat ini. Silakan coba lagi beberapa saat.', 503, { error: 'PRICE_UNVERIFIABLE' });
       }
     } catch (priceErr: any) {

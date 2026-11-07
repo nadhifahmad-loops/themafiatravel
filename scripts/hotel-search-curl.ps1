@@ -56,7 +56,6 @@ $body = @{
     checkin_date   = $Checkin
     checkout_date  = $Checkout
     destination_id = $DestId
-    search_name    = ""
     adult          = 2
     child          = 0
     child_ages     = "[]"

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
 import { loadSnap, getSnapRedirectUrl } from '@/lib/snap-pay';
@@ -61,9 +62,10 @@ function PaymentCountdown({ createdAt }: { createdAt: string }) {
 export default function PaymentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { language } = useLanguage();
+  const { openLogin } = useAuthModal();
   const t = i18n.paymentPage[language];
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
 
   const [booking, setBooking] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -73,14 +75,19 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
   const [retryCount, setRetryCount] = useState(0);
   const [refreshingToken, setRefreshingToken] = useState(false);
   const [tokenError, setTokenError] = useState('');
+  const [guestContactInput, setGuestContactInput] = useState('');
+  const [verifiedGuestContact, setVerifiedGuestContact] = useState('');
+  const [verifyingGuest, setVerifyingGuest] = useState(false);
   const embedStartedRef = useRef(false);
 
   usePageTitle('Pembayaran');
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || sessionStatus === 'loading') return;
+    if (sessionStatus === 'unauthenticated') return;
+
     setLoading(true);
-    fetch(`/api/bookings/${id}`)
+    fetch(`/api/bookings/${id}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((r) => {
         if (r.success) setBooking(r.data);
@@ -88,7 +95,40 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
       })
       .catch(() => setLoadError(t.loadError))
       .finally(() => setLoading(false));
-  }, [id, t.loadError, t.notFound]);
+  }, [id, sessionStatus, t.loadError, t.notFound]);
+
+  const handleVerifyGuest = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const contact = guestContactInput.trim();
+    if (!contact) {
+      setLoadError(t.verifyRequired);
+      return;
+    }
+
+    setVerifyingGuest(true);
+    setLoadError('');
+    try {
+      const response = await fetch(`/api/bookings/${id}`, {
+        cache: 'no-store',
+        headers: { 'x-booking-contact': contact },
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        const message = result.message === 'Unauthorized'
+          ? t.accountRequired
+          : result.message === 'Verifikasi kontak gagal'
+            ? t.verifyFailed
+            : result.message || t.notFound;
+        throw new Error(message);
+      }
+      setVerifiedGuestContact(contact);
+      setBooking(result.data);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : t.loadError);
+    } finally {
+      setVerifyingGuest(false);
+    }
+  };
 
   useEffect(() => {
     if (!booking || embedStartedRef.current) return;
@@ -133,7 +173,7 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
         console.error('[Payment] loadSnap/embed error:', err);
         setEmbedError(true);
       });
-  }, [booking, id, retryCount, router]);
+  }, [booking, id, retryCount, router, session]);
 
   const handleRetry = () => {
     setTokenError('');
@@ -148,7 +188,10 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
     setRefreshingToken(true);
     setTokenError('');
     try {
-      const res = await fetch(`/api/bookings/${id}/snap-token`, { method: 'POST' });
+      const res = await fetch(`/api/bookings/${id}/snap-token`, {
+        method: 'POST',
+        headers: verifiedGuestContact ? { 'x-booking-contact': verifiedGuestContact } : undefined,
+      });
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.message);
@@ -168,7 +211,7 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
     }
   };
 
-  if (loading) {
+  if (loading && sessionStatus !== 'unauthenticated') {
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="max-w-[1000px] mx-auto px-4 pt-28 pb-10">
@@ -179,6 +222,59 @@ export default function PaymentPage({ params }: { params: Promise<{ id: string }
             <div className="w-8 h-8 border-[3px] border-slate-200 border-t-slate-600 rounded-full animate-spin" />
             <p className="text-sm text-slate-400">{t.loading}</p>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionStatus === 'unauthenticated' && !verifiedGuestContact) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-lg px-4 pb-16 pt-28">
+          <Link href="/find-booking" className="text-sm text-slate-500 transition hover:text-slate-800">
+            &larr; {t.back}
+          </Link>
+          <form onSubmit={handleVerifyGuest} className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+            <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+              <i className="fa-solid fa-shield-halved" aria-hidden="true" />
+            </div>
+            <h1 className="text-xl font-bold text-slate-900">{t.verifyTitle}</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-500">{t.verifyDescription}</p>
+            <label htmlFor="booking-contact" className="mt-6 block text-sm font-semibold text-slate-700">
+              {t.verifyContactLabel}
+            </label>
+            <input
+              id="booking-contact"
+              type="text"
+              autoComplete="off"
+              value={guestContactInput}
+              onChange={(event) => setGuestContactInput(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              required
+            />
+            {loadError && (
+              <div role="alert" className="mt-3 text-sm text-red-600">
+                <p>{loadError}</p>
+                {loadError === t.accountRequired && (
+                  <button
+                    type="button"
+                    onClick={() => openLogin({ callbackUrl: `/payment/${id}` })}
+                    className="mt-2 inline-block font-semibold underline underline-offset-2"
+                  >
+                    {language === 'EN' ? 'Sign in' : 'Masuk'}
+                  </button>
+                )}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={verifyingGuest}
+              className="mt-5 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {verifyingGuest ? t.verifying : t.verifySubmit}
+            </button>
+            <p className="mt-4 text-xs leading-5 text-slate-400">{t.verifyPrivacyNotice}</p>
+          </form>
         </div>
       </div>
     );

@@ -5,11 +5,12 @@
 
 // Membangun callbackUrl agar pengguna kembali ke halaman checkout yang sama
 // setelah login/register. Query string wajib disertakan karena halaman checkout
-// hotel/train/insurance membaca data dari parameter URL. Hasil sudah ter-encode
-// sehingga siap ditempel langsung pada href (mis. `/login?callbackUrl=${cb}`).
+// hotel/train/insurance membaca data dari parameter URL. Nilai ini dipakai
+// langsung oleh modal auth (bukan ditempel manual ke href), jadi biarkan relatif
+// dan belum ter-encode — AuthModalContext yang menyanitasi dan memakainya.
 export function buildCheckoutCallbackUrl(pathname: string, search?: string | null): string {
   const qs = (search || '').replace(/^\?/, '');
-  return encodeURIComponent(pathname + (qs ? `?${qs}` : ''));
+  return pathname + (qs ? `?${qs}` : '');
 }
 
 // Konversi Date → 'YYYY-MM-DD' memakai komponen tanggal LOKAL (bukan UTC).

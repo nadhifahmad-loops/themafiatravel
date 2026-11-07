@@ -80,6 +80,7 @@ async function handleTrainBook(args: {
       schedules,
       booker,
       total_amount,
+      base_amount,
       origin,
       destination,
       departure_date,
@@ -89,16 +90,13 @@ async function handleTrainBook(args: {
       cabin_class,
     } = validation.data;
 
+    if (base_amount !== undefined && total_amount < base_amount) {
+      return apiError('Total pembayaran tidak boleh lebih rendah dari harga tiket.', 422, { error: 'INVALID_TOTAL' });
+    }
+
     // ── STEP 0: Price Revalidation (fail-closed) ──────────────────────────
-    // total_amount dikirim dari client — sebelumnya dipercaya mentah-mentah,
-    // artinya siapa pun bisa mengubahnya di request jadi lebih rendah dari
-    // harga asli sementara kursi KAI tetap dibooking dengan harga asli.
-    // Cari ulang jadwal yang sama & bandingkan dengan harga dasar riil.
-    // Perbandingan dibuat SATU ARAH (hanya cek batas bawah) karena
-    // total_amount yang sah memang sudah termasuk biaya admin platform di
-    // atas harga dasar KAI — jadi lebih tinggi itu wajar, lebih rendah itu
-    // indikasi manipulasi harga. Jika harga riil tidak bisa diverifikasi,
-    // booking DITOLAK (fail-closed).
+    // Re-quote fare per dewasa dan cocokkan dengan subtotal tiket dari checkout.
+    // Markup serta add-on tidak ikut menjadi dasar pembanding harga vendor.
     try {
       const journeyCode = schedules?.[0]?.journeys?.[0]?.journey_code;
       const fareCode = schedules?.[0]?.journeys?.[0]?.fare_code;
@@ -149,11 +147,15 @@ async function handleTrainBook(args: {
         }));
       }
 
-      const realTotal = realBasePrice != null ? Number(realBasePrice) : undefined;
-      const priceCheck = checkSubmittedPrice({ submitted: total_amount, refreshed: realTotal, lowerBoundOnly: true });
+      const realTotal = realBasePrice != null ? Number(realBasePrice) * adultCount : undefined;
+      const priceCheck = checkSubmittedPrice({
+        submitted: base_amount ?? total_amount,
+        refreshed: realTotal,
+        lowerBoundOnly: base_amount === undefined,
+      });
 
       if (priceCheck.kind === 'changed') {
-        console.warn(`[Train Book] PRICE_CHANGED — submitted=${total_amount} realBase=${realTotal}`);
+        console.warn(`[Train Book] PRICE_CHANGED — submittedBase=${base_amount ?? total_amount} realTotal=${realTotal}`);
         return apiError(priceCheck.message || 'Harga tiket telah berubah. Silakan cari ulang jadwal untuk melanjutkan.', 409, {
           error: 'PRICE_CHANGED',
           originalPrice: priceCheck.originalPrice,
@@ -161,7 +163,7 @@ async function handleTrainBook(args: {
         });
       }
       if (priceCheck.kind === 'unverifiable') {
-        console.warn(`[Train Book] PRICE_UNVERIFIABLE — submitted=${total_amount} realBasePrice=${realBasePrice}`);
+        console.warn(`[Train Book] PRICE_UNVERIFIABLE — submittedBase=${base_amount ?? total_amount} realBasePrice=${realBasePrice}`);
         return apiError('Harga tiket tidak dapat diverifikasi saat ini. Silakan coba lagi beberapa saat.', 503, { error: 'PRICE_UNVERIFIABLE' });
       }
     } catch (priceErr: any) {

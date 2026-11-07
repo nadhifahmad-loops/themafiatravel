@@ -10,7 +10,6 @@ import { CARRIER_CODE_TO_AIRLINE, PROVIDER_ID_TO_LABEL } from '@/lib/providers';
 import { getVendorLogo } from '@/lib/vendor-logo';
 import { getSupportWhatsAppUrl, SUPPORT_EMAIL } from '@/lib/support';
 import { downloadTicketPdf } from '@/lib/download-ticket';
-import { genVerificationHash, verifyPath } from '@/lib/ticket-verify';
 import TrainSeatPicker from '@/components/train/TrainSeatPicker';
 import TicketStub from '@/components/ticket/TicketStub';
 import {
@@ -33,9 +32,16 @@ import {
   ShieldCheck,
   Hash,
   MapPin,
+  Phone,
+  Utensils,
+  FileText,
+  StickyNote,
+  RefreshCw,
+  Loader2,
   type LucideIcon,
 } from 'lucide-react';
 import { getPaymentCountdown as getCountdown, PAYMENT_URGENCY_MS } from '@/lib/payment-window';
+import type { NormalizedHotelBookingStatus } from '@/lib/hotel-booking-status';
 
 function fmtIDR(n: number) { if (!n || isNaN(n)) return 'Rp 0'; return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
 function fmtDate(d: string) { if (!d) return '-'; return new Date(d).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
@@ -53,6 +59,32 @@ function nightCount(ci: string, co: string) {
   if (!ci || !co) return 1;
   const diff = new Date(co).getTime() - new Date(ci).getTime();
   return Math.max(1, Math.round(diff / 86400000));
+}
+function formatMealType(value?: string | null) {
+  if (!value) return '-';
+  const key = value.trim().toUpperCase();
+  const labels: Record<string, string> = {
+    RO: 'Kamar saja',
+    BB: 'Termasuk sarapan',
+    HB: 'Setengah penginapan',
+    FB: 'Penginapan penuh',
+    AI: 'All inclusive',
+  };
+  return labels[key] || value;
+}
+function formatHotelVendorState(state?: string | null, description?: string | null, isEN = false) {
+  switch ((state || '').toLowerCase()) {
+    case 'issued':
+      return isEN ? 'Voucher issued by vendor' : 'Voucher diterbitkan vendor';
+    case 'cancel':
+    case 'cancelled':
+      return isEN ? 'Cancelled by vendor' : 'Dibatalkan vendor';
+    case 'refund':
+    case 'refunded':
+      return isEN ? 'Refunded by vendor' : 'Refund diproses vendor';
+    default:
+      return description || state || (isEN ? 'Vendor status' : 'Status vendor');
+  }
 }
 function resolveAirlineName(name: string): string {
   if (!name) return '';
@@ -224,8 +256,12 @@ type BookingDetail = {
   checkoutDate?: string | null;
   roomCount?: number | null;
   roomDescription?: string | null;
+  mealType?: string | null;
+  nights?: number | null;
   bookingData?: unknown;
   passengerData?: unknown;
+  verificationCode?: string;
+  verificationHref?: string;
 };
 
 function Meta({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
@@ -252,6 +288,11 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
   const [paying, setPaying] = useState(false);
+  const [hotelStatus, setHotelStatus] = useState<NormalizedHotelBookingStatus | null>(null);
+  const [hotelStatusError, setHotelStatusError] = useState('');
+  const [hotelStatusRefresh, setHotelStatusRefresh] = useState(0);
+  const hotelOrderNumber = booking?.bookingType === 'hotel' ? booking.orderNumber : null;
+  const hotelStatusLoading = Boolean(hotelOrderNumber) && hotelStatus === null && !hotelStatusError;
 
   usePageTitle(booking ? `Detail Pesanan: ${booking.orderNumber || booking.id}` : 'Detail Pesanan');
 
@@ -291,6 +332,39 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
     return () => { stopped = true; clearInterval(interval); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, booking?.status]);
+
+  useEffect(() => {
+    if (!hotelOrderNumber) return;
+
+    let active = true;
+
+    fetch('/api/hotel/booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_number: hotelOrderNumber }),
+    })
+      .then(async (response) => {
+        const json = await response.json().catch(() => null);
+        if (!active) return;
+        if (!response.ok || !json?.success) {
+          setHotelStatusError(
+            typeof json?.error === 'string'
+              ? json.error
+              : 'Status voucher hotel belum dapat dimuat. Data lokal tetap ditampilkan.'
+          );
+          return;
+        }
+        setHotelStatusError('');
+        setHotelStatus(json.data as NormalizedHotelBookingStatus);
+      })
+      .catch(() => {
+        if (active) {
+          setHotelStatusError('Status voucher hotel belum dapat dimuat. Data lokal tetap ditampilkan.');
+        }
+      });
+
+    return () => { active = false; };
+  }, [hotelOrderNumber, hotelStatusRefresh]);
 
   const handlePayNow = () => {
     if (paying) return;
@@ -411,8 +485,12 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   const segmentCount = isTransport
     ? (bookingDataRaw?.segments?.length || bookingDataRaw?.provider_bookings?.[0]?.segments?.length || 1)
     : 1;
-  const startDate = booking.departureDate || booking.checkinDate || '';
-  const endDate = arrivalDate || booking.checkoutDate || startDate;
+  const startDate = (isHotel && hotelStatus?.checkin_date)
+    ? hotelStatus.checkin_date
+    : booking.departureDate || booking.checkinDate || '';
+  const endDate = (isHotel && hotelStatus?.checkout_date)
+    ? hotelStatus.checkout_date
+    : arrivalDate || booking.checkoutDate || startDate;
   const originCode = booking.origin || '';
   const destCode = booking.destination || '';
   const originName = originDisplayName || originCode;
@@ -420,14 +498,24 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
   const itemName = isTrain
     ? resolveAirlineName(booking.airlineName || '') || 'Kereta Api'
     : isHotel
-      ? (booking.hotelName || 'Hotel')
+      ? (hotelStatus?.hotel_name || booking.hotelName || 'Hotel')
       : isInsurance
         ? (bookingDataRaw?.coverage || 'Asuransi Perjalanan')
         : resolveAirlineName(booking.airlineName || '') || 'Maskapai';
   const itemCode = booking.flightNumber || '';
   const subclass = bookingDataRaw?.cabin_class || bookingDataRaw?.subclass || booking.roomDescription || bookingDataRaw?.roomType || '';
   const refundable = bookingDataRaw?.refundable === true || bookingDataRaw?.is_refundable === true || bookingDataRaw?.fare_refundable === true;
-  const canCancel = isPaid && refundable;
+  const hotelVendorState = (hotelStatus?.state || '').toLowerCase();
+  const hotelVendorCancelled = ['cancel', 'cancelled', 'refund', 'refunded'].includes(hotelVendorState);
+  // Hotel tidak menyimpan flag refundable seperti flight. paid/issued berarti
+  // voucher sudah terbit dan pembatalan dapat dicek langsung ke vendor.
+  const canCancel = isHotel
+    ? isPaid && !hotelVendorCancelled
+    : isPaid && refundable;
+  const voucherIssued = isHotel ? isPaid && !hotelVendorCancelled : status === 'issued';
+  const displayStatusLabel = isHotel && voucherIssued
+    ? (isEN ? 'Voucher issued' : 'Voucher terbit')
+    : statusLabel(status);
   const st = STATUS_STYLE[status] || { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' };
   const TypeIcon = TYPE_ICON[bType] || Plane;
   const vendorLogo = getVendorLogo(bType, booking.provider || '', booking.airlineName || '');
@@ -472,7 +560,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
             <p className="text-lg sm:text-xl font-extrabold text-brand-ink">{fmtIDR(booking.totalAmount)}</p>
             <span className={`mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${st.bg} ${st.text}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
-              {statusLabel(status)}
+              {displayStatusLabel}
             </span>
           </div>
         </div>
@@ -577,14 +665,20 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-bold text-emerald-700">
-                      {status === 'issued'
-                        ? (isEN ? 'Ticket issued' : 'Tiket sudah diterbitkan')
-                        : (isEN ? 'Payment confirmed' : 'Pembayaran terkonfirmasi')}
+                      {isHotel
+                        ? (isEN ? 'Hotel voucher issued' : 'Voucher hotel sudah diterbitkan')
+                        : status === 'issued'
+                          ? (isEN ? 'Ticket issued' : 'Tiket sudah diterbitkan')
+                          : (isEN ? 'Payment confirmed' : 'Pembayaran terkonfirmasi')}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {status === 'issued'
-                        ? (isEN ? 'Your e-ticket/voucher is ready to download.' : 'E-tiket/voucher Anda sudah siap diunduh.')
-                        : (isEN ? 'We have received your payment.' : 'Pembayaran sudah kami terima.')}
+                      {isHotel
+                        ? (isEN
+                            ? 'Present this voucher at the hotel reception when checking in.'
+                            : 'Tunjukkan voucher ini saat check-in di resepsionis hotel.')
+                        : status === 'issued'
+                          ? (isEN ? 'Your e-ticket/voucher is ready to download.' : 'E-tiket/voucher Anda sudah siap diunduh.')
+                          : (isEN ? 'We have received your payment.' : 'Pembayaran sudah kami terima.')}
                     </p>
                   </div>
                 </div>
@@ -682,6 +776,159 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
 
+            {/* Hotel voucher information (live from vendor) */}
+            {isHotel && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden">
+                <div className="px-4 sm:px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+                  <BedDouble className="w-4 h-4 text-slate-400" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      {isEN ? 'Hotel voucher information' : 'Informasi Voucher Hotel'}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {isEN ? 'Live status from the hotel vendor.' : 'Status live dari vendor hotel.'}
+                    </p>
+                  </div>
+                  {hotelStatusLoading ? (
+                    <Loader2 className="w-4 h-4 text-slate-400 animate-spin shrink-0" />
+                  ) : hotelStatus ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      {formatHotelVendorState(hotelStatus.state, hotelStatus.state_description, isEN)}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="p-4 sm:p-5">
+                  {hotelStatusLoading && !hotelStatus ? (
+                    <div className="space-y-3 animate-pulse">
+                      <div className="h-3 w-2/3 rounded bg-slate-100" />
+                      <div className="h-3 w-1/2 rounded bg-slate-100" />
+                      <div className="h-3 w-3/4 rounded bg-slate-100" />
+                    </div>
+                  ) : hotelStatus ? (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                        <div className="sm:col-span-2 flex items-start gap-2.5 min-w-0">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                              {isEN ? 'Address' : 'Alamat'}
+                            </p>
+                            <p className="text-[12px] font-semibold text-brand-ink mt-0.5 break-words">
+                              {hotelStatus.hotel_address || '-'}
+                              {hotelStatus.hotel_city_name ? `, ${hotelStatus.hotel_city_name}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        {hotelStatus.hotel_phone && (
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <Phone className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                {isEN ? 'Hotel phone' : 'Telepon hotel'}
+                              </p>
+                              <p className="text-[12px] font-semibold text-brand-ink mt-0.5 break-words">{hotelStatus.hotel_phone}</p>
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <BedDouble className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                              {isEN ? 'Room' : 'Kamar'}
+                            </p>
+                            <p className="text-[12px] font-semibold text-brand-ink mt-0.5 break-words">
+                              {hotelStatus.room_name || booking.roomDescription || '-'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <Utensils className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                              {isEN ? 'Meal' : 'Makan'}
+                            </p>
+                            <p className="text-[12px] font-semibold text-brand-ink mt-0.5 break-words">
+                              {formatMealType(hotelStatus.meal_type || booking.mealType)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <Users className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                              {isEN ? 'Guests' : 'Tamu'}
+                            </p>
+                            <p className="text-[12px] font-semibold text-brand-ink mt-0.5">
+                              {hotelStatus.guest_count || passengers.length || 1} {t.people}
+                              {hotelStatus.room_count ? ` · ${hotelStatus.room_count} ${t.hotel.room}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {hotelStatus.cancellation_policy.length > 0 && (
+                        <div className="flex items-start gap-2.5 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5">
+                          <FileText className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold text-amber-800">
+                              {isEN ? 'Cancellation policy' : 'Kebijakan pembatalan'}
+                            </p>
+                            {hotelStatus.cancellation_policy.map((policy, index) => (
+                              <p key={`${policy}-${index}`} className="text-[11px] leading-relaxed text-amber-700 mt-0.5 break-words">
+                                {policy}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {hotelStatus.special_request && (
+                        <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                          <StickyNote className="w-3.5 h-3.5 text-slate-500 mt-0.5 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold text-slate-700">
+                              {isEN ? 'Special request' : 'Permintaan khusus'}
+                            </p>
+                            <p className="text-[11px] leading-relaxed text-slate-600 mt-0.5 break-words">
+                              {hotelStatus.special_request}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {hotelStatusError && (
+                        <div className="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-[11px] leading-relaxed text-amber-700">
+                          <RotateCcw className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                          <span>{hotelStatusError}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2.5 text-[12px] leading-relaxed text-slate-500">
+                      <RotateCcw className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-400" />
+                      <div>
+                        <p>{hotelStatusError || (isEN ? 'Voucher status is not available yet.' : 'Status voucher belum tersedia.')}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHotelStatus(null);
+                            setHotelStatusError('');
+                            setHotelStatusRefresh((value) => value + 1);
+                          }}
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          {isEN ? 'Retry' : 'Coba lagi'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Passengers */}
             {passengers.length > 0 && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden">
@@ -769,7 +1016,7 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
                     href={`/bookings/${id}/cancel`}
                     className="flex-1 py-3 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-sm font-bold text-center transition-colors"
                   >
-                    {t.cancelBooking}
+                    {isHotel ? (isEN ? 'Cancel & Request Refund' : 'Batalkan & Ajukan Refund') : t.cancelBooking}
                   </Link>
                 )}
                 {isTrain && isPaid && booking.orderNumber && (
@@ -789,14 +1036,14 @@ export default function BookingDetailPage({ params }: { params: Promise<{ id: st
             <TicketStub
               orderNumber={booking.orderNumber || booking.id}
               documentLabel={docLabel}
-              statusLabel={statusLabel(status)}
+              statusLabel={displayStatusLabel}
               title={itemName}
               subtitle={stubSubtitle}
               dateText={stubDate}
               dateLabel={t.date}
               pnr={isTransport ? booking.pnr : null}
-              verifyCode={genVerificationHash(booking.id)}
-              verifyHref={verifyPath(booking.id)}
+              verifyCode={booking.verificationCode || ''}
+              verifyHref={booking.verificationHref || '#'}
               verifyLabel={t.verify}
               verifyHint={t.verifyHint}
               downloadLabel={downloadLabel}

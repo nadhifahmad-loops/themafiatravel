@@ -1,58 +1,16 @@
-# Created by Vercel CLI
-DATABASE_URL="postgresql://neondb_owner:npg_B65JfZGUQTDs@ep-empty-darkness-b4f8gj15-pooler.c-6.us-east-2.aws.neon.tech/neondb?channel_binding=require&sslmode=require"
-DATABASE_URL_UNPOOLED="postgresql://neondb_owner:npg_B65JfZGUQTDs@ep-empty-darkness-b4f8gj15.c-6.us-east-2.aws.neon.tech/neondb?channel_binding=require&sslmode=require"
-DIRECT_URL="postgresql://neondb_owner:npg_R4mc3YpFlVBd@ep-noisy-bird-awjru97p.c-12.us-east-1.aws.neon.tech/neondb?sslmode=require"
-FONNTE_API_TOKEN="BhNf8XDR1b5CZGYqjArU"
-GOOGLE_CLIENT_ID="51935557988-h3qrflmqumfc0ut8tlpsgu8e0kgq93ro.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET="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"
-MIDTRANS_CLIENT_KEY="SB-Mid-client-wsAJ_d59qbu-km3I"
-MIDTRANS_IS_PRODUCTION="false"
-MIDTRANS_SERVER_KEY="SB-Mid-server-XczXm44nvec3_Td5GH9r8mRO"
-NEON_AUTH_BASE_URL="[SENSITIVE]"
-NEON_BRANCH="production"
-NEON_PROJECT_ID="[SENSITIVE]"
-NEXTAUTH_SECRET="mafia-travel-secret-key-ganti-ini-di-production"
-NEXTAUTH_URL="https://themafiatravel.vercel.app/"
-NEXT_PUBLIC_APP_URL="https://themafiatravel.vercel.app/"
-NEXT_PUBLIC_MIDTRANS_CLIENT_KEY="SB-Mid-client-wsAJ_d59qbu-km3I"
-NX_DAEMON="false"
-ORBISWAY_API_KEY="f420217e-bd23-48e9-a383-709673e5dd32"
-ORBISWAY_BASE_URL="https://apiinternal.orbisway.com"
-ORBISWAY_PASSWORD="password.test.user"
-ORBISWAY_USER="test.user"
-PGDATABASE="[SENSITIVE]"
-PGHOST="[SENSITIVE]"
-PGHOST_UNPOOLED="[SENSITIVE]"
-PGPASSWORD="[SENSITIVE]"
-PGUSER="[SENSITIVE]"
-POSTGRES_DATABASE="[SENSITIVE]"
-POSTGRES_HOST="[SENSITIVE]"
-POSTGRES_PASSWORD="[SENSITIVE]"
-POSTGRES_PRISMA_URL="[SENSITIVE]"
-POSTGRES_URL="[SENSITIVE]"
-POSTGRES_URL_NON_POOLING="[SENSITIVE]"
-POSTGRES_URL_NO_SSL="[SENSITIVE]"
-POSTGRES_USER="[SENSITIVE]"
-REDIS_URL="redis://default:gQAAAAAABGOWAAIgcDFmNDJkOTU0NTk3ZGQ0MjBlYTU2MzI2MGM4NjI4ZmZlMg@improved-bedbug-287638.upstash.io:6379"
-RESEND_API_KEY="re_VxCxfMRV_K7r2spadAdJhSpvs1afGxUez"
-TURBO_CACHE="remote:rw"
-TURBO_DOWNLOAD_LOCAL_ENABLED="true"
-TURBO_REMOTE_ONLY="true"
-TURBO_RUN_SUMMARY="true"
-VERCEL="1"
-VERCEL_ENV="production"
-VERCEL_GIT_COMMIT_AUTHOR_LOGIN=""
-VERCEL_GIT_COMMIT_AUTHOR_NAME=""
-VERCEL_GIT_COMMIT_MESSAGE=""
-VERCEL_GIT_COMMIT_REF=""
-VERCEL_GIT_COMMIT_SHA=""
-VERCEL_GIT_PREVIOUS_SHA=""
-VERCEL_GIT_PROVIDER=""
-VERCEL_GIT_PULL_REQUEST_ID=""
-VERCEL_GIT_REPO_ID=""
-VERCEL_GIT_REPO_OWNER=""
-VERCEL_GIT_REPO_SLUG=""
-VERCEL_OIDC_TOKEN="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Im1yay00MzAyZWMxYjY3MGY0OGE5OGFkNjFkYWRlNGEyM2JlNyJ9.eyJpc3MiOiJodHRwczovL29pZGMudmVyY2VsLmNvbSIsInN1YiI6Im93bmVyOm5hZGhpZi1haG1hZHMtcHJvamVjdHM6cHJvamVjdDp0aGVtYWZpYXRyYXZlbDplbnZpcm9ubWVudDpkZXZlbG9wbWVudCIsInNjb3BlIjoib3duZXI6bmFkaGlmLWFobWFkcy1wcm9qZWN0czpwcm9qZWN0OnRoZW1hZmlhdHJhdmVsOmVudmlyb25tZW50OmRldmVsb3BtZW50IiwiYXVkIjoiaHR0cHM6Ly92ZXJjZWwuY29tL25hZGhpZi1haG1hZHMtcHJvamVjdHMiLCJvd25lciI6Im5hZGhpZi1haG1hZHMtcHJvamVjdHMiLCJvd25lcl9pZCI6InRlYW1fd2VGRU1WWHM5dE5mQm5veUREY1lvTksyIiwicHJvamVjdCI6InRoZW1hZmlhdHJhdmVsIiwicHJvamVjdF9pZCI6InByal91SmJZVkFUWGVCMW9VMkxMU3VWRVpqTzlJZFNiIiwiZW52aXJvbm1lbnQiOiJkZXZlbG9wbWVudCIsInBsYW4iOiJob2JieSIsInVzZXJfaWQiOiJsNHllUWo0MWYyUm10NnRQNko4NmJMREsiLCJjbGllbnRfaWQiOiJjbF9IWXlPUEJOdEZNZkhoYVVuOUw0UVBmVFp6NlRQNDdicCIsImFwcF9pZCI6ImNsX0hZeU9QQk50Rk1mSGhhVW45TDRRUGZUWno2VFA0N2JwIiwibmJmIjoxNzg5OTA3MjQ5LCJpYXQiOjE3ODk5MDcyNDksImV4cCI6MTc4OTk1MDQ0OX0.ZNLaPQ891kL2yH1tP3xgDNZcq_PpfGyv4niBVCzOJ3NdYitLdPIiuTNLMglj65brBrlgOm6EqWy9zEew65m9EFqDNaqj1RTLP9LtC_0_taIvAXYxmHqjzHErxdZLsinPsczIZW5BCgY1wIAqMvy7LDb4-18qRaI4z3u-Kpows4AzM_XMt2CPghT7wC0XylFmIEM-CGkHUaHa2-4d0uzZG1Im1707g4vNK7KPmWyoY_xuId0QEKMHx4ExUOuoVPAzNzxO4c-lqYu4wjRF1bZLtGRzT7sqbwkx_xiDcDFPAVNyTRsmh6rmDZzs240di4U72tj-D6ikKoumGESvIHqnRg"
-VERCEL_TARGET_ENV="production"
-VERCEL_URL=""
-VITE_NEON_AUTH_URL="[SENSITIVE]"
+# Environment configuration
+
+Use [`.env.example`](./.env.example) as the safe template for local development.
+Copy it to `.env.local` for Next.js or `.env` for Docker Compose, then provide
+values from the appropriate development, staging, or production accounts.
+
+Never put credentials, connection strings, access tokens, or generated provider
+configuration dumps in this file or in Git. Environment files containing real
+values are ignored by `.gitignore`; verify with `git status --short` before
+sharing the repository.
+
+**Credential hygiene:** a previous version of this tracked file contained
+real environment values. Removing them from the current file does not erase
+older Git commits. Rotate/revoke the affected credentials and coordinate a
+history cleanup before sharing with a wider audience. See
+[`PRODUCTION-HANDOFF.md`](./PRODUCTION-HANDOFF.md).

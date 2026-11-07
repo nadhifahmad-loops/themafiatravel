@@ -1,4 +1,5 @@
 import { getServerSession } from 'next-auth';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { authOptions } from '@/lib/auth';
 import AdminShell from '@/components/admin/AdminShell';
@@ -9,10 +10,21 @@ export const metadata = {
 };
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const headersList = await headers();
+  const pathname = headersList.get('x-pathname') ?? '';
+
+  // Halaman login admin punya layout sendiri (tanpa shell admin & tanpa guard).
+  if (pathname === '/admin/login') {
+    return <>{children}</>;
+  }
+
   const session = await getServerSession(authOptions);
 
+  const callbackTarget = pathname || '/admin/dashboard';
+  const adminLoginHref = `/admin/login?callbackUrl=${encodeURIComponent(callbackTarget)}&error=Unauthorized`;
+
   if (!session?.user?.email) {
-    redirect('/login?callbackUrl=/admin/dashboard&error=Unauthorized');
+    redirect(adminLoginHref);
   }
 
   const dbUser = await prisma.user.findUnique({
@@ -21,7 +33,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   });
 
   if (!dbUser || dbUser.role !== 'admin') {
-    redirect('/login?callbackUrl=/admin/dashboard&error=Unauthorized');
+    redirect(adminLoginHref);
   }
 
   return (

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import FlightSearchForm from '@/components/flight/FlightSearchForm';
 import FlightCard from '@/components/flight/FlightCard';
 import { CalendarField } from '@/components/common/CalendarField';
-import { FLIGHT_PROVIDERS, CARRIER_CODE_TO_AIRLINE } from '@/lib/providers';
+import { FLIGHT_PROVIDERS, getAirlineDisplayName } from '@/lib/providers';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useToast } from '@/contexts/ToastContext';
 import { i18n, tpl } from '@/lib/i18n';
@@ -192,7 +192,7 @@ function parseSchedules(apiData: any): any[][] {
 }
 
 // ─── Review Panel (Panel kanan konfirmasi) ────────────────────────────────────
-function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loading }: any) {
+function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loading, priceError, verifiedPrice, verifiedAdminFee }: any) {
   const { language } = useLanguage();
   const t = i18n.flightSearch[language];
   const tf = i18n.searchForm[language].flight;
@@ -225,7 +225,7 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
               />
             </div>
             <div>
-              <p className="font-black text-brand-ink text-sm">{CARRIER_CODE_TO_AIRLINE[seg?.carrier_code] || seg?.carrier_name || seg?.carrier_code}</p>
+              <p className="font-black text-brand-ink text-sm">{getAirlineDisplayName(seg?.carrier_code, seg?.carrier_name)}</p>
               <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">
                 {fare?.fare_name || fare?.class_of_service || 'Economy'} · {transitLabel}
               </p>
@@ -370,6 +370,38 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
             </div>
           )}
 
+          {verifiedPrice !== null && (
+            <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 p-4">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-slate-600">{language === 'EN' ? 'Search estimate (adult fare)' : 'Estimasi dari pencarian (tarif dewasa)'}</span>
+                <span className="font-semibold text-slate-700">{fmtIDR(totalPrice)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-sky-200 pt-2">
+                <span className="font-bold text-slate-800">{language === 'EN' ? 'Airline-verified ticket price' : 'Harga tiket terverifikasi maskapai'}</span>
+                <span className="text-lg font-black text-sky-800">{fmtIDR(verifiedPrice)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-slate-600">{language === 'EN' ? 'Service fee' : 'Biaya admin'}</span>
+                <span className="font-semibold text-slate-700">{fmtIDR(verifiedAdminFee)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-sky-200 pt-2">
+                <span className="font-bold text-slate-900">{language === 'EN' ? 'Verified total before add-ons' : 'Total terverifikasi sebelum layanan tambahan'}</span>
+                <span className="text-xl font-black text-orange-700">{fmtIDR(verifiedPrice + verifiedAdminFee)}</span>
+              </div>
+              <p className="text-xs leading-relaxed text-slate-600">
+                {language === 'EN'
+                  ? 'The ticket amount comes from the airline price check. The service fee is added once per passenger. Optional seats, baggage, and meals are not included.'
+                  : 'Harga tiket berasal dari pengecekan tarif maskapai. Biaya admin ditambahkan satu kali per penumpang. Kursi, bagasi, dan makanan tambahan belum termasuk.'}
+              </p>
+            </div>
+          )}
+
+          {priceError && (
+            <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              {priceError}
+            </p>
+          )}
+
           {/* CTA button — kontekstual */}
           {allSelected ? (
             /* Semua leg sudah dipilih → lanjut ke checkout */
@@ -380,6 +412,8 @@ function ReviewPanel({ isOpen, onClose, onConfirm, selectedLegs, searchMeta, loa
             >
               {loading ? (
                 <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>{t.validatingPrice}</>
+              ) : verifiedPrice !== null ? (
+                <>{language === 'EN' ? 'Agree and continue at verified price' : 'Setuju dan lanjut dengan harga terverifikasi'} <i className="fa-solid fa-arrow-right"></i></>
               ) : (
                 <>{t.continueBooking} <i className="fa-solid fa-arrow-right"></i></>
               )}
@@ -827,6 +861,12 @@ function FlightSearchContent() {
   // ── Review panel ──
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [verifiedFlightPrice, setVerifiedFlightPrice] = useState<{
+    amount: number;
+    adminFee: number;
+    flightPricedData: Record<string, unknown>;
+  } | null>(null);
 
   useEffect(() => {
     if (!promoOpen) return;
@@ -1207,22 +1247,25 @@ function FlightSearchContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Airline list dari current leg ──
+  // ── Airline list dari current leg (digabung per nama maskapai) ──
   const airlineList = useMemo(() => {
-    const map = new Map<string, { name: string; code: string; count: number }>();
+    const map = new Map<string, { name: string; key: string; code: string; count: number }>();
     currentJourneys.forEach(j => {
-      const journeyCarriers = new Set<string>();
+      const journeyAirlines = new Map<string, { name: string; code: string }>();
       j.segments?.forEach((seg: { carrier_code?: string; carrier_name?: string }) => {
-        const code = seg?.carrier_code || '';
+        const code = (seg?.carrier_code || '').toUpperCase();
         if (!code) return;
-        journeyCarriers.add(code);
-        const name = CARRIER_CODE_TO_AIRLINE[code] || seg?.carrier_name || code;
-        const existing = map.get(code);
-        if (!existing) map.set(code, { name, code, count: 0 });
+        const name = getAirlineDisplayName(code, seg?.carrier_name);
+        const key = name.toLowerCase();
+        if (!journeyAirlines.has(key)) journeyAirlines.set(key, { name, code });
       });
-      journeyCarriers.forEach(code => {
-        const airline = map.get(code);
-        if (airline) airline.count++;
+      journeyAirlines.forEach((airline, key) => {
+        let group = map.get(key);
+        if (!group) {
+          group = { name: airline.name, key, code: airline.code, count: 0 };
+          map.set(key, group);
+        }
+        group.count++;
       });
     });
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
@@ -1273,7 +1316,10 @@ function FlightSearchContent() {
       });
     }
     if (filterAirlines.length > 0) {
-      arr = arr.filter(j => j.segments?.some((segment: { carrier_code?: string }) => filterAirlines.includes(segment.carrier_code || '')));
+      arr = arr.filter(j => j.segments?.some((segment: { carrier_code?: string; carrier_name?: string }) => {
+        const name = getAirlineDisplayName(segment.carrier_code, segment.carrier_name);
+        return filterAirlines.includes(name.toLowerCase());
+      }));
     }
     if (filterMaxPrice !== null) {
       arr = arr.filter(j => {
@@ -1320,42 +1366,11 @@ function FlightSearchContent() {
     return bestIdx;
   }, [filtered]);
 
-  // ── Pilih flight ──
-  const handleSelectFlight = useCallback(async (journey: any, fare: any) => {
-    const newLegs = [...selectedLegs];
-    newLegs[currentLegStep] = { journey, fare };
-    setSelectedLegs(newLegs);
-    // Selalu buka review panel — di dalam panel user bisa lanjut ke leg berikutnya
-    setIsReviewOpen(true);
-  }, [currentLegStep, selectedLegs]);
-
-  // ── Konfirmasi review → price → checkout ──
-  const handleConfirmReview = async () => {
-    // Cek apakah semua leg sudah dipilih
-    const allSelected = selectedLegs.every((l: any) => !!l);
-
-    if (!allSelected) {
-      // Temukan leg berikutnya yang belum dipilih
-      const nextStep = selectedLegs.findIndex((l: any) => !l);
-      if (nextStep >= 0) {
-        // Tutup panel & pindah ke step berikutnya
-        setIsReviewOpen(false);
-        setCurrentLegStep(nextStep);
-        setFilterAirlines([]);
-        setFilterTransit([]);
-        setFilterDepartureTime([]);
-        setFilterArrivalTime([]);
-        // Scroll ke atas daftar penerbangan
-        window.scrollTo({ top: 300, behavior: 'smooth' });
-        return;
-      }
-    }
-
-    // Semua leg sudah dipilih → lanjut ke price & checkout
+  const validateFlightPrice = useCallback(async (legs: (null | { journey: any; fare: any })[]) => {
+    setReviewError('');
     setReviewLoading(true);
     try {
-      // Bangun schedules sesuai format Orbis
-      const formattedSchedules = selectedLegs.map((leg, idx) => {
+      const formattedSchedules = legs.map((leg, idx) => {
         if (!leg) return null;
         const { journey, fare } = leg;
         return {
@@ -1389,14 +1404,26 @@ function FlightSearchContent() {
         body:    JSON.stringify(priceBody),
       });
       const priceData = await priceRes.json();
+      if (!priceRes.ok || !priceData.success || !Number.isFinite(Number(priceData.data?.total_price)) || Number(priceData.data.total_price) <= 0) {
+        throw new Error(priceData.message || priceData.error || 'Harga penerbangan tidak dapat diverifikasi. Silakan coba lagi.');
+      }
+
+      const markupRes = await fetch('/api/markup');
+      const markupData = await markupRes.json();
+      const flightMarkup = Number(markupData?.flight);
+      if (!markupRes.ok || !Number.isFinite(flightMarkup) || flightMarkup < 0) {
+        throw new Error('Biaya admin gagal dimuat. Silakan coba verifikasi harga lagi.');
+      }
+      const paxCount = priceBody.adult + priceBody.child + priceBody.infant;
+      const adminFee = flightMarkup * paxCount;
 
       // Outbound display info
-      const outLeg    = selectedLegs[0];
+      const outLeg    = legs[0];
       const outSeg    = outLeg?.journey?.segments?.[0];
       const lastSeg   = outLeg?.journey?.segments?.[outLeg?.journey?.segments?.length - 1];
 
       // Untuk RT/Multi: kumpulkan semua leg info
-      const allLegsDisplay = selectedLegs.map((leg, i) => {
+      const allLegsDisplay = legs.map((leg, i) => {
         if (!leg) return null;
         const s = leg.journey?.segments?.[0];
         const l = leg.journey?.segments?.[leg.journey?.segments?.length - 1];
@@ -1428,42 +1455,56 @@ function FlightSearchContent() {
         searchMeta,
       };
 
-      sessionStorage.setItem('flight_priced_data', JSON.stringify(flightPricedData));
-      router.push('/flight/checkout');
-    } catch (err: any) {
-      // Fallback tanpa price validation
-      const outLeg  = selectedLegs[0];
-      const outSeg  = outLeg?.journey?.segments?.[0];
-      const lastSeg = outLeg?.journey?.segments?.[outLeg?.journey?.segments?.length - 1];
-
-      const formattedSchedulesFallback = selectedLegs.map((leg, idx) => {
-        if (!leg) return null;
-        const { journey, fare } = leg;
-        return {
-          provider: journey.provider || journey.schedule_provider || 'citilink',
-          sequence: idx + 1,
-          journeys: [{ segments: [{ segment_code: journey.journey_code || journey.segments?.[0]?.segment_code, fare_code: fare?.fare_code }] }]
-        };
-      }).filter(Boolean);
-
-      const allLegsDisplay = selectedLegs.map((leg, i) => {
-        if (!leg) return null;
-        const s = leg.journey?.segments?.[0];
-        const l = leg.journey?.segments?.[leg.journey?.segments?.length - 1];
-        return { legIndex: i, carrier: s?.carrier_name, origin: s?.origin, destination: l?.destination, departure: s?.departure_date, arrival: l?.arrival_date, flight_num: `${s?.carrier_code}${s?.carrier_number}` };
+      setVerifiedFlightPrice({
+        amount: Number(priceData.data.total_price),
+        adminFee,
+        flightPricedData,
       });
-
-      sessionStorage.setItem('flight_priced_data', JSON.stringify({
-        display: { carrier: outSeg?.carrier_name, origin: outSeg?.origin, destination: lastSeg?.destination, departure: outSeg?.departure_date, arrival: lastSeg?.arrival_date, flight_num: `${outSeg?.carrier_code}${outSeg?.carrier_number}` },
-        allLegsDisplay,
-        priceResponse: null,
-        priceBody: { provider: 'citilink', adult: parseInt(searchMeta?.adult || '1'), child: parseInt(searchMeta?.child || '0'), infant: parseInt(searchMeta?.infant || '0'), schedules: formattedSchedulesFallback, is_combo_price: searchMeta?.direction !== 'OW' },
-        searchMeta,
-      }));
-      router.push('/flight/checkout');
+    } catch (err) {
+      setReviewError(err instanceof Error ? err.message : 'Harga penerbangan tidak dapat diverifikasi. Silakan coba lagi.');
     } finally {
       setReviewLoading(false);
     }
+  }, [searchMeta]);
+
+  // ── Pilih flight ──
+  const handleSelectFlight = useCallback(async (journey: any, fare: any) => {
+    setReviewError('');
+    setVerifiedFlightPrice(null);
+    const newLegs = [...selectedLegs];
+    newLegs[currentLegStep] = { journey, fare };
+    setSelectedLegs(newLegs);
+    setIsReviewOpen(true);
+    if (newLegs.every(Boolean)) {
+      void validateFlightPrice(newLegs);
+    }
+  }, [currentLegStep, selectedLegs, validateFlightPrice]);
+
+  // ── Konfirmasi review → checkout ──
+  const handleConfirmReview = async () => {
+    setReviewError('');
+    const allSelected = selectedLegs.every((leg: any) => !!leg);
+
+    if (!allSelected) {
+      const nextStep = selectedLegs.findIndex((leg: any) => !leg);
+      if (nextStep >= 0) {
+        setIsReviewOpen(false);
+        setCurrentLegStep(nextStep);
+        setFilterAirlines([]);
+        setFilterTransit([]);
+        setFilterDepartureTime([]);
+        setFilterArrivalTime([]);
+        window.scrollTo({ top: 300, behavior: 'smooth' });
+        return;
+      }
+    }
+
+    if (verifiedFlightPrice) {
+      sessionStorage.setItem('flight_priced_data', JSON.stringify(verifiedFlightPrice.flightPricedData));
+      router.push('/flight/checkout');
+      return;
+    }
+    if (!reviewLoading) await validateFlightPrice(selectedLegs);
   };
 
   const isRT    = searchMeta?.direction === 'RT';
@@ -1738,10 +1779,10 @@ function FlightSearchContent() {
                       {airlineList
                         .filter(airline => airline.name.toLowerCase().includes(airlineSearch.trim().toLowerCase()))
                         .map(airline => (
-                        <label key={airline.code} className={`group flex min-h-9 cursor-pointer items-center justify-between gap-2 rounded-lg px-2 transition-colors ${filterAirlines.includes(airline.code) ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
+                        <label key={airline.key} className={`group flex min-h-9 cursor-pointer items-center justify-between gap-2 rounded-lg px-2 transition-colors ${filterAirlines.includes(airline.key) ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
                           <div className="flex min-w-0 items-center gap-2">
-                            <input type="checkbox" checked={filterAirlines.includes(airline.code)}
-                              onChange={() => toggleFilter(filterAirlines, airline.code, setFilterAirlines)}
+                            <input type="checkbox" checked={filterAirlines.includes(airline.key)}
+                              onChange={() => toggleFilter(filterAirlines, airline.key, setFilterAirlines)}
                               className="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 text-sky-600 accent-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2" />
                             <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden">
                               <img
@@ -2052,6 +2093,9 @@ function FlightSearchContent() {
         selectedLegs={selectedLegs}
         searchMeta={searchMeta}
         loading={reviewLoading}
+        priceError={reviewError}
+        verifiedPrice={verifiedFlightPrice?.amount ?? null}
+        verifiedAdminFee={verifiedFlightPrice?.adminFee ?? 0}
       />
 
       <style jsx global>{`

@@ -6,7 +6,7 @@ export async function GET() {
   const startTime = Date.now();
 
   // Database check
-  let dbStart = Date.now();
+  const dbStart = Date.now();
   try {
     await prisma.$queryRaw`SELECT 1`;
     checks.database = { status: 'ok', latencyMs: Date.now() - dbStart };

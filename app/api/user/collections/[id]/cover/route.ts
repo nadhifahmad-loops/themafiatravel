@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
+import { saveUploadedImage, StorageNotConfiguredError } from '@/lib/upload-storage';
 
 // POST /api/user/collections/[id]/cover — upload cover kustom koleksi (member).
 // Body: multipart/form-data dengan field "file". Hasilnya disimpan sebagai
@@ -41,16 +40,7 @@ export async function POST(
       return NextResponse.json({ error: 'Ukuran file maksimal 5MB.' }, { status: 400 });
     }
 
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const filename = `cover-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'collections');
-    const filepath = path.join(uploadDir, filename);
-
-    await mkdir(uploadDir, { recursive: true });
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(filepath, buffer);
-
-    const url = `/uploads/collections/${filename}`;
+    const url = await saveUploadedImage(file, 'collections');
     const updated = await prisma.collection.update({
       where: { id },
       data: { coverImage: url },
@@ -62,6 +52,9 @@ export async function POST(
       updatedAt: updated.updatedAt,
     });
   } catch (error) {
+    if (error instanceof StorageNotConfiguredError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     console.error('[Collection Cover Upload Error]', error);
     return NextResponse.json({ error: 'Gagal mengunggah cover' }, { status: 500 });
   }

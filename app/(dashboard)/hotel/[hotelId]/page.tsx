@@ -162,9 +162,16 @@ function HotelDetailContent() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
   const [selectedPriceIdx, setSelectedPriceIdx] = useState<number | null>(null);
   const [provisioning, setProvisioning] = useState(false);
   const [provisionMsg, setProvisionMsg] = useState('');
+  const [pendingPriceChange, setPendingPriceChange] = useState<{
+    checkoutUrl: string;
+    oldPrice: number;
+    newPrice: number;
+  } | null>(null);
   const [activeImg, setActiveImg] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxStart, setLightboxStart] = useState(0);
@@ -191,7 +198,6 @@ function HotelDetailContent() {
     })(),
     room: parseInt(sp.get('room') || '1'),
     nationality: sp.get('nationality') || 'ID',
-    search_name: sp.get('search_name') || '',
   };
 
   const nights = searchParams.checkin_date && searchParams.checkout_date
@@ -214,17 +220,31 @@ function HotelDetailContent() {
     async function fetchDetail() {
       setLoading(true);
       setError('');
+      setErrorCode('');
       setProvisionMsg('');
       setSelectedPriceIdx(null);
       try {
         const res = await fetch('/api/hotel/detail', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(searchParams),
+          body: JSON.stringify({
+            checkin_date: searchParams.checkin_date,
+            checkout_date: searchParams.checkout_date,
+            destination_id: searchParams.destination_id,
+            hotel_id: searchParams.hotel_id,
+            adult: searchParams.adult,
+            child: searchParams.child,
+            child_ages: searchParams.child_ages,
+            room: searchParams.room,
+            nationality: searchParams.nationality,
+          }),
           signal: controller.signal,
         });
         const d = await res.json();
-        if (!res.ok || !d.success) throw new Error(d.error || 'Gagal memuat detail hotel');
+        if (!res.ok || !d.success) {
+          if (typeof d.code === 'string') setErrorCode(d.code);
+          throw new Error(d.error || 'Gagal memuat detail hotel');
+        }
         setData(d.data);
       } catch (e: any) {
         if (e?.name === 'AbortError') return; // request lama dibatalkan, abaikan
@@ -236,11 +256,12 @@ function HotelDetailContent() {
     fetchDetail();
 
     return () => controller.abort();
-  }, [hotelId, searchParams.checkin_date, searchParams.checkout_date, searchParams.destination_id, searchParams.adult, searchParams.child, searchParams.room, searchParams.nationality]);
+  }, [hotelId, searchParams.checkin_date, searchParams.checkout_date, searchParams.destination_id, searchParams.adult, searchParams.child, searchParams.room, searchParams.nationality, retryKey]);
 
   const handleBook = async (price: any) => {
     setProvisioning(true);
     setProvisionMsg('');
+    setPendingPriceChange(null);
     setShowErrorModal(false);
 
     try {
@@ -285,11 +306,13 @@ function HotelDetailContent() {
       }
 
       const finalPrice = provData.data || price;
-      // Pakai selectedPriceCode (format "{int}~{float}" dari get_details) sebagai kandidat
-      // checkout — bukan finalPrice.price_code yang berisi kode vendor panjang (hasil provision),
-      // karena checkout nanti melakukan re-provision dan kode vendor panjang gagal di-parse Orbis.
+      const totalAmount = Number(finalPrice.price_total);
+      if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+        throw new Error('Harga terbaru kamar tidak tersedia. Silakan pilih kamar lain atau coba lagi.');
+      }
+      // Provision mengubah kode hasil get_details menjadi kode vendor yang dipakai
+      // action booked. Checkout tidak boleh mengirim ulang kode get_details.
       const checkoutPriceCode = provData.selectedPriceCode || finalPrice.price_code || String(price.price_code || '');
-      const totalAmount = Number(finalPrice.price_total || price.price_total || 0);
       const q = new URLSearchParams({
         hotel_id: String(hotelId),
         price_code: checkoutPriceCode,
@@ -306,11 +329,20 @@ function HotelDetailContent() {
         nationality: searchParams.nationality,
         child_ages: JSON.stringify(searchParams.child_ages),
         destination_id: searchParams.destination_id,
-        search_name: searchParams.search_name,
         nights: String(nights),
       }).toString();
 
-      router.push(`/hotel/checkout?${q}`);
+      const checkoutUrl = `/hotel/checkout?${q}`;
+      if (provData.priceChanged) {
+        setPendingPriceChange({
+          checkoutUrl,
+          oldPrice: Number(price.price_total),
+          newPrice: totalAmount,
+        });
+        setProvisioning(false);
+        return;
+      }
+      router.push(checkoutUrl);
     } catch (e: any) {
       const message = e?.message || 'Gagal memproses kamar. Silakan coba lagi.';
       setProvisionMsg('❌ ' + message);
@@ -327,7 +359,7 @@ function HotelDetailContent() {
 
   // Loading
   if (loading) return (
-    <div className="min-h-screen bg-[#f4f6fb] pt-20">
+    <div className="min-h-screen bg-brand-bgLight pt-20">
       <div className="max-w-[1200px] mx-auto px-4 md:px-6 py-8 space-y-5">
         <div className="h-6 w-48 bg-slate-200 rounded-lg animate-pulse" />
         <div className="h-[350px] bg-slate-100 rounded-2xl animate-pulse" />
@@ -341,23 +373,42 @@ function HotelDetailContent() {
   );
 
   // Error
-  if (error) return (
-    <div className="min-h-screen bg-[#f4f6fb] pt-20 flex items-center justify-center">
-      <div className="text-center p-10">
-        <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-          <i className="fa-solid fa-circle-exclamation text-3xl text-red-300"></i>
+  if (error) {
+    const isOutage = errorCode === 'HOTEL_PROVIDER_UNAVAILABLE';
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-brand-bgLight px-4 pt-20">
+        <div className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 text-center shadow-sm sm:p-8">
+          <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl ${isOutage ? 'bg-amber-50' : 'bg-red-50'}`}>
+            <i className={`fa-solid ${isOutage ? 'fa-cloud-arrow-down text-amber-400' : 'fa-circle-exclamation text-red-300'} text-3xl`}></i>
+          </div>
+          <h2 className="mb-2 text-xl font-black text-slate-900">
+            {isOutage
+              ? (language === 'EN' ? 'Hotel service is temporarily unavailable' : 'Layanan hotel sedang terganggu')
+              : (language === 'EN' ? 'Could not load hotel details' : 'Gagal memuat detail hotel')}
+          </h2>
+          <p className="mb-6 text-sm leading-6 text-slate-500">{error}</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <button
+              onClick={() => setRetryKey((value) => value + 1)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-orange-600"
+            >
+              <i className="fa-solid fa-rotate-right text-xs"></i>
+              {language === 'EN' ? 'Try again' : 'Coba lagi'}
+            </button>
+            <button
+              onClick={() => router.back()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              ← {tc.back}
+            </button>
+          </div>
         </div>
-        <h2 className="font-black text-slate-900 text-xl mb-2">Gagal memuat detail hotel</h2>
-        <p className="text-slate-500 text-sm mb-6">{error}</p>
-        <button onClick={() => router.back()} className="px-6 py-3 bg-orange-500 text-white rounded-xl font-bold text-sm hover:bg-orange-600 transition-colors">
-          ← {tc.back}
-        </button>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#f4f6fb] pb-24 pt-20 relative">
+    <div className="min-h-screen bg-brand-bgLight pb-24 pt-20 relative">
 
       {/* ── Top bar ── */}
       <div className="bg-white border-b border-slate-100 shadow-sm sticky top-16 z-30">
@@ -437,85 +488,117 @@ function HotelDetailContent() {
             )}
 
             {/* ── Hotel info + search summary ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 mb-6">
-              <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm">
-                <Stars rating={hotel.rating} />
-                <h2 className="text-2xl font-black text-slate-900 mt-2 mb-2">{hotel.name}</h2>
-                {hotel.location?.address && (
-                  <p className="text-slate-500 text-sm flex items-start gap-2 mb-3">
-                    <i className="fa-solid fa-location-dot text-orange-400 mt-0.5 shrink-0" />
-                    {hotel.location.address}
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-3 text-sm text-slate-500">
-                  {hotel.telephone && (
-                    <span className="flex items-center gap-1.5">
-                      <i className="fa-solid fa-phone text-slate-300 text-xs" />
-                      {hotel.telephone}
-                    </span>
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5 mb-6">
+              <div className="relative overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
+                <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-r from-orange-500/10 via-amber-300/10 to-sky-500/10" />
+                <div className="relative p-5 sm:p-7">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm ring-1 ring-orange-100">
+                        <i className="fa-solid fa-hotel text-xl" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Stars rating={hotel.rating} />
+                          {Number(hotel.rating) > 0 && (
+                            <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-black text-blue-700">
+                              {Number(hotel.rating).toFixed(1)}
+                            </span>
+                          )}
+                          {hotel.ribbon && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2.5 py-0.5 text-[10px] font-bold text-orange-700">
+                              <i className="fa-solid fa-star text-[8px]" /> {hotel.ribbon}
+                            </span>
+                          )}
+                        </div>
+                        <h2 className="mt-1.5 text-xl font-black leading-tight text-slate-900 sm:text-2xl">{hotel.name}</h2>
+                        {hotel.location?.address && (
+                          <p className="mt-2 flex items-start gap-2 text-sm text-slate-500">
+                            <i className="fa-solid fa-location-dot mt-0.5 shrink-0 text-orange-400" />
+                            {hotel.location.address}
+                          </p>
+                        )}
+                        {hotel.telephone && (
+                          <p className="mt-2 flex items-center gap-2 text-sm text-slate-500">
+                            <i className="fa-solid fa-phone text-xs text-slate-300" />
+                            {hotel.telephone}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:shrink-0">
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{t.checkin}</p>
+                        <p className="mt-0.5 text-xs font-black text-slate-700">{fmt(searchParams.checkin_date)}</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{t.checkout}</p>
+                        <p className="mt-0.5 text-xs font-black text-slate-700">{fmt(searchParams.checkout_date)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hotel facilities — dari doc §3.4.1.3 hotel.facilities */}
+                  {hotel.facilities?.length > 0 && (
+                    <div className="mt-5 flex flex-wrap gap-1.5 border-t border-slate-100 pt-4">
+                      {hotel.facilities.slice(0, 8).map((f: any, fi: number) => (
+                        <span key={fi} className="inline-flex items-center gap-1 rounded-full border border-slate-100 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600">
+                          <i className="fa-solid fa-check text-[8px] text-emerald-500" />
+                          {typeof f === 'string' ? f : f.name || f.description || ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Map — dari doc §3.4.1.3 hotel.lat / hotel.long */}
+                  {hotel.lat && hotel.long && (
+                    <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
+                      <a
+                        href={`https://www.google.com/maps?q=${hotel.lat},${hotel.long}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group relative block"
+                      >
+                        <img
+                          src={`https://maps.googleapis.com/maps/api/staticmap?center=${hotel.lat},${hotel.long}&zoom=15&size=600x200&maptype=roadmap&markers=color:orange%7C${hotel.lat},${hotel.long}&key=`}
+                          alt={`Peta ${hotel.name}`}
+                          className="h-[140px] w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          onError={e => {
+                            // Fallback: tampilkan link Google Maps tanpa gambar
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent && !parent.querySelector('.map-fallback')) {
+                              const fallback = document.createElement('div');
+                              fallback.className = 'map-fallback flex h-[140px] items-center justify-center gap-2 bg-slate-50 text-sm text-slate-400';
+                              fallback.innerHTML = '<i class="fa-solid fa-map-location-dot text-orange-300"></i> Lihat di Google Maps';
+                              parent.appendChild(fallback);
+                            }
+                          }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/10">
+                          <span className="flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-700 opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100">
+                            <i className="fa-solid fa-up-right-from-square text-[10px]"></i>
+                            Buka di Maps
+                          </span>
+                        </div>
+                      </a>
+                    </div>
                   )}
                 </div>
-                {hotel.ribbon && (
-                  <div className="mt-4 inline-flex items-center gap-2 bg-orange-50 border border-orange-200 text-orange-700 text-xs font-bold px-3 py-1.5 rounded-full">
-                    <i className="fa-solid fa-star text-[10px]" /> {hotel.ribbon}
-                  </div>
-                )}
-
-                {/* Hotel facilities — dari doc §3.4.1.3 hotel.facilities */}
-                {hotel.facilities?.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {hotel.facilities.slice(0, 8).map((f: any, fi: number) => (
-                      <span key={fi} className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
-                        {typeof f === 'string' ? f : f.name || f.description || ''}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Map — dari doc §3.4.1.3 hotel.lat / hotel.long */}
-                {hotel.lat && hotel.long && (
-                  <div className="mt-4 rounded-xl overflow-hidden border border-slate-100">
-                    <a
-                      href={`https://www.google.com/maps?q=${hotel.lat},${hotel.long}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block relative group"
-                    >
-                      <img
-                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${hotel.lat},${hotel.long}&zoom=15&size=600x200&maptype=roadmap&markers=color:orange%7C${hotel.lat},${hotel.long}&key=`}
-                        alt={`Peta ${hotel.name}`}
-                        className="w-full h-[140px] object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={e => {
-                          // Fallback: tampilkan link Google Maps tanpa gambar
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          const parent = target.parentElement;
-                          if (parent && !parent.querySelector('.map-fallback')) {
-                            const fallback = document.createElement('div');
-                            fallback.className = 'map-fallback flex items-center justify-center h-[140px] bg-slate-50 text-slate-400 text-sm gap-2';
-                            fallback.innerHTML = '<i class="fa-solid fa-map-location-dot text-orange-300"></i> Lihat di Google Maps';
-                            parent.appendChild(fallback);
-                          }
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                        <span className="bg-white/90 backdrop-blur-sm text-xs font-bold text-slate-700 px-3 py-1.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5">
-                          <i className="fa-solid fa-up-right-from-square text-[10px]"></i>
-                          Buka di Maps
-                        </span>
-                      </div>
-                    </a>
-                  </div>
-                )}
               </div>
 
               {/* Search summary sticky card */}
-              <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm self-start lg:sticky lg:top-32">
-                <h3 className="font-black text-slate-800 text-sm mb-4 flex items-center gap-2">
-                  <i className="fa-solid fa-calendar-check text-orange-500 text-xs"></i>
-                  Detail Pencarian
-                </h3>
-                <div className="space-y-3">
+              <div className="self-start overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm lg:sticky lg:top-32">
+                <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-4 text-white">
+                  <h3 className="flex items-center gap-2 text-sm font-black">
+                    <i className="fa-solid fa-calendar-check text-orange-400 text-xs"></i>
+                    Detail Pencarian
+                  </h3>
+                  <p className="mt-1 text-[11px] text-white/60">Ringkasan tanggal dan tamu untuk stay ini.</p>
+                </div>
+                <div className="space-y-3 p-5">
                   {[
                     { label: t.checkin, value: fmt(searchParams.checkin_date), icon: 'fa-calendar-day' },
                     { label: t.checkout, value: fmt(searchParams.checkout_date), icon: 'fa-calendar-day' },
@@ -523,14 +606,22 @@ function HotelDetailContent() {
                     { label: t.guests, value: `${searchParams.adult} ${tc.adult}${searchParams.child > 0 ? `, ${searchParams.child} ${tc.child}` : ''}`, icon: 'fa-users' },
                     { label: tc.room, value: `${searchParams.room} ${tc.room}`, icon: 'fa-door-open' },
                   ].map(item => (
-                    <div key={item.label} className="flex justify-between items-center">
-                      <span className="text-xs text-slate-400 flex items-center gap-2">
-                        <i className={`fa-solid ${item.icon} w-3.5 text-slate-300 text-[11px]`} />
+                    <div key={item.label} className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-2 text-xs text-slate-400">
+                        <i className={`fa-solid ${item.icon} w-3.5 text-[11px] text-slate-300`} />
                         {item.label}
                       </span>
-                      <span className="text-xs font-bold text-slate-800">{item.value}</span>
+                      <span className="text-right text-xs font-bold text-slate-800">{item.value}</span>
                     </div>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => router.back()}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-2.5 text-xs font-black text-orange-700 transition hover:bg-orange-100"
+                  >
+                    <i className="fa-solid fa-pen-to-square text-[10px]" />
+                    Ubah Pencarian
+                  </button>
                 </div>
               </div>
             </div>
@@ -538,7 +629,7 @@ function HotelDetailContent() {
         )}
 
         {/* ── Provision message (Inline) ── */}
-        {provisionMsg && !showErrorModal && (
+        {provisionMsg && !showErrorModal && !pendingPriceChange && (
           <div className={`mb-5 p-4 rounded-xl text-sm font-medium flex items-start gap-3 ${
             provisionMsg.startsWith('❌')
               ? 'bg-red-50 border border-red-200 text-red-700'
@@ -546,6 +637,35 @@ function HotelDetailContent() {
           }`}>
             <i className={`fa-solid ${provisionMsg.startsWith('❌') ? 'fa-circle-xmark' : 'fa-triangle-exclamation'} mt-0.5 shrink-0`} />
             <span>{provisionMsg}</span>
+          </div>
+        )}
+        {pendingPriceChange && (
+          <div role="alert" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-bold">{provisionMsg || (language === 'EN' ? 'The room price changed after verification.' : 'Harga kamar berubah setelah diverifikasi.')}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-slate-600 line-through">Rp{pendingPriceChange.oldPrice.toLocaleString('id-ID')}</span>
+              <i className="fa-solid fa-arrow-right text-xs" aria-hidden="true" />
+              <strong>Rp{pendingPriceChange.newPrice.toLocaleString('id-ID')}</strong>
+              <span className="text-slate-600">
+                {language === 'EN' ? 'for the selected rooms and full stay.' : 'untuk seluruh masa inap dan kamar yang dipilih.'}
+              </span>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => router.push(pendingPriceChange.checkoutUrl)}
+                className="rounded-lg bg-orange-600 px-4 py-2 font-bold text-white transition hover:bg-orange-700"
+              >
+                {language === 'EN' ? 'Continue with new price' : 'Lanjutkan dengan harga baru'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPendingPriceChange(null); setProvisionMsg(''); }}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                {language === 'EN' ? 'Choose another room' : 'Pilih kamar lain'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -617,9 +737,6 @@ function HotelDetailContent() {
                         <h3 className="font-black text-slate-900 text-base">
                           {price.rooms?.[0]?.description || 'Kamar Standar'}
                         </h3>
-                        <span className="text-[10px] font-black bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                          {price.provider}
-                        </span>
                         {price.availability === 'available' && (
                           <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full flex items-center gap-1">
                             <i className="fa-solid fa-circle text-[6px]"></i> Tersedia
@@ -692,13 +809,6 @@ function HotelDetailContent() {
                         </p>
                       </div>
 
-                      {price.commission !== 0 && price.commission && (
-                        <p className="text-xs text-emerald-600 font-bold flex items-center gap-1">
-                          <i className="fa-solid fa-circle-dollar-to-slot text-xs"></i>
-                          Komisi: IDR {Math.abs(price.commission).toLocaleString('id-ID')}
-                        </p>
-                      )}
-
                       <button
                         onClick={e => { e.stopPropagation(); handleBook(price); }}
                         disabled={provisioning}
@@ -722,11 +832,13 @@ function HotelDetailContent() {
                   {/* Expanded detail row */}
                   {isSelected && (
                     <div className="border-t border-orange-100 bg-orange-50/40 px-5 py-4 flex flex-wrap gap-4 text-xs text-slate-600">
-                      <div className="flex items-center gap-1.5">
-                        <i className="fa-solid fa-building text-orange-400 text-[10px]"></i>
-                        <span className="font-medium">Provider:</span>
-                        <span className="font-bold text-blue-600">{price.provider}</span>
-                      </div>
+                      {price.rooms?.[0]?.bed_type && (
+                        <div className="flex items-center gap-1.5">
+                          <i className="fa-solid fa-bed text-orange-400 text-[10px]"></i>
+                          <span className="font-medium">Tipe tempat tidur:</span>
+                          <span className="font-bold">{price.rooms[0].bed_type}</span>
+                        </div>
+                      )}
                       {price.currency && (
                         <div className="flex items-center gap-1.5">
                           <i className="fa-solid fa-coins text-orange-400 text-[10px]"></i>
@@ -758,7 +870,7 @@ function HotelDetailContent() {
                 {selectedPrice.rooms?.[0]?.description || 'Kamar Standar'}
               </p>
               <p className="text-xs text-slate-500">
-                {selectedPrice.provider} · {nights} {tc.night} · {searchParams.adult} tamu
+                {selectedPrice.meal_type ? `${selectedPrice.meal_type} · ` : ''}{nights} {tc.night} · {searchParams.adult} tamu
               </p>
             </div>
             <div className="flex items-center gap-3 sm:justify-end">
@@ -835,7 +947,7 @@ export default function HotelDetailPage() {
   const t = i18n.hotelDetail[language];
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[#f4f6fb] flex items-center justify-center">
+      <div className="min-h-screen bg-brand-bgLight flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-slate-400 text-sm font-medium">{t.loading}</p>

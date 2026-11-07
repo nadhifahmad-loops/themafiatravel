@@ -1,26 +1,48 @@
 export default function HotelSearchLoading() {
   return (
-    <div className="min-h-screen bg-brand-bgLight p-6">
-      <div className="max-w-6xl mx-auto space-y-5">
-        {[1, 2, 3, 4, 5].map((item) => (
-          <div
-            key={item}
-            className="bg-white rounded-3xl p-6 animate-pulse shadow-sm border border-slate-100"
-          >
-            <div className="flex items-start gap-5">
-              <div className="w-40 h-28 bg-slate-200 rounded-2xl shrink-0"></div>
-              <div className="space-y-4 flex-1">
-                <div className="w-56 h-5 bg-slate-200 rounded"></div>
-                <div className="w-32 h-4 bg-slate-100 rounded"></div>
-                <div className="w-72 h-3 bg-slate-100 rounded"></div>
+    <div className="min-h-screen bg-brand-bgLight pt-20">
+      <div className="mx-auto max-w-[1280px] px-4 py-6 md:px-8">
+        {/* Compact bar skeleton */}
+        <div className="mb-5 h-16 animate-pulse rounded-2xl border border-slate-100 bg-white shadow-card" />
+
+        <div className="flex flex-col items-start gap-5 lg:flex-row">
+          {/* Sidebar skeleton */}
+          <aside className="hidden w-72 shrink-0 lg:block">
+            <div className="h-80 animate-pulse rounded-2xl border border-slate-100 bg-white shadow-card" />
+          </aside>
+
+          {/* Result cards skeleton */}
+          <div className="min-w-0 flex-1 space-y-4">
+            <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
+            {[1, 2, 3, 4].map((item) => (
+              <div
+                key={item}
+                className="animate-pulse rounded-2xl border border-slate-100 bg-white p-4 shadow-card sm:p-5"
+              >
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-5">
+                  <div className="flex flex-1 items-start gap-3">
+                    <div className="h-11 w-11 shrink-0 rounded-xl bg-slate-100" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-4 w-2/3 rounded bg-slate-100" />
+                      <div className="h-3 w-1/3 rounded bg-slate-100" />
+                      <div className="flex gap-2 pt-1">
+                        <div className="h-5 w-24 rounded-full bg-slate-100" />
+                        <div className="h-5 w-20 rounded-full bg-slate-100" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-between gap-4 border-t border-slate-100 pt-4 md:w-56 md:flex-col md:items-end md:border-l md:border-t-0 md:pl-5 md:pt-0">
+                    <div className="space-y-2">
+                      <div className="h-2.5 w-16 rounded bg-slate-100" />
+                      <div className="h-6 w-32 rounded bg-orange-100" />
+                    </div>
+                    <div className="h-10 w-28 rounded-xl bg-orange-100" />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-3 flex flex-col items-end">
-                <div className="w-28 h-8 bg-orange-100 rounded-xl"></div>
-                <div className="w-20 h-4 bg-slate-100 rounded"></div>
-              </div>
-            </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );

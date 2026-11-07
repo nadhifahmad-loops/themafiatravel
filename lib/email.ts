@@ -8,6 +8,15 @@ function getResend(): Resend {
   return new Resend(apiKey);
 }
 
+function getEmailFrom(): string {
+  const sender = process.env.EMAIL_FROM;
+  if (sender) return sender;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('EMAIL_FROM must be configured in production');
+  }
+  return 'The Mafia Travel <onboarding@resend.dev>';
+}
+
 export async function sendPasswordResetEmail({
   to,
   token,
@@ -21,7 +30,7 @@ export async function sendPasswordResetEmail({
   const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
 
   await resend.emails.send({
-    from: 'The Mafia Travel <onboarding@resend.dev>',
+    from: getEmailFrom(),
     to,
     subject: 'Reset Password - The Mafia Travel',
     html: `
@@ -84,7 +93,7 @@ export async function sendBookingConfirmationEmail({
   try {
     const resend = getResend();
     await resend.emails.send({
-    from: 'The Mafia Travel <onboarding@resend.dev>',
+    from: getEmailFrom(),
     to,
     subject: `Pembayaran Berhasil - ${bookingLabel}`,
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
@@ -156,7 +165,7 @@ export async function sendBookingCheckoutEmail({
   try {
     const resend = getResend();
     await resend.emails.send({
-      from: 'The Mafia Travel <onboarding@resend.dev>',
+      from: getEmailFrom(),
       to,
       subject: `Pesanan Diterima - Menunggu Pembayaran (${booking.id})`,
       html: `

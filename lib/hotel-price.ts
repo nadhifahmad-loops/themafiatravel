@@ -134,7 +134,6 @@ export async function verifyHotelPrice(input: VerifyHotelPriceInput): Promise<Ho
       checkout_date: search_data.checkout_date,
       destination_id: search_data.destination_id,
       hotel_id: String(hotel_code),
-      search_name: '',
       adult: Number(search_data.adult ?? 2),
       child: Number(search_data.child ?? 0),
       child_ages: search_data.child_ages ?? [],

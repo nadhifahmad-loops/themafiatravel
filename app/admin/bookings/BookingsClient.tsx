@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { Search, Plane, Hotel, Train, Shield, CheckCircle, XCircle, Clock, AlertTriangle, Banknote, type LucideIcon } from 'lucide-react';
@@ -12,6 +13,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 
 interface AdminBooking {
   id: string;
+  orderNumber?: string | null;
   bookingType: string;
   status: string;
   totalAmount: number;
@@ -73,21 +75,13 @@ export default function BookingsClient({
   const [activeTab, setActiveTab] = useState(initialTab);
   const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [page, setPage] = useState(initialPage);
-  const [bookings, setBookings] = useState<AdminBooking[]>(initialBookings || []);
-  const [statusMessage, setStatusMessage] = useState<string>('');
-  const [statusType, setStatusType] = useState<'success' | 'error' | ''>('');
-  const [updatingBookingId, setUpdatingBookingId] = useState<string | null>(null);
+  const bookings = initialBookings || [];
 
-  const searchRef = useRef(searchQuery);
   const timeoutRef = useRef<number | null>(null);
 
-  useEffect(() => { searchRef.current = searchQuery; }, [searchQuery]);
-
-  // Sinkronkan state lokal saat server component merender ulang (navigasi URL).
-  useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
-  useEffect(() => { setSearchQuery(initialQuery); }, [initialQuery]);
-  useEffect(() => { setPage(initialPage); }, [initialPage]);
-  useEffect(() => { setBookings(initialBookings || []); }, [initialBookings]);
+  useEffect(() => () => {
+    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+  }, []);
 
   const apply = (next: { tab?: string; q?: string; p?: number }) => {
     const params = new URLSearchParams();
@@ -102,39 +96,12 @@ export default function BookingsClient({
   const totalPages = Math.max(1, Math.ceil(initialTotal / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
 
-  async function updateBookingStatus(id: string, status: string) {
-    try {
-      setUpdatingBookingId(id);
-      setStatusMessage('');
-      const res = await fetch(`/api/bookings/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setBookings((prev) => prev.map(b => (b.id === id ? { ...b, status } : b)));
-        setStatusType('success');
-        setStatusMessage(`Status pesanan ${id} berhasil diubah menjadi ${status}.`);
-      } else {
-        setStatusType('error');
-        setStatusMessage(json.error || 'Gagal mengupdate status pesanan.');
-      }
-    } catch (err) {
-      console.error(err);
-      setStatusType('error');
-      setStatusMessage('Terjadi kesalahan saat menghubungi server. Silakan coba lagi.');
-    } finally {
-      setUpdatingBookingId(null);
-    }
-  }
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-brand-ink">Manajemen Pesanan</h1>
-          <p className="text-brand-neutral text-sm mt-0.5">Pantau dan kelola seluruh transaksi pelanggan.</p>
+          <p className="text-brand-neutral text-sm mt-0.5">Cari pesanan dan buka detail untuk melihat pembayaran, perjalanan, serta tindakan yang tersedia.</p>
         </div>
       </div>
 
@@ -160,11 +127,6 @@ export default function BookingsClient({
           </div>
         </div>
 
-        {statusMessage ? (
-          <div className={`rounded-2xl px-4 py-3 text-sm font-medium ${statusType === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-red-50 text-red-800 border border-red-100'}`}>
-            {statusMessage}
-          </div>
-        ) : null}
         <div className="overflow-x-auto border border-slate-100 rounded-xl">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-100">
@@ -174,7 +136,7 @@ export default function BookingsClient({
                 <th className="px-5 py-4">Layanan</th>
                 <th className="px-5 py-4">Total Harga</th>
                 <th className="px-5 py-4 text-center">Status</th>
-                <th className="px-5 py-4 text-center">Aksi</th>
+                <th className="px-5 py-4 text-center">Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -187,7 +149,7 @@ export default function BookingsClient({
                   return (
                     <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-5 py-4">
-                        <div className="font-bold text-slate-800">{b.id}</div>
+                        <div className="font-bold text-slate-800">{b.orderNumber || b.id}</div>
                         <div className="text-[11px] text-slate-500 mt-0.5">{format(new Date(b.createdAt), 'dd MMM yyyy, HH:mm', { locale: localeId })}</div>
                       </td>
                       <td className="px-5 py-4">
@@ -218,27 +180,12 @@ export default function BookingsClient({
                         )}
                       </td>
                       <td className="px-5 py-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {b.status === 'pending_payment' && (
-                            <button
-                              onClick={() => updateBookingStatus(b.id, 'paid')}
-                              disabled={updatingBookingId === b.id}
-                              className={`px-3 py-1 text-xs rounded-md ${updatingBookingId === b.id ? 'bg-emerald-200 text-white/70 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600'}`}
-                            >
-                              {updatingBookingId === b.id ? 'Updating...' : 'Mark Paid'}
-                            </button>
-                          )}
-                          {b.status !== 'cancelled' && (
-                            <button
-                              onClick={() => updateBookingStatus(b.id, 'cancelled')}
-                              disabled={updatingBookingId === b.id}
-                              className={`px-3 py-1 text-xs rounded-md ${updatingBookingId === b.id ? 'bg-red-200 text-red-400 cursor-not-allowed' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
-                            >
-                              {updatingBookingId === b.id ? 'Processing...' : 'Cancel'}
-                            </button>
-                          )}
-                          <a href={`/admin/bookings/${b.id}`} className="px-3 py-1 text-xs bg-slate-100 text-slate-700 rounded-md">View</a>
-                        </div>
+                        <Link
+                          href={`/admin/bookings/${b.id}`}
+                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+                        >
+                          Lihat detail
+                        </Link>
                       </td>
                     </tr>
                   )
