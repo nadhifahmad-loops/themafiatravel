@@ -298,9 +298,11 @@ export function savedPassengerToPassenger(
   const infantTitle = storedTitle === 'MRS' || storedTitle === 'MS' || storedTitle === 'MISS'
     ? 'MISS'
     : 'MSTR';
-  const adultTitle = storedTitle === 'MSTR' || storedTitle === 'MISS'
+  const adultTitle = storedTitle === 'MSTR'
     ? 'MR'
-    : storedTitle || 'MR';
+    : storedTitle === 'MISS'
+      ? 'MS'
+      : storedTitle || 'MR';
   const gender: 'male' | 'female' | undefined =
     passenger.gender === 'male' || passenger.gender === 'female'
       ? passenger.gender

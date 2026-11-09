@@ -201,31 +201,10 @@ const ROUTES: Array<{
     },
   },
   {
-    matches: (path) => path.startsWith('/account/edit/name'),
-    metadata: {
-      ID: { title: 'Ubah Nama', description: 'Perbarui nama pada profil akun Anda.' },
-      EN: { title: 'Edit Name', description: 'Update the name on your account profile.' },
-    },
-  },
-  {
-    matches: (path) => path.startsWith('/account/edit/phone'),
-    metadata: {
-      ID: { title: 'Ubah Nomor Telepon', description: 'Perbarui nomor telepon pada profil akun Anda.' },
-      EN: { title: 'Edit Phone Number', description: 'Update the phone number on your account profile.' },
-    },
-  },
-  {
     matches: (path) => path.startsWith('/account/language'),
     metadata: {
       ID: { title: 'Bahasa dan Preferensi', description: 'Atur bahasa dan preferensi aplikasi Anda.' },
       EN: { title: 'Language and Preferences', description: 'Set your application language and preferences.' },
-    },
-  },
-  {
-    matches: (path) => path.startsWith('/account/detail'),
-    metadata: {
-      ID: { title: 'Detail Akun', description: 'Lihat informasi dan detail profil akun Anda.' },
-      EN: { title: 'Account Details', description: 'View your account information and profile details.' },
     },
   },
   {

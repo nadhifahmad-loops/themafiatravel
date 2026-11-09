@@ -24,7 +24,11 @@ export function useSavedPassengers(enabled: boolean) {
   const load = useCallback(async (background = false) => {
     if (!enabled) return;
 
-    if (!background) setLoading(true);
+    if (!background) {
+      setSavedPassengers([]);
+      setLoading(true);
+      setError('');
+    }
 
     try {
       const res = await fetch('/api/user/passengers', { cache: 'no-store' });
@@ -43,13 +47,7 @@ export function useSavedPassengers(enabled: boolean) {
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled) {
-      setSavedPassengers([]);
-      setLoading(false);
-      setError('');
-      return;
-    }
-    load();
+    if (enabled) load();
   }, [enabled, load]);
 
   useEffect(() => {
@@ -68,9 +66,9 @@ export function useSavedPassengers(enabled: boolean) {
   }, [enabled, load]);
 
   return {
-    savedPassengers,
-    loading,
-    error,
+    savedPassengers: enabled ? savedPassengers : [],
+    loading: enabled ? loading : false,
+    error: enabled ? error : '',
     refetch: () => load(true),
   };
 }

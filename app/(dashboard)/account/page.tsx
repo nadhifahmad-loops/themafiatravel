@@ -1,13 +1,16 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Image from 'next/image';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { i18n } from '@/lib/i18n';
 import { usePageTitle } from '@/components/hooks/usePageTitle';
+import { useToast } from '@/contexts/ToastContext';
 import AccountSidebar from '@/components/account/AccountSidebar';
+import { NameEditModal, BirthDateEditModal, PhoneEditModal } from '@/components/account/ProfileEditModals';
+import { parsePhoneWithCode } from '@/components/account/phone-verify';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name: string) {
@@ -15,29 +18,44 @@ function getInitials(name: string) {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
-function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
-  const { language } = useLanguage();
-  const ta = i18n.account[language];
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
-    return () => clearTimeout(timer);
-  }, [message, onClose]);
+function formatBirthDate(iso: string, locale: string) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+}
 
+// ─── Potongan UI bersama (pola halaman bookings/favorites) ────────────────────
+const editBtnClass =
+  'shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:border-orange-300 hover:text-brand-orange';
+
+function CardHeader({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
   return (
-    <div style={{ position: 'fixed', top: '96px', left: '50%', transform: 'translateX(-50%)', zIndex: 99999, animation: 'fadeInDown 0.3s ease' }}>
-      <div style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(16px)', boxShadow: '0 20px 50px -12px rgba(31,29,22,0.12)', borderRadius: '16px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '14px', minWidth: '320px', maxWidth: '420px', border: '1px solid #e2e8f0' }}>
-        <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: type === 'success' ? '#338CB2' : '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <i className={`fa-solid ${type === 'success' ? 'fa-check' : 'fa-xmark'}`} style={{ color: 'white', fontSize: '16px' }}></i>
-        </div>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontWeight: 800, color: '#1F1D16', fontSize: '13px', margin: 0 }}>{type === 'success' ? ta.toast.success : ta.toast.error}</p>
-          <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0', fontWeight: 500 }}>{message}</p>
-        </div>
-        <button onClick={onClose} style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'transparent', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#94a3b8' }}>
-          <i className="fa-solid fa-xmark" style={{ fontSize: '14px' }}></i>
-        </button>
+    <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-50">
+        <i className={`fa-solid ${icon} text-sm text-brand-orange`} aria-hidden="true" />
       </div>
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-extrabold text-brand-ink">{title}</h2>
+        {subtitle && <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value, muted, action }: {
+  label: string;
+  value: React.ReactNode;
+  muted?: boolean;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-slate-500">{label}</p>
+        <p className={`mt-0.5 break-words text-sm font-bold ${muted ? 'text-slate-400' : 'text-brand-ink'}`}>{value}</p>
+      </div>
+      {action}
     </div>
   );
 }
@@ -48,16 +66,21 @@ function DeleteAccountModal({ onClose, onConfirm, loading, userEmail, isGoogleLo
 }) {
   const [confirmText, setConfirmText] = useState('');
   const [password, setPassword] = useState('');
+  const [mounted, setMounted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { language } = useLanguage();
   const ta = i18n.account[language];
   const required = ta.danger.modal.confirmRequired;
   const isMatch = confirmText === required && (isGoogleLogin || password.length >= 8);
 
+  useEffect(() => setMounted(true), []);
   useEffect(() => { setTimeout(() => inputRef.current?.focus(), 100); }, []);
 
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease' }}>
+  if (!mounted) return null;
+
+  // Portal ke <body> agar z-index 10000 selalu di atas navbar, drawer, dan toast
+  return createPortal(
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', animation: 'fadeIn 0.2s ease' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '24px', width: '100%', maxWidth: '400px', overflow: 'hidden', boxShadow: '0 25px 60px -12px rgba(0,0,0,0.35)', animation: 'popIn 0.35s cubic-bezier(0.34,1.56,0.64,1)' }}>
         <div style={{ background: '#dc2626', padding: '24px 28px', display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -105,11 +128,12 @@ function DeleteAccountModal({ onClose, onConfirm, loading, userEmail, isGoogleLo
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
-// ─── Change Password Section ──────────────────────────────────────────────────
+// ─── 2FA Section ──────────────────────────────────────────────────────────────
 async function fetchTwoFactorStatus(): Promise<{ enabled: boolean; configured: boolean }> {
   const res = await fetch('/api/user/two-factor');
   const data = await res.json();
@@ -121,6 +145,8 @@ async function fetchTwoFactorStatus(): Promise<{ enabled: boolean; configured: b
 }
 
 function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'error'; text: string }) => void }) {
+  const { language } = useLanguage();
+  const ta = i18n.account[language];
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState(false);
@@ -237,22 +263,32 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
     }
   }
 
+  const statusText = statusLoading
+    ? ta.securityCard.statusLoading
+    : statusError
+      ? ta.securityCard.statusUnavailable
+      : enabled
+        ? ta.securityCard.statusActive
+        : ta.securityCard.statusOptional;
+
   return (
     <div>
-      <button aria-expanded={expanded} onClick={() => setExpanded((prev) => !prev)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ textAlign: 'left' }}>
-            <p style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px', margin: 0 }}>Autentikasi 2 Langkah</p>
-            <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0' }}>
-              {statusLoading ? 'Memuat status…' : statusError ? 'Status tidak tersedia' : enabled ? 'Aktif' : 'Opsional'}
-            </p>
-          </div>
+      <button
+        aria-expanded={expanded}
+        onClick={() => setExpanded((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition-colors hover:bg-slate-50 sm:px-5"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-500">{ta.securityCard.twoFactorLabel}</p>
+          <p className={`mt-0.5 text-sm font-bold ${statusError ? 'text-red-500' : enabled ? 'text-emerald-600' : 'text-brand-ink'}`}>
+            {statusText}
+          </p>
         </div>
-        <i className={`fa-solid ${expanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true" style={{ color: '#64748b', fontSize: '12px' }} />
+        <i className={`fa-solid ${expanded ? 'fa-chevron-up' : 'fa-chevron-down'} shrink-0 text-[11px] text-slate-400`} aria-hidden="true" />
       </button>
 
       {expanded && (
-        <div style={{ marginTop: '10px', padding: '20px', border: '1px solid #e2e8f0', borderRadius: '12px', background: 'white' }}>
+        <div className="border-t border-slate-100 px-4 py-5 sm:px-5">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <p style={{ margin: 0, color: '#475569', fontSize: '13px', lineHeight: 1.6 }}>
               2FA menambahkan kode authenticator setelah kata sandi saat login dengan email dan kata sandi. Login Google tidak meminta kode ini.
@@ -342,6 +378,7 @@ function TwoFactorSection({ onNotify }: { onNotify: (t: { type: 'success' | 'err
   );
 }
 
+// ─── Change Password Section ──────────────────────────────────────────────────
 function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' | 'error'; text: string }) => void }) {
   const { language } = useLanguage();
   const ta = i18n.account[language];
@@ -374,31 +411,22 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
 
   return (
     <div>
-      {!showFields ? (
-        <button aria-label={ta.security.title} onClick={() => setShowFields(true)} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#F5FAFC', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#EFF9FC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <i className="fa-solid fa-lock" style={{ color: '#338CB2', fontSize: '14px' }}></i>
-            </div>
-            <div style={{ textAlign: 'left' }}>
-              <p style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px', margin: 0 }}>{ta.security.title}</p>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0' }}>{ta.security.subtitle}</p>
-            </div>
-          </div>
-          <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
-        </button>
-      ) : (
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', background: '#F5FAFC', borderBottom: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <i className="fa-solid fa-lock" style={{ color: '#64748b', fontSize: '13px' }}></i>
-              <span style={{ fontWeight: 700, color: '#334155', fontSize: '14px' }}>{ta.security.title}</span>
-            </div>
-            <button aria-label="Tutup keamanan akun" onClick={() => { setShowFields(false); setForm({ current: '', newPass: '', confirm: '' }); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '4px' }}>
-              <i className="fa-solid fa-xmark" style={{ fontSize: '14px' }}></i>
-            </button>
-          </div>
-          <form onSubmit={handleSubmit} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <button
+        aria-expanded={showFields}
+        aria-label={ta.security.title}
+        onClick={() => setShowFields((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left transition-colors hover:bg-slate-50 sm:px-5"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-500">{ta.securityCard.passwordLabel}</p>
+          <p className="mt-0.5 text-sm font-bold tracking-widest text-brand-ink">••••••••</p>
+        </div>
+        <i className={`fa-solid ${showFields ? 'fa-chevron-up' : 'fa-chevron-down'} shrink-0 text-[11px] text-slate-400`} aria-hidden="true" />
+      </button>
+
+      {showFields && (
+        <div className="border-t border-slate-100 px-4 py-5 sm:px-5">
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
               <label style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>{ta.security.currentLabel}</label>
               <div style={{ position: 'relative' }}>
@@ -445,19 +473,27 @@ function ChangePasswordSection({ onNotify }: { onNotify: (t: { type: 'success' |
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AccountPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const router = useRouter();
   const { language } = useLanguage();
   const ta = i18n.account[language];
+  const { toast } = useToast();
 
   usePageTitle('Akun Saya');
 
-  const [form, setForm] = useState({ name: '', email: '', phone: '', phoneCode: '62' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', phoneCode: '62', birthDate: '' });
   const [provider, setProvider] = useState<'google' | 'credentials' | 'unknown'>('unknown');
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [userCreatedAt, setUserCreatedAt] = useState<string | null>(null);
+  const [showNameEdit, setShowNameEdit] = useState(false);
+  const [showBirthEdit, setShowBirthEdit] = useState(false);
+  const [showPhoneEdit, setShowPhoneEdit] = useState(false);
+
+  // Notifikasi selalu lewat toast global (kanan-bawah) agar konsisten dgn halaman lain
+  const notify = useCallback((t: { type: 'success' | 'error'; text: string }) => {
+    toast(t.text, { variant: t.type });
+  }, [toast]);
 
   useEffect(() => {
     if (status === 'unauthenticated') { router.replace('/login'); return; }
@@ -471,13 +507,14 @@ export default function AccountPage() {
         const res = await fetch('/api/user/profile');
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
-        const rawPhone = data.user.phone || '';
-        // Simple parse: if starts with country code, split
-        let phoneCode = '62';
-        let phone = rawPhone;
-        if (rawPhone.startsWith('62') && rawPhone.length > 2) { phoneCode = '62'; phone = rawPhone.slice(2); }
-        else if (rawPhone.startsWith('0')) { phoneCode = '62'; phone = rawPhone.slice(1); }
-        setForm({ name: data.user.name || '', email: data.user.email || '', phone, phoneCode });
+        const { code, number } = parsePhoneWithCode(data.user.phone || '');
+        setForm({
+          name: data.user.name || '',
+          email: data.user.email || '',
+          phone: number,
+          phoneCode: code,
+          birthDate: data.user.birthDate || '',
+        });
         setProvider(data.user.provider === 'google' ? 'google' : 'credentials');
         if (data.user.createdAt) setUserCreatedAt(data.user.createdAt);
       } catch (error) { console.error('[Load Profile]', error); }
@@ -499,157 +536,186 @@ export default function AccountPage() {
     } catch (err: unknown) {
       setDeleteLoading(false);
       setShowDeleteModal(false);
-      setToast({ type: 'error', text: err instanceof Error ? err.message : 'Gagal menghapus akun' });
+      toast(err instanceof Error ? err.message : 'Gagal menghapus akun', { variant: 'error' });
     }
   };
 
+  const handleNameUpdated = useCallback((name: string) => {
+    setShowNameEdit(false);
+    setForm((f) => ({ ...f, name }));
+    toast(ta.profile.successMsg, { variant: 'success' });
+  }, [toast, ta]);
+
+  const handleBirthDateUpdated = useCallback((iso: string) => {
+    setShowBirthEdit(false);
+    setForm((f) => ({ ...f, birthDate: iso }));
+    toast(ta.profile.successMsg, { variant: 'success' });
+  }, [toast, ta]);
+
+  const handlePhoneUpdated = useCallback(async (fullPhone: string) => {
+    setShowPhoneEdit(false);
+    const { code, number } = parsePhoneWithCode(fullPhone);
+    setForm((f) => ({ ...f, phone: number, phoneCode: code }));
+    try {
+      await update({ ...session, user: { ...(session?.user ?? {}), phone: fullPhone } });
+    } catch { /* perubahan lokal tetap diterapkan */ }
+    toast(ta.profile.successMsg, { variant: 'success' });
+  }, [session, update, toast, ta]);
+
   if (status === 'loading') return (
-    <div style={{ minHeight: '100vh', background: '#F5FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: '36px', height: '36px', border: '3px solid #e2e8f0', borderTopColor: '#F27717', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+    <div className="flex min-h-screen items-center justify-center bg-brand-bgLight">
+      <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-orange" />
     </div>
   );
 
   const displayPhone = form.phone ? `+${form.phoneCode} ${form.phone}` : '';
   const isGoogleLogin = provider === 'google';
+  const birthDateLocale = language === 'ID' ? 'id-ID' : 'en-GB';
+  const displayBirthDate = form.birthDate
+    ? formatBirthDate(form.birthDate, birthDateLocale)
+    : ta.profile.notSet;
 
   const memberSince = userCreatedAt
     ? new Date(userCreatedAt).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })
     : session?.user ? new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) : '';
 
   return (
-    <div className="min-h-screen bg-brand-bgLight">
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes fadeInDown { from { opacity: 0; transform: translateX(-50%) translateY(-12px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
-        @keyframes popIn { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .acct-card { animation: slideUp 0.45s ease forwards; opacity: 0; }
-        .acct-card:nth-child(1) { animation-delay: 0s; }
-        .acct-card:nth-child(2) { animation-delay: 0.07s; }
-        .acct-card:nth-child(3) { animation-delay: 0.14s; }
-        .acct-card:nth-child(4) { animation-delay: 0.21s; }
-        .acct-card:nth-child(5) { animation-delay: 0.28s; }
-        .acct-card:nth-child(6) { animation-delay: 0.35s; }
-        @media (max-width: 640px) {
-          .profile-hero { flex-direction: column !important; text-align: center !important; }
-          .profile-hero .avatar { margin: 0 auto !important; }
-          .profile-hero-actions { justify-content: center !important; }
-          .info-row { flex-direction: column !important; align-items: flex-start !important; gap: 4px !important; }
-          .info-row > div:last-child { text-align: left !important; }
-          .delete-row { flex-direction: column !important; align-items: flex-start !important; }
-        }
-      `}} />
-
-      {toast && <Toast key={`${toast.type}-${toast.text}`} message={toast.text} type={toast.type} onClose={() => setToast(null)} />}
+    <div className="min-h-screen bg-brand-bgLight pt-[64px] md:pt-20">
       {showDeleteModal && <DeleteAccountModal onClose={() => setShowDeleteModal(false)} onConfirm={handleDeleteAccount} loading={deleteLoading} userEmail={form.email} isGoogleLogin={isGoogleLogin} />}
+      {showNameEdit && <NameEditModal initialName={form.name} onClose={() => setShowNameEdit(false)} onSuccess={handleNameUpdated} />}
+      {showBirthEdit && <BirthDateEditModal initialDate={form.birthDate} onClose={() => setShowBirthEdit(false)} onSuccess={handleBirthDateUpdated} />}
+      {showPhoneEdit && (
+        <PhoneEditModal
+          initialPhone={form.phone}
+          initialPhoneCode={form.phoneCode}
+          onClose={() => setShowPhoneEdit(false)}
+          onSuccess={handlePhoneUpdated}
+        />
+      )}
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 pt-[64px] md:pt-20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
           <AccountSidebar />
+
           <div className="flex-1 min-w-0">
+            {/* ══ PAGE HEADER ══ */}
+            <div className="mb-5 sm:mb-6">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-brand-ink tracking-tight">{ta.title}</h1>
+              <p className="mt-1 text-sm text-brand-neutral">{ta.subtitle}</p>
+            </div>
 
-        {/* ══ PAGE HEADER ══ */}
-        <div className="acct-card" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-            <h1 style={{ fontSize: '24px', fontWeight: 900, color: '#1F1D16', margin: 0, letterSpacing: '-0.02em' }}>{ta.title}</h1>
-          </div>
-          <p style={{ color: '#64748b', fontSize: '14px', margin: '0', fontWeight: 500 }}>{ta.subtitle}</p>
-        </div>
-
-        {/* ══ PROFILE HERO CARD ══ */}
-        <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)', marginBottom: '24px' }}>
-          <div style={{ background: 'linear-gradient(135deg, #F27717, #D9650E)', padding: '32px', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', right: -40, top: -40, width: 200, height: 200, borderRadius: '50%', background: 'rgba(234,88,12,0.15)', filter: 'blur(30px)' }} />
-            <div className="profile-hero" style={{ display: 'flex', alignItems: 'center', gap: '16px', position: 'relative' }}>
-              <div className="avatar" style={{ width: '60px', height: '60px', borderRadius: '18px', background: 'linear-gradient(135deg, #F27717, #D9650E)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', fontWeight: 900, color: 'white', flexShrink: 0, boxShadow: '0 4px 20px rgba(242,119,23,0.35)', overflow: 'hidden' }}>
-                {session?.user?.image ? (
-                  <Image src={session.user.image} alt="Profile" width={60} height={60} className="w-full h-full object-cover" />
-                ) : (
-                  getInitials(form.name)
-                )}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <h2 style={{ fontWeight: 900, fontSize: '22px', color: 'white', margin: 0, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.name || 'Pengguna'}</h2>
-                <p style={{ color: '#cbd5e1', fontSize: '14px', margin: '4px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.email}</p>
-                {displayPhone && <p style={{ color: '#94a3b8', fontSize: '13px', margin: '3px 0 0' }}>{displayPhone}</p>}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '999px', background: 'rgba(255,255,255,0.1)', fontSize: '11px', fontWeight: 700, color: '#cbd5e1' }}>
-                    <i className="fa-regular fa-calendar" style={{ fontSize: '10px' }}></i>
-                    Member sejak {memberSince}
-                  </span>
+            {/* ══ PROFILE HERO CARD ══ */}
+            <div className="mb-5 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-card sm:mb-6">
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#F27717] to-[#D9650E] p-6 sm:p-8">
+                <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-10 h-[200px] w-[200px] rounded-full bg-orange-300/20 blur-3xl" />
+                <div className="relative flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
+                  <div className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/15 text-xl font-black text-white shadow-[0_4px_20px_rgba(242,119,23,0.35)]">
+                    {session?.user?.image ? (
+                      <Image src={session.user.image} alt="Profile" width={60} height={60} className="h-full w-full object-cover" />
+                    ) : (
+                      getInitials(form.name)
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-lg font-black text-white sm:text-xl">{form.name || 'Pengguna'}</h2>
+                    <p className="mt-1 truncate text-sm text-white/85">{form.email}</p>
+                    {displayPhone && <p className="mt-0.5 truncate text-[13px] text-white/70">{displayPhone}</p>}
+                    <span className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold text-white/90">
+                      <i className="fa-regular fa-calendar text-[10px]" aria-hidden="true"></i>
+                      Member sejak {memberSince}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* ══ NAVIGATION CARD ══ */}
-        <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)', marginBottom: '24px' }}>
-          <Link href="/account/detail" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#F5FAFC'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#f0fdf4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <i className="fa-solid fa-user" style={{ color: '#338CB2', fontSize: '16px' }}></i>
+            {/* ══ KARTU: INFORMASI PROFIL ══ */}
+            <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card sm:mb-6">
+              <CardHeader icon="fa-user" title={ta.profile.title} subtitle={ta.profile.subtitle} />
+              <div className="divide-y divide-slate-100">
+                <InfoRow
+                  label={ta.profile.nameLabel}
+                  value={form.name || '—'}
+                  action={
+                    <button type="button" onClick={() => setShowNameEdit(true)} className={editBtnClass}>
+                      <i className="fa-solid fa-pen text-[10px]" aria-hidden="true"></i>
+                      {ta.profile.editBtn}
+                    </button>
+                  }
+                />
+                <InfoRow
+                  label={ta.profile.birthDateLabel}
+                  value={displayBirthDate}
+                  muted={!form.birthDate}
+                  action={
+                    <button type="button" onClick={() => setShowBirthEdit(true)} className={editBtnClass}>
+                      <i className="fa-solid fa-pen text-[10px]" aria-hidden="true"></i>
+                      {form.birthDate ? ta.profile.editBtn : ta.profile.addBtn}
+                    </button>
+                  }
+                />
+                {/* Email read-only — tanpa aksi tambah/ubah email */}
+                <InfoRow label={ta.profile.emailLabel} value={form.email || '—'} />
               </div>
-              <span style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px' }}>Informasi Akun</span>
-            </div>
-            <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
-          </Link>
-          <div style={{ height: '1px', background: '#f1f5f9', margin: '0 32px' }} />
-          <Link href="/account/passengers" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 32px', textDecoration: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.background = '#F5FAFC'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#EFF9FC', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <i className="fa-solid fa-address-card" style={{ color: '#338CB2', fontSize: '16px' }}></i>
-              </div>
-              <span style={{ fontWeight: 700, color: '#1F1D16', fontSize: '14px' }}>{i18n.savedPassengers[language].title}</span>
-            </div>
-            <i className="fa-solid fa-chevron-right" style={{ color: '#cbd5e1', fontSize: '12px' }}></i>
-          </Link>
-        </div>
+            </section>
 
+            {/* ══ KARTU: KEAMANAN AKUN ══ */}
+            <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card sm:mb-6">
+              <CardHeader icon="fa-shield-halved" title={ta.securityCard.title} subtitle={ta.securityCard.subtitle} />
+              <div className="divide-y divide-slate-100">
+                {isGoogleLogin ? (
+                  <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-500">{ta.securityCard.passwordLabel}</p>
+                      <p className="mt-0.5 text-sm font-bold text-slate-400">{ta.securityCard.passwordGoogle}</p>
+                    </div>
+                    <i className="fa-solid fa-lock shrink-0 text-slate-300" aria-hidden="true"></i>
+                  </div>
+                ) : (
+                  <ChangePasswordSection onNotify={notify} />
+                )}
 
-        {/* ══ SECURITY CARD ══ */}
-        {!isGoogleLogin && (
-          <div className="acct-card" style={{ background: 'white', borderRadius: '24px', border: '1px solid #f1f5f9', overflow: 'hidden', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)', marginBottom: '24px' }}>
-            <div style={{ padding: '20px 32px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#EFF9FC', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <i className="fa-solid fa-shield-halved" style={{ color: '#338CB2', fontSize: '14px' }}></i>
-              </div>
-              <span style={{ fontWeight: 800, color: '#1F1D16', fontSize: '15px' }}>{ta.tabs.security}</span>
-            </div>
-            <div style={{ padding: '20px 32px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <TwoFactorSection onNotify={setToast} />
-              <ChangePasswordSection onNotify={setToast} />
-            </div>
-          </div>
-        )}
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-500">{ta.securityCard.phoneLabel}</p>
+                    <p className={`mt-0.5 break-words text-sm font-bold ${displayPhone ? 'text-brand-ink' : 'text-slate-400'}`}>
+                      {displayPhone || ta.securityCard.phoneNotSet}
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => setShowPhoneEdit(true)} className={editBtnClass}>
+                    <i className={`fa-solid ${displayPhone ? 'fa-pen' : 'fa-plus'} text-[10px]`} aria-hidden="true"></i>
+                    {displayPhone ? ta.profile.editBtn : ta.profile.addBtn}
+                  </button>
+                </div>
 
-        {/* ══ DELETE ACCOUNT ══ */}
-        <div className="acct-card" style={{ marginBottom: '24px' }}>
-          <div className="delete-row" style={{ padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', background: 'white', borderRadius: '24px', border: '1px solid #fecaca', boxShadow: '0 10px 30px -5px rgba(31,29,22,0.06)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <i className="fa-solid fa-triangle-exclamation" style={{ color: '#ef4444', fontSize: '16px' }}></i>
+                {!isGoogleLogin && <TwoFactorSection onNotify={notify} />}
               </div>
-              <div>
-                <p style={{ fontWeight: 800, color: '#1F1D16', fontSize: '14px', margin: 0 }}>{ta.danger.title}</p>
-                <p style={{ fontSize: '13px', color: '#94a3b8', margin: '3px 0 0' }}>{ta.danger.subtitle}</p>
+            </section>
+
+            {/* ══ DELETE ACCOUNT ══ */}
+            <div className="mb-5 overflow-hidden rounded-2xl border border-red-200 bg-white shadow-card sm:mb-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
+                <div className="flex min-w-0 items-center gap-3.5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50">
+                    <i className="fa-solid fa-triangle-exclamation text-base text-red-500" aria-hidden="true"></i>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-extrabold text-brand-ink">{ta.danger.title}</p>
+                    <p className="mt-0.5 text-[13px] text-slate-400">{ta.danger.subtitle}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteModal(true)}
+                  className="shrink-0 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-2.5 text-[13px] font-bold text-red-600 transition-colors hover:border-red-600 hover:bg-red-600 hover:text-white"
+                >
+                  {ta.danger.deleteBtn}
+                </button>
               </div>
             </div>
-            <button onClick={() => setShowDeleteModal(true)} style={{ padding: '10px 20px', background: '#fef2f2', color: '#dc2626', fontWeight: 700, fontSize: '13px', borderRadius: '12px', border: '2px solid #fecaca', cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s' }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#dc2626'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#dc2626'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.borderColor = '#fecaca'; }}>{ta.danger.deleteBtn}</button>
-          </div>
-        </div>
 
-        {/* ══ FOOTER ══ */}
-        <div className="acct-card" style={{ textAlign: 'center', padding: '16px 0 0' }}>
-          <p style={{ fontSize: '12px', color: '#cbd5e1', margin: 0, fontWeight: 600 }}>The Mafia Travel &middot; {memberSince}</p>
-        </div>
+            {/* ══ FOOTER ══ */}
+            <p className="pb-2 text-center text-xs font-semibold text-slate-400">The Mafia Travel &middot; {memberSince}</p>
           </div>
         </div>
       </div>

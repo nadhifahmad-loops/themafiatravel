@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { signOut } from 'next-auth/react';
 import { LogOut } from 'lucide-react';
 
@@ -24,6 +25,9 @@ export default function LogoutConfirmButton({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -31,6 +35,16 @@ export default function LogoutConfirmButton({
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, [open]);
+
+  // Tutup dengan tombol Escape
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, loading]);
 
   const handleConfirm = () => {
     setLoading(true);
@@ -43,8 +57,14 @@ export default function LogoutConfirmButton({
         {children}
       </button>
 
-      {open && (
-        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 99999, background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}>
+      {open && mounted && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="logout-confirm-title"
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ zIndex: 99999, background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(4px)' }}
+        >
           {/* Overlay — klik di luar card = tutup */}
           <div className="absolute inset-0" onClick={() => { if (!loading) setOpen(false); }} />
 
@@ -53,7 +73,7 @@ export default function LogoutConfirmButton({
             <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center mb-4">
               <LogOut className="w-5 h-5 text-red-600" />
             </div>
-            <h2 className="text-base font-bold text-slate-900 leading-snug">{title}</h2>
+            <h2 id="logout-confirm-title" className="text-base font-bold text-slate-900 leading-snug">{title}</h2>
             <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">{description}</p>
 
             <div className="mt-5 flex flex-col sm:flex-row gap-2.5">
@@ -85,7 +105,8 @@ export default function LogoutConfirmButton({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

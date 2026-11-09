@@ -27,6 +27,7 @@ export async function GET() {
         name: user.name ?? '',
         email: user.email,
         phone: user.phone ?? '',
+        birthDate: user.birthDate ? user.birthDate.toISOString().slice(0, 10) : null,
         provider,
         image: user.image ?? null,
         createdAt: user.createdAt?.toISOString?.() || null,

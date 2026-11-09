@@ -24,7 +24,7 @@ import {
   type SavedPassengerRecord,
 } from '@/lib/saved-passengers';
 
-type SavedPassengerText = typeof i18n.savedPassengers[keyof typeof i18n.savedPassengers];
+type SavedPassengerText = (typeof i18n.savedPassengers)['ID'] | (typeof i18n.savedPassengers)['EN'];
 
 type PassengerFormState = {
   title: string;
@@ -327,7 +327,7 @@ function PassengerFormModal({
 }
 
 export default function SavedPassengersPage() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const { language } = useLanguage();
   const t = i18n.savedPassengers[language];
@@ -352,19 +352,25 @@ export default function SavedPassengersPage() {
   }, [status, router]);
 
   const loadPassengers = useCallback(async () => {
-    setLoading(true);
-    setLoadError(false);
     try {
       const res = await fetch('/api/user/passengers', { cache: 'no-store' });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'load');
       setPassengers(Array.isArray(data?.passengers) ? data.passengers : []);
+      setLoadError(false);
     } catch {
       setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Set loading dulu di handler klik (bukan di effect) agar efek tidak
+  // memicu setState sinkron.
+  const retryLoad = useCallback(() => {
+    setLoading(true);
+    loadPassengers();
+  }, [loadPassengers]);
 
   useEffect(() => {
     if (status === 'authenticated') loadPassengers();
@@ -554,7 +560,7 @@ export default function SavedPassengersPage() {
                 <p className="text-sm font-bold text-slate-700">{t.loadError}</p>
                 <button
                   type="button"
-                  onClick={loadPassengers}
+                  onClick={retryLoad}
                   className="mt-4 inline-flex h-9 items-center rounded-lg border border-slate-200 px-4 text-xs font-bold text-slate-600 transition-colors hover:border-slate-300"
                 >
                   {t.retry}

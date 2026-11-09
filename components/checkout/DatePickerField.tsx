@@ -29,6 +29,8 @@ interface DatePickerFieldProps {
   defaultMonth?: Date;
   disabled?: boolean;
   className?: string;
+  /** Class tambahan untuk panel popover (mis. z-index saat di dalam modal). */
+  contentClassName?: string;
 }
 
 export default function DatePickerField({
@@ -44,6 +46,7 @@ export default function DatePickerField({
   defaultMonth,
   disabled,
   className,
+  contentClassName,
 }: DatePickerFieldProps) {
   const [open, setOpen] = useState(false);
   const selected = parseLocalISODate(value);
@@ -81,7 +84,7 @@ export default function DatePickerField({
           align="start"
           sideOffset={8}
           collisionPadding={8}
-          className="z-[999] rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+          className={`z-[999] rounded-2xl border border-slate-100 bg-white p-3 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 ${contentClassName || ''}`}
         >
           <DayPicker
             mode="single"

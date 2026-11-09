@@ -10,7 +10,7 @@ import SectionHeader from '@/components/checkout/SectionHeader';
 import TermsModal from '@/components/checkout/TermsModal';
 import TermsAgreementText from '@/components/checkout/TermsAgreementText';
 import DatePickerField from '@/components/checkout/DatePickerField';
-import { COUNTRY_CODES } from '@/app/(dashboard)/account/edit/components';
+import { COUNTRY_CODES } from '@/components/account/phone-verify';
 import LeaveGuard from '@/components/checkout/LeaveGuard';
 import CheckoutLoadingOverlay from '@/components/checkout/CheckoutLoadingOverlay';
 import { useIdempotencyKey } from '@/components/hooks/useIdempotencyKey';
@@ -606,7 +606,7 @@ function FlightCheckoutContent() {
   const applySavedPassenger = (idx: number, saved: SavedPassengerRecord) => {
     setPassengers(prev => prev.map((pax, i) => {
       if (i !== idx) return pax;
-      return { ...pax, ...savedPassengerToPassenger(saved, pax.pax_type) };
+      return { ...pax, ...savedPassengerToPassenger(saved, pax.pax_type) } as Passenger;
     }));
     setFormErrors(prev => {
       const next = { ...prev };
