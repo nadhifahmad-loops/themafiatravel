@@ -778,7 +778,7 @@ function TicketDocument({ data, qr }: { data: TicketPdfData; qr: string }) {
               })}{' '}
               WIB
             </Text>
-            <Text style={[s.footerText, { marginTop: 4 }]}>support@themafiatravel.com</Text>
+            <Text style={[s.footerText, { marginTop: 4 }]}>themafiatravel@gmail.com</Text>
             <Text style={s.footerText}>0812-3233-1581</Text>
           </View>
         </View>

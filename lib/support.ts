@@ -5,10 +5,10 @@ export const SUPPORT_WHATSAPP_NUMBER =
   process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT || '6281232331581';
 
 /** Email support utama. */
-export const SUPPORT_EMAIL = 'support@themafiatravel.com';
+export const SUPPORT_EMAIL = 'themafiatravel@gmail.com';
 
 /** Email khusus privasi. */
-export const PRIVACY_EMAIL = 'privacy@themafiatravel.com';
+export const PRIVACY_EMAIL = 'themafiatravel@gmail.com';
 
 /**
  * Bangun URL WhatsApp (wa.me) menuju tim support.

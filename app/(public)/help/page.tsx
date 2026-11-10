@@ -11,7 +11,7 @@ const SUPPORT_WA_LINK = 'text-blue-600 font-semibold hover:underline underline-o
 
 function linkify(text: string): ReactNode[] {
   const waUrl = getSupportWhatsAppUrl('Halo The Mafia Travel, saya butuh bantuan dari tim support.');
-  const regex = /(WhatsApp|support@themafiatravel\.com)/g;
+  const regex = /(WhatsApp|themafiatravel@gmail\.com)/g;
   const parts: ReactNode[] = [];
   let last = 0;
   let key = 0;

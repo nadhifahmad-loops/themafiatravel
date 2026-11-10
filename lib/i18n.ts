@@ -3465,7 +3465,7 @@ export const i18n = {
       faqs: [
         { q: 'Bagaimana cara memesan tiket pesawat?', a: 'Pilih tab "Pesawat" di halaman utama, masukkan kota asal, tujuan, tanggal keberangkatan, dan jumlah penumpang. Klik "Cari Penerbangan" lalu pilih jadwal yang diinginkan.' },
         { q: 'Apakah saya bisa melakukan pembatalan?', a: 'Ya, pembatalan bisa dilakukan melalui halaman "Pesanan Saya". Kebijakan refund bervariasi tergantung maskapai dan jenis tiket. Lihat detail di halaman Refund & Reschedule.' },
-        { q: 'Bagaimana cara menghubungi customer support?', a: 'Anda bisa menghubungi kami melalui WhatsApp di nomor yang tertera di halaman kontak, atau melalui email support@themafiatravel.com. Tim kami siap membantu 24/7.' },
+        { q: 'Bagaimana cara menghubungi customer support?', a: 'Anda bisa menghubungi kami melalui WhatsApp di nomor yang tertera di halaman kontak, atau melalui email themafiatravel@gmail.com. Tim kami siap membantu 24/7.' },
         { q: 'Metode pembayaran apa yang diterima?', a: 'Kami menerima pembayaran melalui transfer bank, kartu kredit/debit, GoPay, OVO, Dana, dan QRIS.' },
         { q: 'Bagaimana cara melihat pesanan saya?', a: 'Masuk ke akun Anda, lalu buka halaman "Pesanan Saya" di menu akun. Di sana Anda bisa melihat status dan detail semua pesanan.' },
         { q: 'Apakah data saya aman?', a: 'Ya, kami menggunakan enkripsi SSL/TLS dan mengikuti standar keamanan data industri untuk melindungi informasi pribadi Anda.' },
@@ -3487,7 +3487,7 @@ export const i18n = {
       faqs: [
         { q: 'How do I book a flight?', a: 'Select the "Flights" tab on the homepage, enter your origin city, destination, departure date, and number of passengers. Click "Search Flights" then choose your preferred schedule.' },
         { q: 'Can I cancel my booking?', a: 'Yes, cancellation can be done through the "My Bookings" page. Refund policies vary by airline and ticket type. See details on the Refund & Reschedule page.' },
-        { q: 'How do I contact customer support?', a: 'You can reach us via WhatsApp at the number listed on the contact page, or email support@themafiatravel.com. Our team is available 24/7.' },
+        { q: 'How do I contact customer support?', a: 'You can reach us via WhatsApp at the number listed on the contact page, or email themafiatravel@gmail.com. Our team is available 24/7.' },
         { q: 'What payment methods are accepted?', a: 'We accept payments via bank transfer, credit/debit cards, GoPay, OVO, Dana, and QRIS.' },
         { q: 'How do I view my bookings?', a: 'Log in to your account, then open the "My Bookings" page in the account menu. There you can view the status and details of all your bookings.' },
         { q: 'Is my data safe?', a: 'Yes, we use SSL/TLS encryption and follow industry data security standards to protect your personal information.' },
@@ -3541,7 +3541,7 @@ export const i18n = {
         { heading: '4. Berbagi Informasi', content: 'Kami tidak menjual atau menyewakan data pribadi Anda kepada pihak ketiga. Informasi hanya dibagikan kepada pihak ketiga yang terlibat dalam pemrosesan pesanan (seperti maskapai, hotel, atau payment gateway) dan hanya sejauh yang diperlukan untuk memenuhi layanan.' },
         { heading: '5. Cookie', content: 'Kami menggunakan cookie untuk meningkatkan pengalaman browsing Anda, menyimpan preferensi, dan menganalisis lalu lintas. Anda dapat mengontrol penggunaan cookie melalui pengaturan browser Anda.' },
         { heading: '6. Hak Anda', content: 'Anda memiliki hak untuk mengakses data pribadi yang kami simpan tentang Anda, meminta koreksi data yang tidak akurat, meminta penghapusan data pribadi Anda, serta menolak pemrosesan data dalam keadaan tertentu.', list: ['Mengakses data pribadi yang kami simpan tentang Anda.', 'Meminta koreksi data yang tidak akurat.', 'Meminta penghapusan data pribadi Anda.', 'Menolak pemrosesan data dalam keadaan tertentu.'] },
-        { heading: '7. Hubungi Kami', content: 'Jika Anda memiliki pertanyaan tentang kebijakan privasi ini, silakan hubungi kami melalui email di privacy@themafiatravel.com.' },
+        { heading: '7. Hubungi Kami', content: 'Jika Anda memiliki pertanyaan tentang kebijakan privasi ini, silakan hubungi kami melalui email di themafiatravel@gmail.com.' },
       ],
     },
     EN: {
@@ -3554,7 +3554,7 @@ export const i18n = {
         { heading: '4. Information Sharing', content: 'We do not sell or rent your personal data to third parties. Information is only shared with third parties involved in order processing (such as airlines, hotels, or payment gateways) and only as necessary to fulfill services.' },
         { heading: '5. Cookies', content: 'We use cookies to enhance your browsing experience, store preferences, and analyze traffic. You can control cookie usage through your browser settings.' },
         { heading: '6. Your Rights', content: 'You have the right to access personal data we hold about you, request correction of inaccurate data, request deletion of your personal data, and object to data processing in certain circumstances.', list: ['Access personal data we hold about you.', 'Request correction of inaccurate data.', 'Request deletion of your personal data.', 'Object to data processing in certain circumstances.'] },
-        { heading: '7. Contact Us', content: 'If you have questions about this privacy policy, please contact us via email at privacy@themafiatravel.com.' },
+        { heading: '7. Contact Us', content: 'If you have questions about this privacy policy, please contact us via email at themafiatravel@gmail.com.' },
       ],
     },
   },
