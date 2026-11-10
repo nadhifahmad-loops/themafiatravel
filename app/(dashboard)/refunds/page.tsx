@@ -397,7 +397,7 @@ export default function RefundsPage() {
               <span className="shrink-0 text-slate-400"><i className="fa-solid fa-circle-info"></i></span>
               <p>
                 Semua permintaan refund dikonfirmasi oleh tim Orbisway. Estimasi bersifat indikatif dan dapat berbeda dengan nilai aktual yang ditentukan vendor.
-                Butuh bantuan? Hubungi <strong className="text-orange-700">CS Orbisway</strong>.
+                Butuh bantuan? Hubungi <strong className="text-orange-700">CS The Mafia Travel</strong> di 0812-3233-1581.
               </p>
             </div>
           </div>

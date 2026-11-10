@@ -2,7 +2,7 @@
 
 /** Nomor WhatsApp support (format internasional tanpa "+"). */
 export const SUPPORT_WHATSAPP_NUMBER =
-  process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT || '6281234567890';
+  process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT || '6281232331581';
 
 /** Email support utama. */
 export const SUPPORT_EMAIL = 'support@themafiatravel.com';

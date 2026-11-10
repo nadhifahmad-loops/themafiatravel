@@ -1212,7 +1212,7 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                 <i className="fa-solid fa-headset" style={{ color: '#ea580c', fontSize: '14px' }}></i>
               </div>
               <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: 1.6 }}>
-                Pertanyaan? Hubungi <strong style={{ color: '#ea580c' }}>CS Orbisway</strong> di 0800-1234-5678 atau chat di aplikasi. Sertakan kode refund saat menghubungi kami.
+                Pertanyaan? Hubungi <strong style={{ color: '#ea580c' }}>CS The Mafia Travel</strong> di 0812-3233-1581 atau chat di WhatsApp. Sertakan kode refund saat menghubungi kami.
               </p>
             </div>
           </div>
@@ -1287,7 +1287,7 @@ export default function CancelPage({ params }: { params: Promise<{ id: string }>
                 {tc.close}
               </button>
               <button
-                onClick={() => { setCancelError(''); setAlertType(''); window.open('tel:080012345678', '_self'); }}
+                onClick={() => { setCancelError(''); setAlertType(''); window.open('tel:081232331581', '_self'); }}
                 style={{
                   flex: 1, padding: '14px 0',
                   border: 'none', borderRadius: '14px',
